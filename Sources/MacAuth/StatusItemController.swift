@@ -12,6 +12,10 @@ final class StatusItemController: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private let popover = NSPopover()
 
+    /// True while a system window (file picker, capture overlay) is part of an add in progress.
+    /// The panel must survive losing focus to those, but only to those.
+    private var isPinned = false
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         item.button?.image = MenuBarIcon.image
@@ -35,9 +39,24 @@ final class StatusItemController: NSObject, NSApplicationDelegate {
             // A transient popover closes as soon as another window takes focus, which the file
             // picker and the capture overlay both do. Switching behaviour keeps it up for the
             // duration, then hands dismissal back to the system.
+            isPinned = pinned
             popover.behavior = pinned ? .applicationDefined : .transient
             if !pinned { reopen() }
         }
+
+        // Switching to another app should put the panel away. A popover left open while the app
+        // is in the background is the one thing a menu bar panel must never do.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appDidResignActive),
+            name: NSApplication.didResignActiveNotification,
+            object: nil
+        )
+    }
+
+    @objc private func appDidResignActive() {
+        guard !isPinned, popover.isShown else { return }
+        popover.performClose(nil)
     }
 
     @objc private func toggle() {
@@ -64,11 +83,12 @@ final class StatusItemController: NSObject, NSApplicationDelegate {
 
     /// Brings the panel back after a system window stole focus, so a scan ends with the new
     /// account visible rather than with an empty menu bar.
+    ///
+    /// It shows again from scratch even when the panel never went away. AppKit installs the
+    /// event monitors that dismiss a transient popover at show time, so one that was pinned
+    /// open while shown would otherwise keep ignoring clicks elsewhere for the rest of its life.
     private func reopen() {
-        if popover.isShown {
-            NSApp.activate(ignoringOtherApps: true)
-        } else {
-            show()
-        }
+        if popover.isShown { popover.close() }
+        show()
     }
 }
