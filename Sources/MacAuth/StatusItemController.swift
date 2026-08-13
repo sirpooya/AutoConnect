@@ -41,8 +41,6 @@ final class StatusItemController: NSObject, NSApplicationDelegate {
     }
 
     @objc private func toggle() {
-        guard let button = statusItem?.button else { return }
-
         if popover.isShown {
             popover.performClose(nil)
             return

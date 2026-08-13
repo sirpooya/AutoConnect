@@ -49,6 +49,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/PanelPin.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/QR/QRScanner.swift"
         },
         {
@@ -98,6 +102,7 @@
       "objects" : [
         "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuth.build/AppState.swift.o",
         "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuth.build/MacAuthApp.swift.o",
+        "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuth.build/PanelPin.swift.o",
         "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuth.build/QRScanner.swift.o",
         "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuth.build/StatusItemController.swift.o",
         "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuth.build/AccountFormView.swift.o",
@@ -164,6 +169,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuth.build/PanelPin.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuth.build/QRScanner.swift.o"
         },
         {
@@ -199,6 +208,7 @@
       "sources" : [
         "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/AppState.swift",
         "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/MacAuthApp.swift",
+        "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/PanelPin.swift",
         "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/QR/QRScanner.swift",
         "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/StatusItemController.swift",
         "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/Views/AccountFormView.swift",
@@ -559,6 +569,7 @@
       "-c",
       "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/AppState.swift",
       "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/MacAuthApp.swift",
+      "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/PanelPin.swift",
       "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/QR/QRScanner.swift",
       "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/StatusItemController.swift",
       "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/Views/AccountFormView.swift",
@@ -850,6 +861,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/PanelPin.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/QR/QRScanner.swift"
         },
         {
@@ -909,6 +924,10 @@
         {
           "kind" : "file",
           "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuth.build/MenuPanel.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuth.build/PanelPin.swift.o"
         },
         {
           "kind" : "file",

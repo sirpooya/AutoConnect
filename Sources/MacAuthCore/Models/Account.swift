@@ -36,6 +36,12 @@ public struct Account: Identifiable, Codable, Hashable, Sendable {
         issuer.isEmpty ? "" : label
     }
 
+    /// The single line shown above the code, "Issuer: account". Collapses to whichever half
+    /// exists when the other is empty, so it never starts or ends with a stray colon.
+    public var displayHeading: String {
+        displaySubtitle.isEmpty ? displayTitle : "\(displayTitle): \(displaySubtitle)"
+    }
+
     /// True when this entry uses settings an authenticator would consider unusual, which is
     /// worth surfacing in the UI so a wrong code is easier to diagnose.
     public var usesNonDefaultSettings: Bool {

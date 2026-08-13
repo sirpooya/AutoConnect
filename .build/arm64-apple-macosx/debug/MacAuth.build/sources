@@ -1,6 +1,10 @@
 /Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/AppState.swift
 /Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/MacAuthApp.swift
+/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/PanelPin.swift
 /Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/QR/QRScanner.swift
+/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/StatusItemController.swift
 /Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/Views/AccountFormView.swift
 /Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/Views/AccountRow.swift
+/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/Views/MenuBarIcon.swift
 /Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/Views/MenuPanel.swift
+/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/DerivedSources/resource_bundle_accessor.swift

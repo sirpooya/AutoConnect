@@ -30,9 +30,11 @@ struct AccountRow: View {
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 4) {
-                        Text(account.displayTitle)
-                            .font(.system(size: 11, weight: .semibold))
+                        Text(account.displayHeading)
+                            .font(.system(size: 11))
                             .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
 
                         if account.usesNonDefaultSettings {
                             Text(settingsSummary)
@@ -47,20 +49,12 @@ struct AccountRow: View {
                         .foregroundStyle(wasJustCopied ? Color.green : Color.primary)
                         .contentTransition(.numericText())
                         .animation(.easeInOut(duration: 0.2), value: state.code(for: account))
-
-                    if !account.displaySubtitle.isEmpty {
-                        Text(account.displaySubtitle)
-                            .font(.system(size: 10))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    }
                 }
 
                 Spacer(minLength: 4)
 
                 VStack(spacing: 4) {
-                    CountdownRing(
+                    CountdownPie(
                         fraction: state.remainingFraction(for: account),
                         color: ringColor,
                         secondsLeft: secondsLeft
