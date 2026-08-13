@@ -80,9 +80,9 @@ struct AccountListView: View {
 
             Divider()
 
+            // No rule under the header: it titles the list below it, so a line between the two
+            // would only cut the group in half.
             header
-
-            Divider()
 
             if state.accounts.isEmpty {
                 emptyState

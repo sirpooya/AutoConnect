@@ -39,5 +39,11 @@
     "swiftmodule": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCoreTests.build/TOTPTests~partial.swiftmodule",
     "swift-dependencies": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCoreTests.build/TOTPTests.swiftdeps",
     "diagnostics": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCoreTests.build/TOTPTests.dia"
+  },
+  "/Users/pooya/Documents/GitHub/osx-auth-qr/Tests/MacAuthCoreTests/TunnelStatsTests.swift": {
+    "object": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCoreTests.build/TunnelStatsTests.swift.o",
+    "swiftmodule": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCoreTests.build/TunnelStatsTests~partial.swiftmodule",
+    "swift-dependencies": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCoreTests.build/TunnelStatsTests.swiftdeps",
+    "diagnostics": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCoreTests.build/TunnelStatsTests.dia"
   }
 }
