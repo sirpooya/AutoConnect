@@ -9,6 +9,7 @@ import SwiftUI
 @MainActor
 final class StatusItemController: NSObject, NSApplicationDelegate {
     private let state = AppState()
+    private let vpn = VPNController()
     private var statusItem: NSStatusItem?
     private let popover = NSPopover()
 
@@ -25,7 +26,11 @@ final class StatusItemController: NSObject, NSApplicationDelegate {
         item.button?.action = #selector(toggle)
         statusItem = item
 
-        let hosting = NSHostingController(rootView: MenuPanel().environmentObject(state))
+        let hosting = NSHostingController(
+            rootView: MenuPanel()
+                .environmentObject(state)
+                .environmentObject(vpn)
+        )
         // Let SwiftUI drive the popover's height, so the panel grows and shrinks with the
         // account list instead of being pinned to a guessed size.
         hosting.sizingOptions = [.preferredContentSize]

@@ -17,14 +17,26 @@ enum PanelPin {
     private static var depth = 0
 
     static func pinned<T>(_ body: () throws -> T) rethrows -> T {
+        acquire()
+        defer { release() }
+        return try body()
+    }
+
+    /// Async form, for work that spans await points such as the VPN sign-in window.
+    static func pinned<T>(_ body: () async throws -> T) async rethrows -> T {
+        acquire()
+        defer { release() }
+        return try await body()
+    }
+
+    static func acquire() {
         depth += 1
         if depth == 1 { onChange?(true) }
+    }
 
-        defer {
-            depth -= 1
-            if depth == 0 { onChange?(false) }
-        }
-
-        return try body()
+    static func release() {
+        guard depth > 0 else { return }
+        depth -= 1
+        if depth == 0 { onChange?(false) }
     }
 }

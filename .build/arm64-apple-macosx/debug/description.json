@@ -61,6 +61,14 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/VPN/SAMLLoginController.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/VPN/VPNController.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/Views/AccountFormView.swift"
         },
         {
@@ -74,6 +82,10 @@
         {
           "kind" : "file",
           "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/Views/MenuPanel.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/Views/VPNSection.swift"
         },
         {
           "kind" : "file",
@@ -105,10 +117,13 @@
         "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/PanelPin.swift.o",
         "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/QRScanner.swift.o",
         "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/StatusItemController.swift.o",
+        "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/SAMLLoginController.swift.o",
+        "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/VPNController.swift.o",
         "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/AccountFormView.swift.o",
         "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/AccountRow.swift.o",
         "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/MenuBarIcon.swift.o",
         "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/MenuPanel.swift.o",
+        "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/VPNSection.swift.o",
         "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/resource_bundle_accessor.swift.o"
       ],
       "otherArguments" : [
@@ -184,6 +199,14 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/SAMLLoginController.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/VPNController.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/AccountFormView.swift.o"
         },
         {
@@ -197,6 +220,10 @@
         {
           "kind" : "file",
           "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/MenuPanel.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/VPNSection.swift.o"
         },
         {
           "kind" : "file",
@@ -214,10 +241,13 @@
         "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/PanelPin.swift",
         "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/QR/QRScanner.swift",
         "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/StatusItemController.swift",
+        "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/VPN/SAMLLoginController.swift",
+        "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/VPN/VPNController.swift",
         "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/Views/AccountFormView.swift",
         "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/Views/AccountRow.swift",
         "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/Views/MenuBarIcon.swift",
         "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/Views/MenuPanel.swift",
+        "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/Views/VPNSection.swift",
         "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/DerivedSources/resource_bundle_accessor.swift"
       ],
       "tempsPath" : "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build",
@@ -640,10 +670,13 @@
       "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/PanelPin.swift",
       "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/QR/QRScanner.swift",
       "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/StatusItemController.swift",
+      "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/VPN/SAMLLoginController.swift",
+      "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/VPN/VPNController.swift",
       "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/Views/AccountFormView.swift",
       "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/Views/AccountRow.swift",
       "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/Views/MenuBarIcon.swift",
       "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/Views/MenuPanel.swift",
+      "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/Views/VPNSection.swift",
       "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/DerivedSources/resource_bundle_accessor.swift",
       "-I",
       "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/Modules",
@@ -969,6 +1002,14 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/VPN/SAMLLoginController.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/VPN/VPNController.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/Views/AccountFormView.swift"
         },
         {
@@ -982,6 +1023,10 @@
         {
           "kind" : "file",
           "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/Views/MenuPanel.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/Views/VPNSection.swift"
         },
         {
           "kind" : "file",
@@ -1031,7 +1076,19 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/SAMLLoginController.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/StatusItemController.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/VPNController.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/VPNSection.swift.o"
         },
         {
           "kind" : "file",

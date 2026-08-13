@@ -65,6 +65,11 @@ struct AccountListView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // The VPN is the reason this app exists, so it sits above the codes.
+            VPNSection()
+
+            Divider()
+
             header
 
             Divider()
