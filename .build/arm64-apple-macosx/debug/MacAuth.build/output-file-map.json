@@ -93,12 +93,33 @@
     "swift-dependencies": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/MenuPanel.swiftdeps",
     "diagnostics": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/MenuPanel.dia"
   },
+  "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/Views/SettingsView.swift": {
+    "dependencies": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/SettingsView.d",
+    "object": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/SettingsView.swift.o",
+    "swiftmodule": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/SettingsView~partial.swiftmodule",
+    "swift-dependencies": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/SettingsView.swiftdeps",
+    "diagnostics": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/SettingsView.dia"
+  },
+  "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/Views/ThroughputChart.swift": {
+    "dependencies": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/ThroughputChart.d",
+    "object": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/ThroughputChart.swift.o",
+    "swiftmodule": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/ThroughputChart~partial.swiftmodule",
+    "swift-dependencies": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/ThroughputChart.swiftdeps",
+    "diagnostics": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/ThroughputChart.dia"
+  },
   "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/Views/VPNSection.swift": {
     "dependencies": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/VPNSection.d",
     "object": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/VPNSection.swift.o",
     "swiftmodule": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/VPNSection~partial.swiftmodule",
     "swift-dependencies": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/VPNSection.swiftdeps",
     "diagnostics": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/VPNSection.dia"
+  },
+  "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/WindowActivation.swift": {
+    "dependencies": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/WindowActivation.d",
+    "object": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/WindowActivation.swift.o",
+    "swiftmodule": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/WindowActivation~partial.swiftmodule",
+    "swift-dependencies": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/WindowActivation.swiftdeps",
+    "diagnostics": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/WindowActivation.dia"
   },
   "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/DerivedSources/resource_bundle_accessor.swift": {
     "dependencies": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/resource_bundle_accessor.d",

@@ -9,8 +9,9 @@ import SwiftUI
 /// `NSPopover` anchored to the status item button is always centred on the icon instead.
 @MainActor
 final class StatusItemController: NSObject, NSApplicationDelegate {
-    private let state = AppState()
-    private let vpn = VPNController()
+    // Reachable from the App scene, which hands them to the Settings pane.
+    let state = AppState()
+    let vpn = VPNController()
     private var statusItem: NSStatusItem?
     private let popover = NSPopover()
 
@@ -100,7 +101,13 @@ final class StatusItemController: NSObject, NSApplicationDelegate {
 
         // A menu bar app is not active by default, and an inactive app's text fields refuse
         // first responder, which would make the manual entry form untypeable.
-        NSApp.activate(ignoringOtherApps: true)
+        //
+        // Only activate while the app is still accessory-only. If a real window is open the app
+        // is already `.regular` and already active, and activating again asks AppKit to restore
+        // "the app's window", which surfaces the Settings scene as a stray blank panel.
+        if !WindowActivation.hasOpenWindow {
+            NSApp.activate(ignoringOtherApps: true)
+        }
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
     }
 

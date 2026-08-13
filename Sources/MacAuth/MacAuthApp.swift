@@ -8,9 +8,14 @@ struct MacAuthApp: App {
     @NSApplicationDelegateAdaptor(StatusItemController.self) private var controller
 
     var body: some Scene {
-        // The app has no windows of its own. A Settings scene satisfies the requirement that an
-        // App declare one; LSUIElement keeps it out of the Dock and out of the menu bar.
-        Settings { EmptyView() }
+        // Settings is opened by Cmd+comma and by the panel's own button. It is a real pane, not a
+        // placeholder: an empty Settings scene is what AppKit surfaces as a blank window when a
+        // regular-policy app is activated with nothing else open.
+        Settings {
+            SettingsView()
+                .environmentObject(controller.state)
+                .environmentObject(controller.vpn)
+        }
 
         #if DEBUG
         // Dev-only tuning window. Drives the real VPN row through every phase with fake data, so

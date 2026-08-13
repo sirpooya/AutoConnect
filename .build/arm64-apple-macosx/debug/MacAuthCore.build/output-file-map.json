@@ -44,6 +44,13 @@
     "swift-dependencies": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuthCore.build/KeychainStore.swiftdeps",
     "diagnostics": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuthCore.build/KeychainStore.dia"
   },
+  "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuthCore/Storage/VPNSettingsStore.swift": {
+    "dependencies": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuthCore.build/VPNSettingsStore.d",
+    "object": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuthCore.build/VPNSettingsStore.swift.o",
+    "swiftmodule": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuthCore.build/VPNSettingsStore~partial.swiftmodule",
+    "swift-dependencies": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuthCore.build/VPNSettingsStore.swiftdeps",
+    "diagnostics": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuthCore.build/VPNSettingsStore.dia"
+  },
   "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuthCore/VPN/ConfigAuthXML.swift": {
     "dependencies": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuthCore.build/ConfigAuthXML.d",
     "object": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuthCore.build/ConfigAuthXML.swift.o",

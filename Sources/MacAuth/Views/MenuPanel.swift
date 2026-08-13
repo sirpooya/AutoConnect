@@ -67,6 +67,12 @@ struct AccountListView: View {
     @Environment(\.openWindow) private var openWindow
     #endif
 
+    /// Settings needs a focusable window, so the app has to leave accessory mode for its lifetime.
+    private func openSettings() {
+        WindowActivation.claim()
+        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // The VPN is the reason this app exists, so it sits above the codes.
@@ -104,7 +110,9 @@ struct AccountListView: View {
 
     private var header: some View {
         HStack(spacing: 6) {
-            Text("MacAuth")
+            // Names the section, not the app: the panel already has a VPN block above, and
+            // repeating the app's name in its own window says nothing.
+            Text("Authenticator")
                 .font(.system(size: 12, weight: .semibold))
 
             Spacer()
@@ -153,6 +161,11 @@ struct AccountListView: View {
                 .foregroundStyle(.secondary)
 
             Spacer()
+
+            Button("Settings") { openSettings() }
+                .buttonStyle(.plain)
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
 
             #if DEBUG
             Button("Playground") { VPNStatusPlaygroundWindow.open(openWindow) }

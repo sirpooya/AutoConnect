@@ -253,7 +253,29 @@ struct VPNStatusStage: View {
                 ),
                 interface: "utun6"
             )
-            return .preview(phase: .connected(tunnel), referenceDate: reference)
+
+            let controller = VPNController.preview(
+                phase: .connected(tunnel),
+                referenceDate: reference
+            )
+            controller.setPreviewHistory(Self.fakeHistory(peak: rate))
+            return controller
+        }
+    }
+
+    /// A bursty traffic trace, so the chart is judged against the shape real traffic makes rather
+    /// than a smooth curve. Deterministic: no randomness, so dragging a slider does not reshuffle
+    /// the graph under the cursor.
+    private static func fakeHistory(peak: Double) -> [VPNController.ThroughputSample] {
+        (0..<VPNController.historyLength).map { index in
+            let t = Double(index)
+            // Two out-of-phase waves plus a slow swell gives peaks and lulls without noise.
+            let shape = 0.45
+                + 0.3 * sin(t / 3.1)
+                + 0.18 * sin(t / 1.3)
+                + 0.12 * sin(t / 11)
+            let down = max(0, shape) * peak
+            return VPNController.ThroughputSample(down: down, up: down * 0.28)
         }
     }
 
@@ -323,6 +345,9 @@ struct VPNStatusPlaygroundView: View {
                 .frame(width: 320)
         }
         .onChange(of: params.signature) { params.save() }
+        // Hand the activation policy back, or clicking the menu bar icon afterwards makes AppKit
+        // reopen a window of its own choosing.
+        .onDisappear { WindowActivation.release() }
     }
 
     private var controls: some View {

@@ -90,6 +90,9 @@ struct VPNSection: View {
 
     private var statistics: some View {
         VStack(spacing: 3) {
+            ThroughputChart(samples: vpn.history)
+                .padding(.bottom, 3)
+
             if let stats = vpn.tunnel?.stats {
                 statRow(
                     "Traffic",

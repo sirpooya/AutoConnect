@@ -48,6 +48,19 @@ final class VPNController: ObservableObject {
     /// Ticks while connected so the expiry countdown stays live.
     @Published private(set) var now = Date()
 
+    /// Recent throughput samples, oldest first, for the sparkline. Bounded so it cannot grow
+    /// without limit over a twelve-hour session.
+    @Published private(set) var history: [ThroughputSample] = []
+
+    /// One moment of throughput, in bytes per second.
+    struct ThroughputSample: Equatable, Identifiable {
+        let id = UUID()
+        var down: Double
+        var up: Double
+    }
+
+    static let historyLength = 40
+
     private var runner: OpenConnectRunner?
     private var connectTask: Task<Void, Never>?
     private var login: SAMLLoginController?
@@ -55,20 +68,30 @@ final class VPNController: ObservableObject {
     private var statsTask: Task<Void, Never>?
     private let statsReader = TunnelStatsReader()
 
-    init(profile: VPNProfile = .digikalaMFA) {
-        self.profile = profile
+    /// True for controllers built by `preview`. Suppresses anything that would touch the real
+    /// machine, so a mock cannot display or disturb a live tunnel.
+    private var isPreview = false
+
+    /// Loads the saved profile, falling back to the verified defaults for this project's gateway
+    /// so a fresh install is usable before anyone opens Settings.
+    init(profile: VPNProfile? = nil) {
+        self.profile = profile ?? VPNSettingsStore().loadProfile() ?? .digikalaMFA
     }
 
     /// Builds a controller parked in a fixed phase, for the playground and for previews.
     ///
-    /// Nothing is started: no gateway call, no process, no clock. `referenceDate` pins `now` so a
-    /// countdown renders deterministically instead of drifting while the window is open.
+    /// Nothing is started: no gateway call, no process, no clock, and crucially no stats polling.
+    /// A preview that polled would read whatever `utun` device happens to exist on the machine,
+    /// so a mock would silently display the user's real tunnel, and each sample would overwrite
+    /// `referenceDate` with the wall clock, turning a "2h" uptime into months.
     static func preview(
         phase: Phase,
         profile: VPNProfile = .digikalaMFA,
         referenceDate: Date = Date()
     ) -> VPNController {
+        // Pass the profile explicitly so a preview never picks up saved settings.
         let controller = VPNController(profile: profile)
+        controller.isPreview = true
         controller.phase = phase
         controller.now = referenceDate
         return controller
@@ -258,6 +281,9 @@ final class VPNController: ObservableObject {
     /// Sampling counters means spawning `netstat`, so it only runs while the statistics block is
     /// actually on screen. The view turns this on and off as it appears and disappears.
     func setStatsPolling(_ enabled: Bool) {
+        // A preview's numbers are supplied by the playground, not read from the machine.
+        guard !isPreview else { return }
+
         guard enabled else {
             statsTask?.cancel()
             statsTask = nil
@@ -288,6 +314,17 @@ final class VPNController: ObservableObject {
         tunnel.stats = stats
         now = Date()
         phase = .connected(tunnel)
+
+        history.append(ThroughputSample(down: stats.rateIn, up: stats.rateOut))
+        if history.count > Self.historyLength {
+            history.removeFirst(history.count - Self.historyLength)
+        }
+    }
+
+    /// Seeds a plausible-looking history, for the playground only.
+    func setPreviewHistory(_ samples: [ThroughputSample]) {
+        guard isPreview else { return }
+        history = samples
     }
 
     /// Finds which `utun` device carries a given address, so stats work even when openconnect's

@@ -110,23 +110,24 @@ final class SAMLLoginController: NSObject {
         window.isReleasedWhenClosed = false
         self.window = window
 
-        // A menu-bar-only app is normally not focusable, so ask for activation explicitly or the
-        // user cannot type into the form.
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
+        // A menu-bar-only app is normally not focusable, so the policy has to change or the user
+        // cannot type into the form. WindowActivation counts claims and restores accessory mode.
+        WindowActivation.claim()
         window.makeKeyAndOrderFront(nil)
 
         webView.load(URLRequest(url: authRequest.loginURL))
     }
 
     private func dismissWindow() {
+        guard window != nil else { return }
+
         window?.delegate = nil
         window?.orderOut(nil)
         window = nil
         webView?.navigationDelegate = nil
         webView = nil
-        // Back to menu-bar-only.
-        NSApp.setActivationPolicy(.accessory)
+        // Hand back the claim taken when the window opened.
+        WindowActivation.release()
     }
 
     private func finish(with result: Result<String, Error>) {
