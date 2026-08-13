@@ -30,11 +30,42 @@ public final class OpenConnectRunner {
         public var usingDTLS: Bool
         /// When the gateway will force a re-authentication, parsed from openconnect's own line.
         public var sessionExpiry: Date?
+        /// The gateway endpoint actually reached, as `93.113.226.130:28015`. This is the closest
+        /// thing to "what am I connected to": a VPN carries whole packets, so there is no
+        /// per-request URL to report.
+        public var gatewayEndpoint: String?
+        /// Negotiated protocol version, for example `DTLS1.2` or `TLS1.2`.
+        public var transport: String?
+        /// Negotiated bulk cipher, for example `AES-256-CBC`.
+        public var cipher: String?
+        /// When the tunnel came up, for the uptime readout.
+        public var connectedAt: Date?
+        /// Traffic counters, refreshed by `TunnelStatsReader` while connected.
+        public var stats: TunnelStats?
 
-        public init(assignedIP: String? = nil, usingDTLS: Bool = false, sessionExpiry: Date? = nil) {
+        /// Interface name, so stats can be sampled from the right device.
+        public var interface: String?
+
+        public init(
+            assignedIP: String? = nil,
+            usingDTLS: Bool = false,
+            sessionExpiry: Date? = nil,
+            gatewayEndpoint: String? = nil,
+            transport: String? = nil,
+            cipher: String? = nil,
+            connectedAt: Date? = nil,
+            stats: TunnelStats? = nil,
+            interface: String? = nil
+        ) {
             self.assignedIP = assignedIP
             self.usingDTLS = usingDTLS
             self.sessionExpiry = sessionExpiry
+            self.gatewayEndpoint = gatewayEndpoint
+            self.transport = transport
+            self.cipher = cipher
+            self.connectedAt = connectedAt
+            self.stats = stats
+            self.interface = interface
         }
     }
 
@@ -70,6 +101,12 @@ public final class OpenConnectRunner {
         case authenticationFailed
         case connected
         case disconnected
+        /// The gateway endpoint reached, as host:port.
+        case gatewayEndpoint(String)
+        /// Negotiated protocol version and bulk cipher, from a ciphersuite line.
+        case ciphersuite(transport: String, cipher: String)
+        /// The tunnel device openconnect configured, so stats read the right interface.
+        case interface(String)
 
         /// openconnect prints expiry as RFC 1123 with a numeric zone, for example
         /// `Fri, 14 Aug 2026 10:30:25 +0330`.
@@ -94,6 +131,45 @@ public final class OpenConnectRunner {
 
             if trimmed.hasPrefix("Established DTLS connection") {
                 return .dtlsEstablished
+            }
+
+            // "Connected to 93.113.226.130:28015"
+            if trimmed.hasPrefix("Connected to "), trimmed.contains(":") {
+                let endpoint = trimmed
+                    .dropFirst("Connected to ".count)
+                    .trimmingCharacters(in: .whitespaces)
+                // Distinguish the endpoint line from "Connected to HTTPS on <host> with ...".
+                if !endpoint.contains(" ") {
+                    return .gatewayEndpoint(endpoint)
+                }
+            }
+
+            // "... Ciphersuite (DTLS1.2)-(DHE-CUSTOM)-(AES-256-CBC)-(SHA1)."
+            if let range = trimmed.range(of: "Ciphersuite ") {
+                let suite = String(trimmed[range.upperBound...])
+                let parts = suite
+                    .split(whereSeparator: { $0 == "(" || $0 == ")" })
+                    .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: "-. ")) }
+                    .filter { !$0.isEmpty }
+
+                let transport = parts.first ?? ""
+                // The bulk cipher is the part naming a block or stream cipher.
+                let cipher = parts.first {
+                    $0.contains("AES") || $0.contains("CHACHA") || $0.contains("CAMELLIA")
+                } ?? ""
+
+                if !transport.isEmpty {
+                    return .ciphersuite(transport: transport, cipher: cipher)
+                }
+            }
+
+            // "Configured tun device 'utun6'" or openconnect's "Using tun device utun6"
+            if let range = trimmed.range(of: "tun device") {
+                let name = String(trimmed[range.upperBound...])
+                    .trimmingCharacters(in: CharacterSet(charactersIn: " '\""))
+                if name.hasPrefix("utun") {
+                    return .interface(name)
+                }
             }
 
             // "Session authentication will expire at Fri, 14 Aug 2026 10:30:25 +0330"
@@ -272,6 +348,7 @@ public final class OpenConnectRunner {
         switch event {
         case .assignedAddress(let address):
             tunnel.assignedIP = address
+            if tunnel.connectedAt == nil { tunnel.connectedAt = Date() }
             state = .connected(tunnel)
 
         case .dtlsEstablished:
@@ -282,7 +359,21 @@ public final class OpenConnectRunner {
             tunnel.sessionExpiry = date
             if case .connected = state { state = .connected(tunnel) }
 
+        case .gatewayEndpoint(let endpoint):
+            tunnel.gatewayEndpoint = endpoint
+            if case .connected = state { state = .connected(tunnel) }
+
+        case .ciphersuite(let transport, let cipher):
+            tunnel.transport = transport
+            if !cipher.isEmpty { tunnel.cipher = cipher }
+            if case .connected = state { state = .connected(tunnel) }
+
+        case .interface(let name):
+            tunnel.interface = name
+            if case .connected = state { state = .connected(tunnel) }
+
         case .connected:
+            if tunnel.connectedAt == nil { tunnel.connectedAt = Date() }
             state = .connected(tunnel)
 
         case .certificateRejected:

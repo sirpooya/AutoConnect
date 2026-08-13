@@ -52,6 +52,8 @@ final class VPNController: ObservableObject {
     private var connectTask: Task<Void, Never>?
     private var login: SAMLLoginController?
     private var clockTask: Task<Void, Never>?
+    private var statsTask: Task<Void, Never>?
+    private let statsReader = TunnelStatsReader()
 
     init(profile: VPNProfile = .digikalaMFA) {
         self.profile = profile
@@ -93,6 +95,28 @@ final class VPNController: ObservableObject {
     var isConnected: Bool {
         if case .connected = phase { return true }
         return false
+    }
+
+    /// How long the tunnel has been up, as "2h 14m" or "6m".
+    var uptime: String? {
+        guard let start = tunnel?.connectedAt else { return nil }
+        let seconds = max(0, Int(now.timeIntervalSince(start)))
+
+        let hours = seconds / 3600
+        let minutes = (seconds % 3600) / 60
+        if hours > 0 { return "\(hours)h \(minutes)m" }
+        if minutes > 0 { return "\(minutes)m" }
+        return "\(seconds)s"
+    }
+
+    /// Protocol and cipher as one line, for example "DTLS1.2 / AES-256-CBC".
+    var transportSummary: String? {
+        guard let tunnel else { return nil }
+        let transport = tunnel.transport ?? (tunnel.usingDTLS ? "DTLS" : nil)
+        guard let transport else { return nil }
+
+        if let cipher = tunnel.cipher { return "\(transport) / \(cipher)" }
+        return transport
     }
 
     // MARK: - Connect
@@ -226,5 +250,73 @@ final class VPNController: ObservableObject {
     private func stopClock() {
         clockTask?.cancel()
         clockTask = nil
+        setStatsPolling(false)
+    }
+
+    // MARK: - Statistics
+
+    /// Sampling counters means spawning `netstat`, so it only runs while the statistics block is
+    /// actually on screen. The view turns this on and off as it appears and disappears.
+    func setStatsPolling(_ enabled: Bool) {
+        guard enabled else {
+            statsTask?.cancel()
+            statsTask = nil
+            statsReader.reset()
+            return
+        }
+
+        guard statsTask == nil, isConnected else { return }
+
+        statsTask = Task { [weak self] in
+            while !Task.isCancelled {
+                self?.sampleStats()
+                try? await Task.sleep(for: .seconds(3))
+            }
+        }
+    }
+
+    private func sampleStats() {
+        guard case .connected(var tunnel) = phase else { return }
+
+        // Fall back to the assigned address's interface when openconnect did not name one.
+        let interface = tunnel.interface ?? Self.interfaceOwning(address: tunnel.assignedIP)
+        guard let interface else { return }
+
+        tunnel.interface = interface
+        guard let stats = statsReader.sample(interface: interface) else { return }
+
+        tunnel.stats = stats
+        now = Date()
+        phase = .connected(tunnel)
+    }
+
+    /// Finds which `utun` device carries a given address, so stats work even when openconnect's
+    /// output did not mention the device name.
+    private static func interfaceOwning(address: String?) -> String? {
+        guard let address else { return nil }
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/sbin/ifconfig")
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+
+        guard (try? process.run()) != nil else { return nil }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+
+        guard let output = String(data: data, encoding: .utf8) else { return nil }
+
+        var current: String?
+        for line in output.split(separator: "\n") {
+            if !line.hasPrefix("\t"), let name = line.split(separator: ":").first {
+                current = String(name)
+            }
+            if line.contains(" \(address) ") || line.hasSuffix(" \(address)") {
+                if let current, current.hasPrefix("utun") { return current }
+            }
+        }
+
+        return nil
     }
 }

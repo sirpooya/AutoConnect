@@ -63,9 +63,10 @@ final class OpenConnectRunnerTests: XCTestCase {
 
     /// Route and DNS chatter, and the harmless vpnc-script noise, must not be mistaken for state.
     func testIgnoresIrrelevantLines() {
+        // "Connected to <ip>:<port>" is deliberately absent: it is now parsed as the gateway
+        // endpoint. See OpenConnectDetailParsingTests.
         let noise = [
             "POST https://MFA-VPN.DKservices.ir:28015/",
-            "Connected to 93.113.226.130:28015",
             "SSL negotiation with mfa-vpn.dkservices.ir",
             "Got CONNECT response: HTTP/1.1 200 OK",
             "add net 10.250.232.0: gateway 10.250.232.188",

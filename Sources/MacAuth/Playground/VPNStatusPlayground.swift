@@ -48,6 +48,17 @@ final class VPNStatusParams {
     /// Stage-only. How many authenticator rows sit below the VPN row.
     var accountCount: Double = 2
 
+    /// Stage-only. Hours the tunnel has been up.
+    var uptimeHours: Double = 2.2
+
+    /// Stage-only. Throughput as a power of ten, in bytes per second. A log scale because the
+    /// point is to see the layout hold from "0 B/s" through "1.2 GB/s", and a linear slider
+    /// spends its whole travel in the top decade.
+    var rateExponent: Double = 6.1
+
+    /// Stage-only. Cumulative transfer as a power of ten, in bytes.
+    var transferredExponent: Double = 9.1
+
     init(loadSaved: Bool = true) {
         if loadSaved, let saved = VPNStatusSnapshot.load() { apply(saved) }
     }
@@ -69,6 +80,9 @@ final class VPNStatusParams {
         usingDTLS = snapshot.usingDTLS
         errorText = snapshot.errorText
         accountCount = snapshot.accountCount
+        uptimeHours = snapshot.uptimeHours
+        rateExponent = snapshot.rateExponent
+        transferredExponent = snapshot.transferredExponent
     }
 
     /// Autosave watches this, and the stage rebuilds its mock controller from it.
@@ -76,6 +90,7 @@ final class VPNStatusParams {
         [
             dotSize, pulseScale, pulseDuration,
             Double(phaseIndex), hoursRemaining, usingDTLS ? 1 : 0, accountCount,
+            uptimeHours, rateExponent, transferredExponent,
             Double(assignedIP.hashValue & 0xffff), Double(errorText.hashValue & 0xffff),
         ]
     }
@@ -130,6 +145,9 @@ struct VPNStatusSnapshot: Codable {
     var usingDTLS: Bool
     var errorText: String
     var accountCount: Double
+    var uptimeHours: Double
+    var rateExponent: Double
+    var transferredExponent: Double
 
     private static let key = "macauth.vpnStatusPlayground"
 
@@ -144,6 +162,9 @@ struct VPNStatusSnapshot: Codable {
         usingDTLS = params.usingDTLS
         errorText = params.errorText
         accountCount = params.accountCount
+        uptimeHours = params.uptimeHours
+        rateExponent = params.rateExponent
+        transferredExponent = params.transferredExponent
     }
 
     /// Decoded key by key with a default each. A synthesized decoder throws on the first missing
@@ -170,6 +191,9 @@ struct VPNStatusSnapshot: Codable {
             "The gateway rejected the session token. Try logging in again."
         )
         accountCount = value(.accountCount, 2)
+        uptimeHours = value(.uptimeHours, 2.2)
+        rateExponent = value(.rateExponent, 6.1)
+        transferredExponent = value(.transferredExponent, 9.1)
     }
 
     func save() {
@@ -208,10 +232,26 @@ struct VPNStatusStage: View {
         case .failed:
             return .preview(phase: .failed(params.errorText), referenceDate: reference)
         case .connected:
+            let rate = pow(10, params.rateExponent)
+            let transferred = pow(10, params.transferredExponent)
+
             let tunnel = OpenConnectRunner.Tunnel(
                 assignedIP: params.assignedIP.isEmpty ? nil : params.assignedIP,
                 usingDTLS: params.usingDTLS,
-                sessionExpiry: reference.addingTimeInterval(params.hoursRemaining * 3600)
+                sessionExpiry: reference.addingTimeInterval(params.hoursRemaining * 3600),
+                gatewayEndpoint: "93.113.226.130:28015",
+                transport: params.usingDTLS ? "DTLS1.2" : "TLS1.2",
+                cipher: "AES-256-CBC",
+                connectedAt: reference.addingTimeInterval(-params.uptimeHours * 3600),
+                stats: TunnelStats(
+                    // Upload runs lighter than download, as it does in practice.
+                    bytesIn: UInt64(transferred),
+                    bytesOut: UInt64(transferred * 0.7),
+                    rateIn: rate,
+                    rateOut: rate * 0.3,
+                    mtu: 1300
+                ),
+                interface: "utun6"
             )
             return .preview(phase: .connected(tunnel), referenceDate: reference)
         }
@@ -262,7 +302,7 @@ struct VPNStatusPlaygroundView: View {
     /// Which accordions are open, persisted so the window reopens as it was left.
     /// The separator is a real newline in both directions.
     @AppStorage("macauth.vpnStatusPlayground.expanded")
-    private var expandedRaw: String = "State\nAppearance\nPanel"
+    private var expandedRaw: String = "State\nStatistics\nAppearance\nPanel"
 
     private var expanded: Set<String> {
         get { Set(expandedRaw.split(separator: "\n").map(String.init)) }
@@ -305,6 +345,23 @@ struct VPNStatusPlaygroundView: View {
                     if params.phaseIndex == PreviewPhase.failed.rawValue {
                         textField("Error", $params.errorText)
                     }
+                }
+                .padding(.horizontal, Self.rowInset)
+            }
+
+            accordion("Statistics") {
+                VStack(alignment: .leading, spacing: 2) {
+                    slider("Uptime", $params.uptimeHours, 0...12, "h")
+                    magnitudeSlider(
+                        "Traffic rate",
+                        $params.rateExponent,
+                        0...9
+                    ) { TunnelStats.formatRate($0) }
+                    magnitudeSlider(
+                        "Transferred",
+                        $params.transferredExponent,
+                        0...12
+                    ) { TunnelStats.formatBytes(UInt64($0)) }
                 }
                 .padding(.horizontal, Self.rowInset)
             }
@@ -384,6 +441,38 @@ struct VPNStatusPlaygroundView: View {
     private func toggle(_ label: String, _ isOn: Binding<Bool>) -> some View {
         Toggle(label, isOn: isOn)
             .font(.caption)
+    }
+
+    /// A slider over a power of ten, showing the formatted quantity rather than the exponent.
+    ///
+    /// Byte figures span nine orders of magnitude, and the layout question is whether the row
+    /// still reads at both ends. A linear slider would spend almost all its travel in the top
+    /// decade, making the small values unreachable in practice.
+    private func magnitudeSlider(
+        _ label: String,
+        _ exponent: Binding<Double>,
+        _ range: ClosedRange<Double>,
+        format: @escaping (Double) -> String
+    ) -> some View {
+        let snapped = Binding(
+            get: { exponent.wrappedValue },
+            set: { exponent.wrappedValue = ($0 / 0.1).rounded() * 0.1 }
+        )
+
+        return VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                Text(label)
+                Spacer()
+                Text(format(pow(10, exponent.wrappedValue)))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+            .font(.caption)
+
+            Slider(value: snapped, in: range)
+                .padding(.vertical, 3)
+        }
+        .padding(.horizontal, Self.rowInset)
     }
 
     private func textField(_ label: String, _ text: Binding<String>) -> some View {

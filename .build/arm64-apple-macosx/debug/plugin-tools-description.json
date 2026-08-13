@@ -330,6 +330,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuthCore/VPN/TunnelStats.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
         },
         {
@@ -349,7 +353,8 @@
         "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuthCore.build/KeychainStore.swift.o",
         "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuthCore.build/ConfigAuthXML.swift.o",
         "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuthCore.build/GatewayClient.swift.o",
-        "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuthCore.build/OpenConnectRunner.swift.o"
+        "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuthCore.build/OpenConnectRunner.swift.o",
+        "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuthCore.build/TunnelStats.swift.o"
       ],
       "otherArguments" : [
         "-target",
@@ -440,6 +445,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuthCore.build/TunnelStats.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/Modules/MacAuthCore.swiftmodule"
         }
       ],
@@ -453,7 +462,8 @@
         "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuthCore/Storage/KeychainStore.swift",
         "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuthCore/VPN/ConfigAuthXML.swift",
         "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuthCore/VPN/GatewayClient.swift",
-        "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuthCore/VPN/OpenConnectRunner.swift"
+        "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuthCore/VPN/OpenConnectRunner.swift",
+        "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuthCore/VPN/TunnelStats.swift"
       ],
       "tempsPath" : "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuthCore.build",
       "wholeModuleOptimization" : false
@@ -489,6 +499,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/Tests/MacAuthCoreTests/TunnelStatsTests.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
         },
         {
@@ -509,7 +523,8 @@
         "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuthCoreTests.build/ConfigAuthXMLTests.swift.o",
         "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuthCoreTests.build/KeychainStoreTests.swift.o",
         "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuthCoreTests.build/OpenConnectRunnerTests.swift.o",
-        "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuthCoreTests.build/TOTPTests.swift.o"
+        "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuthCoreTests.build/TOTPTests.swift.o",
+        "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuthCoreTests.build/TunnelStatsTests.swift.o"
       ],
       "otherArguments" : [
         "-target",
@@ -587,6 +602,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuthCoreTests.build/TunnelStatsTests.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/Modules/MacAuthCoreTests.swiftmodule"
         }
       ],
@@ -597,7 +616,8 @@
         "/Users/pooya/Documents/GitHub/osx-auth-qr/Tests/MacAuthCoreTests/ConfigAuthXMLTests.swift",
         "/Users/pooya/Documents/GitHub/osx-auth-qr/Tests/MacAuthCoreTests/KeychainStoreTests.swift",
         "/Users/pooya/Documents/GitHub/osx-auth-qr/Tests/MacAuthCoreTests/OpenConnectRunnerTests.swift",
-        "/Users/pooya/Documents/GitHub/osx-auth-qr/Tests/MacAuthCoreTests/TOTPTests.swift"
+        "/Users/pooya/Documents/GitHub/osx-auth-qr/Tests/MacAuthCoreTests/TOTPTests.swift",
+        "/Users/pooya/Documents/GitHub/osx-auth-qr/Tests/MacAuthCoreTests/TunnelStatsTests.swift"
       ],
       "tempsPath" : "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuthCoreTests.build",
       "wholeModuleOptimization" : false
@@ -792,6 +812,7 @@
       "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuthCore/VPN/ConfigAuthXML.swift",
       "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuthCore/VPN/GatewayClient.swift",
       "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuthCore/VPN/OpenConnectRunner.swift",
+      "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuthCore/VPN/TunnelStats.swift",
       "-I",
       "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/Modules",
       "-target",
@@ -857,6 +878,7 @@
       "/Users/pooya/Documents/GitHub/osx-auth-qr/Tests/MacAuthCoreTests/KeychainStoreTests.swift",
       "/Users/pooya/Documents/GitHub/osx-auth-qr/Tests/MacAuthCoreTests/OpenConnectRunnerTests.swift",
       "/Users/pooya/Documents/GitHub/osx-auth-qr/Tests/MacAuthCoreTests/TOTPTests.swift",
+      "/Users/pooya/Documents/GitHub/osx-auth-qr/Tests/MacAuthCoreTests/TunnelStatsTests.swift",
       "-I",
       "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/Modules",
       "-target",
@@ -1191,6 +1213,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuthCore.build/TunnelStats.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuthCore.build/VPNProfile.swift.o"
         }
       ],
@@ -1238,6 +1264,10 @@
         {
           "kind" : "file",
           "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuthCore/VPN/OpenConnectRunner.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuthCore/VPN/TunnelStats.swift"
         }
       ],
       "outputFilePath" : "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuthCore.build/sources"
@@ -1272,6 +1302,10 @@
         {
           "kind" : "file",
           "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/Tests/MacAuthCoreTests/TOTPTests.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/Tests/MacAuthCoreTests/TunnelStatsTests.swift"
         }
       ],
       "outputFilePath" : "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuthCoreTests.build/sources"
@@ -1331,6 +1365,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuthCore.build/TunnelStats.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuthCore.build/VPNProfile.swift.o"
         },
         {
@@ -1356,6 +1394,10 @@
         {
           "kind" : "file",
           "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuthCoreTests.build/TOTPTests.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuthCoreTests.build/TunnelStatsTests.swift.o"
         },
         {
           "kind" : "file",
