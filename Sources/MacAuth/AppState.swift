@@ -22,7 +22,7 @@ final class AppState: ObservableObject {
     @Published private(set) var copiedAccountID: UUID?
     @Published var errorMessage: String?
 
-    private let store: KeychainStore
+    private let store: AccountStoring
     private var ticker: AnyCancellable?
     private var copyResetTask: Task<Void, Never>?
 
@@ -31,7 +31,7 @@ final class AppState: ObservableObject {
     /// secret is only ever held for the moment a code is computed.
     private var codeCache: [UUID: (counter: UInt64, code: String)] = [:]
 
-    init(store: KeychainStore = KeychainStore()) {
+    init(store: AccountStoring = KeychainStore()) {
         self.store = store
         reload()
 

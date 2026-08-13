@@ -2,6 +2,7 @@
 /Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuthCore/Crypto/TOTP.swift
 /Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuthCore/Models/Account.swift
 /Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuthCore/Models/VPNProfile.swift
+/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuthCore/Storage/AccountStoring.swift
 /Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuthCore/Storage/KeychainStore.swift
 /Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuthCore/VPN/ConfigAuthXML.swift
 /Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuthCore/VPN/GatewayClient.swift

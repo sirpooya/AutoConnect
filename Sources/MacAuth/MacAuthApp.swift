@@ -11,5 +11,14 @@ struct MacAuthApp: App {
         // The app has no windows of its own. A Settings scene satisfies the requirement that an
         // App declare one; LSUIElement keeps it out of the Dock and out of the menu bar.
         Settings { EmptyView() }
+
+        #if DEBUG
+        // Dev-only tuning window. Drives the real VPN row through every phase with fake data, so
+        // the status UI can be designed without a live gateway.
+        Window("VPN Status Playground", id: VPNStatusPlaygroundWindow.id) {
+            VPNStatusPlaygroundView()
+        }
+        .defaultSize(width: 1020, height: 660)
+        #endif
     }
 }

@@ -6,6 +6,9 @@ import SwiftUI
 struct VPNSection: View {
     @EnvironmentObject private var vpn: VPNController
 
+    /// Live from the playground, so the dot and its pulse can be tuned while running.
+    private var params: VPNStatusParams { VPNStatusParams.shared }
+
     var body: some View {
         VStack(spacing: 6) {
             HStack(spacing: 8) {
@@ -56,14 +59,15 @@ struct VPNSection: View {
     private var statusDot: some View {
         Circle()
             .fill(statusColor)
-            .frame(width: 8, height: 8)
+            .frame(width: params.dotSize, height: params.dotSize)
             .overlay(
                 Circle()
                     .stroke(statusColor.opacity(0.3), lineWidth: 4)
-                    .scaleEffect(vpn.phase.isWorking ? 1.6 : 1)
+                    .scaleEffect(vpn.phase.isWorking ? params.pulseScale : 1)
                     .animation(
                         vpn.phase.isWorking
-                            ? .easeInOut(duration: 0.9).repeatForever(autoreverses: true)
+                            ? .easeInOut(duration: params.pulseDuration)
+                                .repeatForever(autoreverses: true)
                             : .default,
                         value: vpn.phase.isWorking
                     )

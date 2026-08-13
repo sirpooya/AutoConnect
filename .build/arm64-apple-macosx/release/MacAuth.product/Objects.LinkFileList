@@ -6,9 +6,17 @@
 /Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuth.build/MenuPanel.swift.o
 /Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuth.build/PanelPin.swift.o
 /Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuth.build/QRScanner.swift.o
+/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuth.build/SAMLLoginController.swift.o
 /Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuth.build/StatusItemController.swift.o
+/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuth.build/VPNController.swift.o
+/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuth.build/VPNSection.swift.o
 /Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuth.build/resource_bundle_accessor.swift.o
 /Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCore.build/Account.swift.o
+/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCore.build/AccountStoring.swift.o
 /Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCore.build/Base32.swift.o
+/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCore.build/ConfigAuthXML.swift.o
+/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCore.build/GatewayClient.swift.o
 /Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCore.build/KeychainStore.swift.o
+/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCore.build/OpenConnectRunner.swift.o
 /Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCore.build/TOTP.swift.o
+/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCore.build/VPNProfile.swift.o

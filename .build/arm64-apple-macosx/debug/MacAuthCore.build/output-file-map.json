@@ -30,6 +30,13 @@
     "swift-dependencies": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuthCore.build/VPNProfile.swiftdeps",
     "diagnostics": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuthCore.build/VPNProfile.dia"
   },
+  "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuthCore/Storage/AccountStoring.swift": {
+    "dependencies": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuthCore.build/AccountStoring.d",
+    "object": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuthCore.build/AccountStoring.swift.o",
+    "swiftmodule": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuthCore.build/AccountStoring~partial.swiftmodule",
+    "swift-dependencies": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuthCore.build/AccountStoring.swiftdeps",
+    "diagnostics": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuthCore.build/AccountStoring.dia"
+  },
   "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuthCore/Storage/KeychainStore.swift": {
     "dependencies": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuthCore.build/KeychainStore.d",
     "object": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuthCore.build/KeychainStore.swift.o",

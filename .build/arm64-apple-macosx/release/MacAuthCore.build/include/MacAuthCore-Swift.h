@@ -344,6 +344,8 @@ extern "C" {
 #if __has_warning("-Watimport-in-framework-header")
 #pragma clang diagnostic ignored "-Watimport-in-framework-header"
 #endif
+@import Foundation;
+@import ObjectiveC;
 #endif
 
 #endif // defined(__OBJC__)
@@ -365,6 +367,23 @@ extern "C" {
 #endif
 
 #if defined(__OBJC__)
+
+/// Talks <code>config-auth</code> to the VPN gateway: the init POST that starts a login, and the
+/// auth-reply POST that trades a SAML token for a session token.
+/// The gateway’s certificate has no publicly trusted signer, so trust is established by pinning
+/// its SHA1 fingerprint rather than by disabling validation.
+SWIFT_CLASS("_TtC11MacAuthCore13GatewayClient")
+@interface GatewayClient : NSObject
+- (nonnull instancetype)init SWIFT_UNAVAILABLE;
++ (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
+@end
+
+@class NSURLSession;
+@class NSURLAuthenticationChallenge;
+@class NSURLCredential;
+@interface GatewayClient (SWIFT_EXTENSION(MacAuthCore)) <NSURLSessionDelegate>
+- (void)URLSession:(NSURLSession * _Nonnull)session didReceiveChallenge:(NSURLAuthenticationChallenge * _Nonnull)challenge completionHandler:(void (^ _Nonnull)(NSURLSessionAuthChallengeDisposition, NSURLCredential * _Nullable))completionHandler;
+@end
 
 #endif // defined(__OBJC__)
 #if __has_attribute(external_source_symbol)

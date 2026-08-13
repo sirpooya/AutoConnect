@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 /// Owns the menu bar item and the panel it opens.
@@ -17,14 +18,21 @@ final class StatusItemController: NSObject, NSApplicationDelegate {
     /// The panel must survive losing focus to those, but only to those.
     private var isPinned = false
 
+    private var cancellables = Set<AnyCancellable>()
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        item.button?.image = MenuBarIcon.image
         item.button?.imagePosition = .imageOnly
-        item.button?.toolTip = "MacAuth"
         item.button?.target = self
         item.button?.action = #selector(toggle)
         statusItem = item
+
+        // The icon is the only thing visible when the panel is closed, so it carries the one
+        // fact worth knowing at a glance: whether the tunnel is up.
+        apply(phase: vpn.phase)
+        vpn.$phase
+            .sink { [weak self] phase in self?.apply(phase: phase) }
+            .store(in: &cancellables)
 
         let hosting = NSHostingController(
             rootView: MenuPanel()
@@ -57,6 +65,16 @@ final class StatusItemController: NSObject, NSApplicationDelegate {
             name: NSApplication.didResignActiveNotification,
             object: nil
         )
+    }
+
+    /// Only a live tunnel counts as connected: connecting and failed both show the off glyph, so
+    /// the icon never claims protection the machine does not have.
+    private func apply(phase: VPNController.Phase) {
+        let isConnected: Bool
+        if case .connected = phase { isConnected = true } else { isConnected = false }
+
+        statusItem?.button?.image = MenuBarIcon.image(connected: isConnected)
+        statusItem?.button?.toolTip = "MacAuth: \(phase.label)"
     }
 
     @objc private func appDidResignActive() {

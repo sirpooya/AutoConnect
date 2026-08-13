@@ -23,6 +23,20 @@
     "swift-dependencies": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/PanelPin.swiftdeps",
     "diagnostics": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/PanelPin.dia"
   },
+  "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/Playground/VPNStatusPlayground.swift": {
+    "dependencies": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/VPNStatusPlayground.d",
+    "object": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/VPNStatusPlayground.swift.o",
+    "swiftmodule": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/VPNStatusPlayground~partial.swiftmodule",
+    "swift-dependencies": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/VPNStatusPlayground.swiftdeps",
+    "diagnostics": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/VPNStatusPlayground.dia"
+  },
+  "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/Playground/VPNStatusPlaygroundWindow.swift": {
+    "dependencies": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/VPNStatusPlaygroundWindow.d",
+    "object": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/VPNStatusPlaygroundWindow.swift.o",
+    "swiftmodule": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/VPNStatusPlaygroundWindow~partial.swiftmodule",
+    "swift-dependencies": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/VPNStatusPlaygroundWindow.swiftdeps",
+    "diagnostics": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/VPNStatusPlaygroundWindow.dia"
+  },
   "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/QR/QRScanner.swift": {
     "dependencies": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/QRScanner.d",
     "object": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuth.build/QRScanner.swift.o",

@@ -22,10 +22,40 @@
     "swift-dependencies": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCore.build/Account.swiftdeps",
     "diagnostics": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCore.build/Account.dia"
   },
+  "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuthCore/Models/VPNProfile.swift": {
+    "object": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCore.build/VPNProfile.swift.o",
+    "swiftmodule": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCore.build/VPNProfile~partial.swiftmodule",
+    "swift-dependencies": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCore.build/VPNProfile.swiftdeps",
+    "diagnostics": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCore.build/VPNProfile.dia"
+  },
+  "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuthCore/Storage/AccountStoring.swift": {
+    "object": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCore.build/AccountStoring.swift.o",
+    "swiftmodule": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCore.build/AccountStoring~partial.swiftmodule",
+    "swift-dependencies": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCore.build/AccountStoring.swiftdeps",
+    "diagnostics": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCore.build/AccountStoring.dia"
+  },
   "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuthCore/Storage/KeychainStore.swift": {
     "object": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCore.build/KeychainStore.swift.o",
     "swiftmodule": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCore.build/KeychainStore~partial.swiftmodule",
     "swift-dependencies": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCore.build/KeychainStore.swiftdeps",
     "diagnostics": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCore.build/KeychainStore.dia"
+  },
+  "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuthCore/VPN/ConfigAuthXML.swift": {
+    "object": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCore.build/ConfigAuthXML.swift.o",
+    "swiftmodule": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCore.build/ConfigAuthXML~partial.swiftmodule",
+    "swift-dependencies": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCore.build/ConfigAuthXML.swiftdeps",
+    "diagnostics": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCore.build/ConfigAuthXML.dia"
+  },
+  "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuthCore/VPN/GatewayClient.swift": {
+    "object": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCore.build/GatewayClient.swift.o",
+    "swiftmodule": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCore.build/GatewayClient~partial.swiftmodule",
+    "swift-dependencies": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCore.build/GatewayClient.swiftdeps",
+    "diagnostics": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCore.build/GatewayClient.dia"
+  },
+  "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuthCore/VPN/OpenConnectRunner.swift": {
+    "object": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCore.build/OpenConnectRunner.swift.o",
+    "swiftmodule": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCore.build/OpenConnectRunner~partial.swiftmodule",
+    "swift-dependencies": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCore.build/OpenConnectRunner.swiftdeps",
+    "diagnostics": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCore.build/OpenConnectRunner.dia"
   }
 }

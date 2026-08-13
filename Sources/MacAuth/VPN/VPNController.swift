@@ -57,6 +57,21 @@ final class VPNController: ObservableObject {
         self.profile = profile
     }
 
+    /// Builds a controller parked in a fixed phase, for the playground and for previews.
+    ///
+    /// Nothing is started: no gateway call, no process, no clock. `referenceDate` pins `now` so a
+    /// countdown renders deterministically instead of drifting while the window is open.
+    static func preview(
+        phase: Phase,
+        profile: VPNProfile = .digikalaMFA,
+        referenceDate: Date = Date()
+    ) -> VPNController {
+        let controller = VPNController(profile: profile)
+        controller.phase = phase
+        controller.now = referenceDate
+        return controller
+    }
+
     // MARK: - Derived display values
 
     var tunnel: OpenConnectRunner.Tunnel? {

@@ -16,11 +16,23 @@
     "swift-dependencies": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCoreTests.build/Base32Tests.swiftdeps",
     "diagnostics": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCoreTests.build/Base32Tests.dia"
   },
+  "/Users/pooya/Documents/GitHub/osx-auth-qr/Tests/MacAuthCoreTests/ConfigAuthXMLTests.swift": {
+    "object": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCoreTests.build/ConfigAuthXMLTests.swift.o",
+    "swiftmodule": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCoreTests.build/ConfigAuthXMLTests~partial.swiftmodule",
+    "swift-dependencies": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCoreTests.build/ConfigAuthXMLTests.swiftdeps",
+    "diagnostics": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCoreTests.build/ConfigAuthXMLTests.dia"
+  },
   "/Users/pooya/Documents/GitHub/osx-auth-qr/Tests/MacAuthCoreTests/KeychainStoreTests.swift": {
     "object": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCoreTests.build/KeychainStoreTests.swift.o",
     "swiftmodule": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCoreTests.build/KeychainStoreTests~partial.swiftmodule",
     "swift-dependencies": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCoreTests.build/KeychainStoreTests.swiftdeps",
     "diagnostics": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCoreTests.build/KeychainStoreTests.dia"
+  },
+  "/Users/pooya/Documents/GitHub/osx-auth-qr/Tests/MacAuthCoreTests/OpenConnectRunnerTests.swift": {
+    "object": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCoreTests.build/OpenConnectRunnerTests.swift.o",
+    "swiftmodule": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCoreTests.build/OpenConnectRunnerTests~partial.swiftmodule",
+    "swift-dependencies": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCoreTests.build/OpenConnectRunnerTests.swiftdeps",
+    "diagnostics": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCoreTests.build/OpenConnectRunnerTests.dia"
   },
   "/Users/pooya/Documents/GitHub/osx-auth-qr/Tests/MacAuthCoreTests/TOTPTests.swift": {
     "object": "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuthCoreTests.build/TOTPTests.swift.o",

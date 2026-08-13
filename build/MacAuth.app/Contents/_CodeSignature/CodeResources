@@ -8,6 +8,14 @@
 		<data>
 		sHgkvc6IdltR9jBsZlefz9tuJAk=
 		</data>
+		<key>Resources/MacAuth_MacAuth.bundle/off.pdf</key>
+		<data>
+		2KgLB243ApNgVG7/USZbyv8cNJo=
+		</data>
+		<key>Resources/MacAuth_MacAuth.bundle/on.pdf</key>
+		<data>
+		HGy4B708llLh8p57nJOoHDZ9O+4=
+		</data>
 	</dict>
 	<key>files2</key>
 	<dict>
@@ -16,6 +24,20 @@
 			<key>hash2</key>
 			<data>
 			h6H2qwmP3E8rHG3qDxN0Droz4zG6FqHV24gDOHO75sg=
+			</data>
+		</dict>
+		<key>Resources/MacAuth_MacAuth.bundle/off.pdf</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			3ix6QPd9guSExiOPztGghDSBu2RqDRlzsvbKXWRQR+8=
+			</data>
+		</dict>
+		<key>Resources/MacAuth_MacAuth.bundle/on.pdf</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			P5WxS1JZaEjlY9kyZgBAC/vc1lMk3pp9jZB1p2Dofjk=
 			</data>
 		</dict>
 	</dict>

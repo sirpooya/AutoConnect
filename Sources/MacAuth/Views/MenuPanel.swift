@@ -63,6 +63,10 @@ enum AddMethod: String, CaseIterable, Identifiable {
 struct AccountListView: View {
     @EnvironmentObject private var state: AppState
 
+    #if DEBUG
+    @Environment(\.openWindow) private var openWindow
+    #endif
+
     var body: some View {
         VStack(spacing: 0) {
             // The VPN is the reason this app exists, so it sits above the codes.
@@ -149,6 +153,13 @@ struct AccountListView: View {
                 .foregroundStyle(.secondary)
 
             Spacer()
+
+            #if DEBUG
+            Button("Playground") { VPNStatusPlaygroundWindow.open(openWindow) }
+                .buttonStyle(.plain)
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+            #endif
 
             Button("Quit") { NSApplication.shared.terminate(nil) }
                 .buttonStyle(.plain)
