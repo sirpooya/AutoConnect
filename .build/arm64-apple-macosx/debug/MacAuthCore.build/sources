@@ -1,0 +1,4 @@
+/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuthCore/Crypto/Base32.swift
+/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuthCore/Crypto/TOTP.swift
+/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuthCore/Models/Account.swift
+/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuthCore/Storage/KeychainStore.swift
