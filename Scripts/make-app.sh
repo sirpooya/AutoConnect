@@ -24,7 +24,8 @@ APP_DIR="build/${APP_NAME}.app"
 
 echo "==> Building (${CONFIG})"
 swift build -c "${CONFIG}" --product "${APP_NAME}"
-BINARY="$(swift build -c "${CONFIG}" --product "${APP_NAME}" --show-bin-path)/${APP_NAME}"
+BIN_PATH="$(swift build -c "${CONFIG}" --product "${APP_NAME}" --show-bin-path)"
+BINARY="${BIN_PATH}/${APP_NAME}"
 
 if [[ ! -x "${BINARY}" ]]; then
     echo "Build did not produce ${BINARY}" >&2
@@ -35,6 +36,16 @@ echo "==> Assembling ${APP_DIR}"
 rm -rf "${APP_DIR}"
 mkdir -p "${APP_DIR}/Contents/MacOS" "${APP_DIR}/Contents/Resources"
 cp "${BINARY}" "${APP_DIR}/Contents/MacOS/${APP_NAME}"
+
+# SwiftPM emits target resources as a side-by-side .bundle. Bundle.module looks in the main
+# bundle's Resources directory first, so copying it here is what makes the menu bar icon resolve
+# inside the packaged app (rather than only under `swift run`).
+RESOURCE_BUNDLE="${BIN_PATH}/${APP_NAME}_${APP_NAME}.bundle"
+if [[ -d "${RESOURCE_BUNDLE}" ]]; then
+    cp -R "${RESOURCE_BUNDLE}" "${APP_DIR}/Contents/Resources/"
+else
+    echo "Missing ${RESOURCE_BUNDLE}; the menu bar icon will fall back to an SF Symbol" >&2
+fi
 
 cat > "${APP_DIR}/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

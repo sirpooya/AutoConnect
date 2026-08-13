@@ -7,7 +7,20 @@
     }
   ],
   "copyCommands" : {
-
+    "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuth_MacAuth.bundle/menubar.pdf" : {
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/Resources/menubar.pdf"
+        }
+      ],
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuth_MacAuth.bundle/menubar.pdf"
+        }
+      ]
+    }
   },
   "explicitTargetDependencyImportCheckingMode" : {
     "none" : {
@@ -48,11 +61,23 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/Views/MenuBarIcon.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/Views/MenuPanel.swift"
         },
         {
           "kind" : "file",
+          "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuth.build/DerivedSources/resource_bundle_accessor.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/swift-version--58304C5D6DBC2206.txt"
+        },
+        {
+          "kind" : "virtual",
+          "name" : "<MacAuth-arm64-apple-macosx-release.module-resources>"
         },
         {
           "kind" : "file",
@@ -72,7 +97,9 @@
         "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuth.build/QRScanner.swift.o",
         "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuth.build/AccountFormView.swift.o",
         "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuth.build/AccountRow.swift.o",
-        "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuth.build/MenuPanel.swift.o"
+        "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuth.build/MenuBarIcon.swift.o",
+        "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuth.build/MenuPanel.swift.o",
+        "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuth.build/resource_bundle_accessor.swift.o"
       ],
       "otherArguments" : [
         "-target",
@@ -84,7 +111,7 @@
         "-O",
         "-j11",
         "-DSWIFT_PACKAGE",
-        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_AVAILABLE",
         "-module-cache-path",
         "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/ModuleCache",
         "-parseable-output",
@@ -144,7 +171,15 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuth.build/MenuBarIcon.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuth.build/MenuPanel.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuth.build/resource_bundle_accessor.swift.o"
         },
         {
           "kind" : "file",
@@ -158,7 +193,9 @@
         "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/QR/QRScanner.swift",
         "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/Views/AccountFormView.swift",
         "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/Views/AccountRow.swift",
-        "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/Views/MenuPanel.swift"
+        "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/Views/MenuBarIcon.swift",
+        "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/Views/MenuPanel.swift",
+        "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuth.build/DerivedSources/resource_bundle_accessor.swift"
       ],
       "tempsPath" : "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuth.build",
       "wholeModuleOptimization" : true
@@ -515,7 +552,9 @@
       "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/QR/QRScanner.swift",
       "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/Views/AccountFormView.swift",
       "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/Views/AccountRow.swift",
+      "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/Views/MenuBarIcon.swift",
       "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/Views/MenuPanel.swift",
+      "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuth.build/DerivedSources/resource_bundle_accessor.swift",
       "-I",
       "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/Modules",
       "-target",
@@ -527,7 +566,7 @@
       "-O",
       "-j11",
       "-DSWIFT_PACKAGE",
-      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_AVAILABLE",
       "-module-cache-path",
       "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/ModuleCache",
       "-parseable-output",
@@ -812,7 +851,15 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/Views/MenuBarIcon.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/Sources/MacAuth/Views/MenuPanel.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuth.build/DerivedSources/resource_bundle_accessor.swift"
         }
       ],
       "outputFilePath" : "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuth.build/sources"
@@ -842,11 +889,19 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuth.build/MenuBarIcon.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuth.build/MenuPanel.swift.o"
         },
         {
           "kind" : "file",
           "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuth.build/QRScanner.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/release/MacAuth.build/resource_bundle_accessor.swift.o"
         },
         {
           "kind" : "file",

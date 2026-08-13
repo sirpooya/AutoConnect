@@ -14,7 +14,12 @@ let package = Package(
         .executableTarget(
             name: "MacAuth",
             dependencies: ["MacAuthCore"],
-            path: "Sources/MacAuth"
+            path: "Sources/MacAuth",
+            // The SVG is the editable source for the glyph; only the PDF is shipped.
+            exclude: ["Resources/menubar.svg"],
+            // The menu bar glyph ships as vector PDF so it stays crisp at any menu bar height
+            // and on any display scale. The SVG is kept alongside it as the editable source.
+            resources: [.copy("Resources/menubar.pdf")]
         ),
         .testTarget(
             name: "MacAuthCoreTests",

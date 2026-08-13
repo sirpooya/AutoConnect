@@ -70,7 +70,7 @@ struct AccountListView: View {
             Spacer()
 
             Menu {
-                Button("Scan Region of Screen...") { state.scanScreenRegion() }
+                Button("Scan QR Code") { state.scanScreenRegion() }
                 Button("Open QR Image...") { state.scanImageFile() }
                 Button("Paste otpauth:// Link") { state.scanClipboard() }
                 Divider()
@@ -102,7 +102,7 @@ struct AccountListView: View {
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Button("Scan Region of Screen...") { state.scanScreenRegion() }
+            Button("Scan QR Code") { state.scanScreenRegion() }
                 .controlSize(.small)
                 .padding(.top, 2)
         }

@@ -3,9 +3,22 @@
 <plist version="1.0">
 <dict>
 	<key>files</key>
-	<dict/>
+	<dict>
+		<key>Resources/MacAuth_MacAuth.bundle/menubar.pdf</key>
+		<data>
+		sHgkvc6IdltR9jBsZlefz9tuJAk=
+		</data>
+	</dict>
 	<key>files2</key>
-	<dict/>
+	<dict>
+		<key>Resources/MacAuth_MacAuth.bundle/menubar.pdf</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			h6H2qwmP3E8rHG3qDxN0Droz4zG6FqHV24gDOHO75sg=
+			</data>
+		</dict>
+	</dict>
 	<key>rules</key>
 	<dict>
 		<key>^Resources/</key>

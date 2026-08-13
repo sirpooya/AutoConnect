@@ -10,9 +10,7 @@ struct MacAuthApp: App {
             MenuPanel()
                 .environmentObject(state)
         } label: {
-            // Filled when at least one account exists, so the icon reflects whether the app
-            // has anything to offer.
-            Image(systemName: state.accounts.isEmpty ? "lock.rotation" : "lock.rotation.open")
+            MenuBarIconView()
         }
         .menuBarExtraStyle(.window)
     }
