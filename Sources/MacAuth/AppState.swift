@@ -211,7 +211,9 @@ final class AppState: ObservableObject {
 
     private func performScan(_ scan: () throws -> OTPAuthURI.Parsed) {
         do {
-            add(try scan())
+            // Pinned because the picker and the capture overlay would otherwise dismiss the
+            // panel, hiding the account the scan just added.
+            add(try PanelPin.pinned(scan))
         } catch QRScanner.ScanError.cancelled {
             // Backing out of a scan is not an error worth reporting.
         } catch {

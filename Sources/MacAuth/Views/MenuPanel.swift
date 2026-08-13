@@ -29,6 +29,37 @@ struct MenuPanel: View {
     }
 }
 
+/// Every way an account can be added, declared once so the Add menu and the empty state cannot
+/// drift apart, and so the empty state's copy can never describe a path it fails to offer.
+enum AddMethod: String, CaseIterable, Identifiable {
+    case scanScreen
+    case openImage
+    case pasteLink
+    case manual
+
+    var id: String { rawValue }
+
+    /// Full wording, for the Add menu.
+    var menuTitle: String {
+        switch self {
+        case .scanScreen: "Scan QR Code"
+        case .openImage: "Open QR Image..."
+        case .pasteLink: "Paste otpauth:// Link"
+        case .manual: "Enter Secret Manually..."
+        }
+    }
+
+    @MainActor
+    func run(_ state: AppState) {
+        switch self {
+        case .scanScreen: state.scanScreenRegion()
+        case .openImage: state.scanImageFile()
+        case .pasteLink: state.scanClipboard()
+        case .manual: state.route = .add
+        }
+    }
+}
+
 struct AccountListView: View {
     @EnvironmentObject private var state: AppState
 
@@ -70,11 +101,12 @@ struct AccountListView: View {
             Spacer()
 
             Menu {
-                Button("Scan QR Code") { state.scanScreenRegion() }
-                Button("Open QR Image...") { state.scanImageFile() }
-                Button("Paste otpauth:// Link") { state.scanClipboard() }
-                Divider()
-                Button("Enter Secret Manually...") { state.route = .add }
+                ForEach(AddMethod.allCases) { method in
+                    // Manual entry is the odd one out: it takes a form rather than reading a
+                    // code from somewhere, so it sits below a separator.
+                    if method == .manual { Divider() }
+                    Button(method.menuTitle) { method.run(state) }
+                }
             } label: {
                 Label("Add", systemImage: "plus")
                     .labelStyle(.iconOnly)
@@ -89,25 +121,20 @@ struct AccountListView: View {
 
     private var emptyState: some View {
         VStack(spacing: 8) {
-            Image(systemName: "qrcode.viewfinder")
+            Image(systemName: "qrcode")
                 .font(.system(size: 28))
                 .foregroundStyle(.tertiary)
 
             Text("No accounts yet")
-                .font(.system(size: 12, weight: .medium))
-
-            Text("Scan a QR code from the screen, open an image, or enter a secret by hand.")
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
 
-            Button("Scan QR Code") { state.scanScreenRegion() }
+            Button(AddMethod.openImage.menuTitle) { AddMethod.openImage.run(state) }
                 .controlSize(.small)
-                .padding(.top, 2)
+                .padding(.top, 4)
         }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 28)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 24)
     }
 
     private var footer: some View {

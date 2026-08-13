@@ -106,29 +106,54 @@ struct AccountRow: View {
     }
 }
 
-/// Shrinking ring with the remaining seconds in the middle.
-struct CountdownRing: View {
+/// Solid wedge that empties as the period runs down. The seconds are not spelled out: at a
+/// glance the shape answers the only question being asked, which is whether there is time to use
+/// the code or whether to wait for the next one.
+struct CountdownPie: View {
     let fraction: Double
     let color: Color
     let secondsLeft: Int
 
     var body: some View {
-        ZStack {
-            Circle()
-                .stroke(Color.primary.opacity(0.12), lineWidth: 2.5)
+        PieSlice(fraction: fraction)
+            .fill(color)
+            .frame(width: 14, height: 14)
+            .animation(.linear(duration: 0.95), value: fraction)
+            .accessibilityLabel("\(secondsLeft) seconds remaining")
+    }
+}
 
-            Circle()
-                .trim(from: 0, to: max(0.001, fraction))
-                .stroke(color, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-                .animation(.linear(duration: 0.95), value: fraction)
+/// A filled circular wedge, depleting clockwise from twelve o'clock.
+struct PieSlice: Shape {
+    var fraction: Double
 
-            Text("\(secondsLeft)")
-                .font(.system(size: 10, weight: .medium))
-                .monospacedDigit()
-                .foregroundStyle(.secondary)
+    var animatableData: Double {
+        get { fraction }
+        set { fraction = newValue }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        let clamped = min(max(fraction, 0), 1)
+        var path = Path()
+
+        guard clamped > 0 else { return path }
+        // A full circle drawn as an arc would leave a seam at the join, so special-case it.
+        guard clamped < 1 else {
+            path.addEllipse(in: rect)
+            return path
         }
-        .frame(width: 26, height: 26)
-        .accessibilityLabel("\(secondsLeft) seconds remaining")
+
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        path.move(to: center)
+        path.addArc(
+            center: center,
+            radius: min(rect.width, rect.height) / 2,
+            startAngle: .degrees(-90),
+            endAngle: .degrees(-90 + 360 * clamped),
+            // SwiftUI's y axis points down, so this sweeps clockwise on screen.
+            clockwise: false
+        )
+        path.closeSubpath()
+        return path
     }
 }

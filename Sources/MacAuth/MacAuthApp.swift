@@ -3,15 +3,13 @@ import SwiftUI
 
 @main
 struct MacAuthApp: App {
-    @StateObject private var state = AppState()
+    // The menu bar item and its panel are built in AppKit so the panel can be centred on the
+    // icon. See StatusItemController.
+    @NSApplicationDelegateAdaptor(StatusItemController.self) private var controller
 
     var body: some Scene {
-        MenuBarExtra {
-            MenuPanel()
-                .environmentObject(state)
-        } label: {
-            MenuBarIconView()
-        }
-        .menuBarExtraStyle(.window)
+        // The app has no windows of its own. A Settings scene satisfies the requirement that an
+        // App declare one; LSUIElement keeps it out of the Dock and out of the menu bar.
+        Settings { EmptyView() }
     }
 }
