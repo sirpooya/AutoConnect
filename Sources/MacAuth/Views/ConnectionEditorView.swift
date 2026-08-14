@@ -110,9 +110,10 @@ struct ConnectionEditorView: View {
         .padding(16)
         .frame(width: 380)
         .onAppear {
-            // A new connection is here to be filled in, so the address takes the caret. An
-            // existing one is usually opened to look at, so nothing does.
-            addressFocused = isNew
+            // Nothing takes the caret. A sheet full of text fields hands the first one focus by
+            // itself, which puts a selected address one keystroke away from being replaced, so
+            // it is given up again once the sheet has settled.
+            DispatchQueue.main.async { addressFocused = false }
         }
     }
 

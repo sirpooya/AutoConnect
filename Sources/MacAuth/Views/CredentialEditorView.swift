@@ -96,7 +96,8 @@ struct CredentialEditorView: View {
                 credential.username = suggestion.label
             }
             refreshKeychainItems()
-            usernameFocused = isNew
+            // Same as the connection editor: the sheet opens to be read, not typed into.
+            DispatchQueue.main.async { usernameFocused = false }
         }
     }
 
