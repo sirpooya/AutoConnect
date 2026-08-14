@@ -1,4 +1,4 @@
-# CLAUDE.md: AutoConnect (macOS menu-bar TOTP authenticator + Cisco SAML VPN connector)
+# CLAUDE.md: AutoConnect (macOS menu-bar Cisco SAML VPN connector + TOTP authenticator)
 
 ## Goal
 A native macOS menu-bar app in Swift with two halves that share a Keychain and a crypto layer.
@@ -44,7 +44,7 @@ bundle a menu-bar app needs. **Anything worth testing belongs in `AutoConnectCor
 
 ```
 Sources/
-├── AutoConnectCore/                      # pure logic, no UI, 167 tests
+├── AutoConnectCore/                      # pure logic, no UI, 176 tests
 │   ├── Crypto/
 │   │   ├── Base32.swift              # RFC 4648 decode + encode
 │   │   └── TOTP.swift                # RFC 6238 / RFC 4226 truncation
@@ -55,6 +55,7 @@ Sources/
 │   ├── Storage/
 │   │   ├── AccountStoring.swift      # storage protocol + InMemoryAccountStore for fakes
 │   │   ├── KeychainStore.swift       # accounts and their TOTP secrets
+│   │   ├── LegacyMigration.swift     # carries MacAuth-era Keychain items and defaults across
 │   │   ├── LoginKeychain.swift       # website passwords a browser already saved
 │   │   └── VPNSettingsStore.swift    # connection list + selection, VPN password in Keychain
 │   └── VPN/
@@ -66,7 +67,7 @@ Sources/
 │       ├── StatusNotification.swift   # which status changes earn a banner, and what it says
 │       └── TunnelStats.swift          # netstat counters, rates, byte formatting
 └── AutoConnect/                           # the app
-    ├── AutoConnectApp.swift               # @main, playground window
+    ├── AutoConnectApp.swift           # @main, and a never-inserted scene so it has one
     ├── SettingsWindow.swift           # AppKit-hosted settings, not a Settings scene
     ├── StatusItemController.swift     # NSStatusItem + NSPopover (not MenuBarExtra, see below)
     ├── AppState.swift                 # accounts, ticker, code cache, clipboard
@@ -92,6 +93,7 @@ Sources/
     │   ├── ConnectionEditorView.swift # one connection: address, Detect, credentials
     │   └── SystemCertificateIcon.swift # Keychain Access artwork, loaded from the system
     └── Playground/
+        ├── PlaygroundWindow.swift     # app-owned NSWindow for it, not a SwiftUI scene
         └── VPNStatusPlayground.swift  # dev-only tuning window, fake VPN states
 ```
 
@@ -130,6 +132,18 @@ Both are vector artwork the user supplies; neither is drawn in code.
   not the shell's, and fails claiming the output directory does not exist.
 - `make-app.sh` also copies SwiftPM's `AutoConnect_AutoConnect.bundle` into `Contents/Resources`, which is
   what makes `Bundle.module` resolve inside the packaged app rather than only under `swift run`.
+- **Several glyph sets exist**, chosen with the playground's Menu bar picker: keyhole arc (the
+  default), keyhole in circle, padlock, globe, lock. Every set is a pair, outline for disconnected
+  and filled for connected, so the meaning survives whichever is picked. Sets that read state only
+  through a small added badge, rather than through the fill, were tried and dropped: at 18pt the two
+  states looked identical.
+- `MenuBarIconSet` has **explicit raw values with gaps**. The choice is persisted, so renumbering
+  the survivors after deleting a set would silently move a saved selection onto a different glyph.
+  `VPNStatusParams.init` also snaps an index that matches no case back to the default, or the
+  picker holds a selection it cannot display.
+- **Removing a resource needs the SwiftPM bundle cleared.** Deleted files stay in
+  `.build/*/AutoConnect_AutoConnect.bundle`, and `make-app.sh` copies that bundle wholesale, so the
+  app keeps shipping artwork that is no longer in the repo. `rm -rf` the bundle and rebuild.
 
 ## Panel UI conventions
 The panel is roughly 320pt wide, so restraint is the whole design. Established by review, and
@@ -245,6 +259,10 @@ section 4 and section 3. Summary of the behavior contract:
 - If camera QR is used, add `NSCameraUsageDescription` to Info.plist.
 - Keep one signing identity. Re-signing with a different identity can lock the app out of its
   own Keychain items.
+- **The bundle identifier, the two Keychain services, and the `autoconnect.` defaults prefix are
+  storage addresses, not labels.** Changing any of them points the app at empty storage, and the
+  accounts read as deleted. The rename from MacAuth changed all four at once, which is what
+  `LegacyMigration` exists to absorb; anything similar needs the same treatment.
 - **Prefer the real Apple Development identity over `SIGN_IDENTITY="-"`.** A Keychain item's ACL
   and a TCC grant both trust one exact code signature, and every ad-hoc rebuild produces a new
   one. The app then re-asks for the login Keychain password and for Documents access on every
@@ -313,3 +331,29 @@ params object the shipping views read, a `Codable` snapshot decoded key-by-key w
 the real views, and a controls sidebar. Sliders snap by rounding inside the binding, never with
 `Slider(step:)`, which draws tick marks. Only expose knobs that cannot be judged from a static
 screenshot; measured constants stay constants.
+
+Four more rules, each one paid for:
+
+- **Never build the mock objects inside `body`.** Build them in `onAppear` and `onChange(of:
+  params.signature)` and hold them in `@State`. Building them per body pass span the app to 59% CPU
+  and 565MB and climbing: each pass made a fresh `AppState`, each with its own one-second ticker,
+  and every tick invalidated the view that had just created it. A pegged main thread also stops the
+  status item from ever drawing, so the symptom reads as "the menu bar icon is missing".
+- **The playground is an app-owned `NSWindow` (`PlaygroundWindow`), not a SwiftUI `Window` scene.**
+  A scene restored itself at launch after any session that had opened it, and an accessory app
+  cannot raise a restored window because it cannot become active. Presenting it also needs
+  `canJoinAllSpaces`, `fullScreenAuxiliary` and `orderFrontRegardless`, or with a full-screen app
+  in front the window lands on the desktop Space and is invisible behind it.
+- Open it without hunting for the footer button:
+  `build/AutoConnect.app/Contents/MacOS/AutoConnect --playground` (DEBUG only). The panel's own
+  button cannot be clicked by UI scripting, because a popover in an accessory app is not exposed to
+  accessibility at all.
+- **Mock controls must do something.** Connect, Disconnect and the switch route through
+  `VPNController.onPreviewConnectRequest` and walk the stage through the real phase sequence
+  (`PhaseScripter`, 700ms a step). Note the guard this depends on: `connect()` and `disconnect()`
+  return early for previews. Before that guard existed, Connect in the playground really did start
+  a webview sign-in and openconnect against the example gateway, and Disconnect could have torn
+  down the user's live tunnel.
+- A knob that no longer drives anything is worse than no knob: it invites tuning a value the app
+  has stopped reading. When a feature goes (the dot's pulsing halo, for instance), its knobs go with
+  it, and a value that has settled gets baked into the view as a constant.

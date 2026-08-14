@@ -5,6 +5,9 @@ import SwiftUI
 /// collapsible block of statistics. Replaces what AnyConnect's window used to show.
 struct VPNSection: View {
     @EnvironmentObject private var vpn: VPNController
+    /// Only so the Set Up button can hand the settings window the same objects the panel uses.
+    @EnvironmentObject private var state: AppState
+    @EnvironmentObject private var notifier: VPNStatusNotifier
 
     /// Live from the playground, so the dot and its pulse can be tuned while running.
     private var params: VPNStatusParams { VPNStatusParams.shared }
@@ -111,19 +114,37 @@ struct VPNSection: View {
             //
             // One size throughout, matching the account rows below. Weight and colour carry the
             // hierarchy; a different size per line made the block look assembled from spare parts.
-            Text(vpn.phase.label)
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+            StatusLine(
+                text: statusText,
+                isShimmering: params.shimmerAlways || vpn.phase.isWorking
+            )
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// The gateway this connection dials. Not the username: that is the account row below, and
     /// showing it here printed the same address twice in one small panel.
+    ///
+    /// With nothing saved there is no gateway to name. "New connection" is the editor's word for a
+    /// row being filled in, and at the top of the panel it read as if one were already underway.
     private var title: String {
-        vpn.profile.displayName
+        vpn.profiles.isEmpty ? "No connection" : vpn.profile.displayName
     }
+
+    /// The status line, which says what is missing when there is nothing to connect to.
+    ///
+    /// "Not connected" is true of an unconfigured app, but it invites waiting for a connection
+    /// that nothing will ever start. Only the resting phase is worded over: once a connect is
+    /// under way the phase is the news.
+    private var statusText: String {
+        guard vpn.phase == .idle else { return vpn.phase.label }
+        if vpn.profiles.isEmpty { return "Add one in Settings" }
+        if !vpn.profile.isComplete { return "Setup not finished" }
+        return vpn.phase.label
+    }
+
+    /// Whether this connection has everything a connect needs: an address, a group and a pin.
+    private var isConfigured: Bool { vpn.profile.isComplete }
 
     // MARK: - Connected
 
@@ -290,7 +311,9 @@ struct VPNSection: View {
 
     @ViewBuilder
     private var actionButton: some View {
-        if params.usesSwitch {
+        if !isConfigured {
+            setUpButton
+        } else if params.usesSwitch {
             connectSwitch
         } else if vpn.isConnected {
             Button("Disconnect") { vpn.disconnect() }
@@ -303,6 +326,23 @@ struct VPNSection: View {
                 .controlSize(.small)
                 .keyboardShortcut("k")
         }
+    }
+
+    /// What stands in for the switch until there is something to connect to.
+    ///
+    /// A switch with no gateway behind it is a control that cannot do what it offers, and a
+    /// disabled one says only that. This says what is missing and goes to the page that fixes it,
+    /// which is the whole of what the panel can do about it.
+    private var setUpButton: some View {
+        Button("Set Up") {
+            SettingsWindow.shared.show(
+                state: state, vpn: vpn, notifier: notifier, tab: .connections
+            )
+        }
+        .controlSize(.small)
+        .help(vpn.profiles.isEmpty
+              ? "Add a connection in Settings."
+              : "Finish setting up this connection in Settings.")
     }
 
     /// The switch alternative. It reads as state rather than as an instruction, and it has one

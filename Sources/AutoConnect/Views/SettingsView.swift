@@ -20,7 +20,13 @@ struct SettingsView: View {
 
     private let store = VPNSettingsStore()
 
-    @State private var tab: Tab = .general
+    /// Which tab is showing. Given at init so the panel can open the pane straight on
+    /// Connections when there is nothing to connect to yet.
+    @State private var tab: Tab
+
+    init(tab: Tab = .general) {
+        _tab = State(initialValue: tab)
+    }
 
     @State private var otpAccountID: UUID?
     @State private var openconnectPath = ""

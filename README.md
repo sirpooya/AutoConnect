@@ -1,16 +1,20 @@
 # AutoConnect
 
-A native macOS menu-bar TOTP authenticator, built with Apple frameworks only. Secrets live in
-the Keychain, nothing touches the network, and there is no account or sync of any kind.
+A native macOS menu-bar app that replaces Cisco AnyConnect, built with Apple frameworks only.
 
-Stage two of this project adds a Cisco SAML VPN connector on top of the same crypto and Keychain
-layer. See [plan.md](plan.md) for that design and for why Cisco AnyConnect cannot be automated
-directly.
+It is two halves sharing a Keychain and a crypto layer. The connector drives the SAML login in a
+`WKWebView` it owns, captures the session token, and hands it to `openconnect`, showing live
+status, the assigned IP, and a countdown to expiry. The authenticator is a full RFC 6238 TOTP
+client, and it feeds its own code into that login: the name is the point, a connect takes no
+typing.
+
+Secrets live in the Keychain. There is no account, no sync, and no telemetry of any kind. See
+[plan.md](plan.md) for the gateway protocol and for why AnyConnect itself cannot be automated.
 
 ## Build and run
 
 ```bash
-swift test              # 167 tests, including every RFC 6238 Appendix B vector
+swift test              # 176 tests, including every RFC 6238 Appendix B vector
 ./Scripts/make-app.sh   # produces build/AutoConnect.app, signed
 open build/AutoConnect.app
 ```
@@ -79,7 +83,8 @@ Sources/
   AutoConnectCore/              # pure logic, no UI, all of it unit tested
     Crypto/                 # Base32 (RFC 4648), TOTP (RFC 6238 + 4226)
     Models/                 # Account + otpauth:// parsing, VPNProfile
-    Storage/                # AccountStoring, KeychainStore, VPNSettingsStore
+    Storage/                # AccountStoring, KeychainStore, VPNSettingsStore,
+                            # LoginKeychain, LegacyMigration
     VPN/                    # ConfigAuthXML, GatewayClient, OpenConnectRunner,
                             # ReconnectPolicy, StatusNotification, TunnelStats
   AutoConnect/                  # the app
@@ -91,7 +96,7 @@ Sources/
     Notifications/               # VPNStatusNotifier, the delivery half of the banners
     Views/                       # panel, VPN section, chart, rows, forms, settings
     Playground/                  # dev-only tuning window
-Tests/AutoConnectCoreTests/     # 167 tests
+Tests/AutoConnectCoreTests/     # 176 tests
 ```
 
 A Swift package rather than an Xcode project, so `swift test` runs the whole suite from the
@@ -119,6 +124,28 @@ lifetime of their 30-second step, so the Keychain is touched roughly once per ac
 instead of once per second.
 
 Nothing is written to `UserDefaults` or to any plist. Secrets are never logged.
+
+### Carried over from the old name
+
+The app used to be called MacAuth, and three identifiers had that name inside them: the two
+Keychain services, the bundle identifier `com.pooya.MacAuth` (which is what decides the
+preferences domain `UserDefaults.standard` reads), and the `macauth.` prefix on every defaults
+key. All three decide where data lives, so renaming them alone would have left a working app
+pointed at empty storage, with the accounts looking deleted.
+
+`LegacyMigration` handles it on first launch, once: it re-tags each Keychain item's
+`kSecAttrService` in place, keeping the secret and its access control intact, and copies every
+`macauth.`-prefixed default out of the old preferences domain under the new prefix. A value
+already set since the rename is left alone. On a Mac that never ran the old app it does nothing.
+
+Two things it cannot do anything about, both one-time and both harmless:
+
+- macOS asks once more for Keychain access, because the item's access control names the app that
+  created it and the bundle identifier is part of that name. Choose "Always Allow".
+- A login item registered under the old bundle identifier stays behind as a stale entry in System
+  Settings, Login Items. Toggle "Launch at login" off and on to replace it.
+
+The migration can be deleted once no machine is still carrying MacAuth-era data.
 
 ## The VPN half
 

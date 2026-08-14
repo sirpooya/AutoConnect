@@ -249,6 +249,14 @@ final class VPNController: ObservableObject {
         }
         guard connectTask == nil, !isConnected else { return }
 
+        // The panel offers Set Up rather than Connect until this holds, so reaching here means a
+        // keyboard shortcut or a stale profile. Say what is missing instead of POSTing to
+        // "https:///" and failing with something about a malformed URL.
+        guard profile.isComplete else {
+            phase = .failed("This connection is not set up yet. Add a gateway in Settings.")
+            return
+        }
+
         userHasConnected = true
         startNetworkMonitorIfNeeded()
         startSleepWakeObservers()

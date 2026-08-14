@@ -16,7 +16,15 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     private var window: NSWindow?
 
     /// Opens the pane, or brings it forward if it is already up.
-    func show(state: AppState, vpn: VPNController, notifier: VPNStatusNotifier) {
+    ///
+    /// `tab` only chooses where a freshly opened pane starts. A window already on screen keeps
+    /// whichever tab the user left it on rather than jumping under them.
+    func show(
+        state: AppState,
+        vpn: VPNController,
+        notifier: VPNStatusNotifier,
+        tab: SettingsView.Tab = .general
+    ) {
         // A menu-bar-only app is `.accessory` and cannot take key focus, so text fields would
         // refuse first responder. WindowActivation switches to `.regular` and back.
         WindowActivation.claim()
@@ -27,7 +35,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         }
 
         let hosting = NSHostingController(
-            rootView: SettingsView()
+            rootView: SettingsView(tab: tab)
                 .environmentObject(state)
                 .environmentObject(vpn)
                 .environmentObject(notifier)

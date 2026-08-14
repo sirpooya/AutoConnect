@@ -24,6 +24,20 @@ final class VPNStatusParams {
     // knob that no longer drives anything is worse than no knob: it invites tuning a value the
     // app has stopped reading.
 
+    /// Seconds for one pass of the highlight across the status text.
+    var shimmerPeriod: Double = 2.2
+
+    /// How bright that highlight gets. 0 turns it off entirely.
+    var shimmerIntensity: Double = 0.5
+
+    /// Whether the shimmer runs in every state, or only while a connect is in progress. The
+    /// working states are the ones where it means something: nothing else on screen moves while
+    /// the gateway is being contacted.
+    var shimmerAlways: Bool = true
+
+    /// How long a new status takes to push the old one up and out.
+    var statusSlideDuration: Double = 0.3
+
     /// Which menu bar glyph set the status item draws. See `MenuBarIconSet`.
     var menuBarIconSet: Int = MenuBarIconSet.keyholeArc.rawValue
 
@@ -110,6 +124,10 @@ final class VPNStatusParams {
     private func apply(_ snapshot: VPNStatusSnapshot) {
         dotSize = snapshot.dotSize
         menuBarIconSet = snapshot.menuBarIconSet
+        shimmerPeriod = snapshot.shimmerPeriod
+        shimmerIntensity = snapshot.shimmerIntensity
+        shimmerAlways = snapshot.shimmerAlways
+        statusSlideDuration = snapshot.statusSlideDuration
         usesSwitch = snapshot.usesSwitch
         switchSizeIndex = snapshot.switchSizeIndex
         countdownSize = snapshot.countdownSize
@@ -129,6 +147,7 @@ final class VPNStatusParams {
     var signature: [Double] {
         [
             dotSize, Double(menuBarIconSet), usesSwitch ? 1 : 0, Double(switchSizeIndex),
+            shimmerPeriod, shimmerIntensity, shimmerAlways ? 1 : 0, statusSlideDuration,
             countdownSize, countdownMarginRight,
             Double(phaseIndex), hoursRemaining, usingDTLS ? 1 : 0, accountCount,
             uptimeHours, rateExponent, transferredExponent,
@@ -142,6 +161,12 @@ final class VPNStatusParams {
         """
         // Menu bar
         static let menuBarIconSet: MenuBarIconSet = .\(MenuBarIconSet(rawValue: menuBarIconSet).map { "\($0)" } ?? "keyholeArc")
+
+        // VPN status line
+        static let statusShimmerPeriod: TimeInterval = \(String(format: "%.1f", shimmerPeriod))
+        static let statusShimmerIntensity: Double = \(String(format: "%.2f", shimmerIntensity))
+        static let statusShimmerAlways = \(shimmerAlways)
+        static let statusSlideDuration: TimeInterval = \(String(format: "%.2f", statusSlideDuration))
 
         // VPN status row
         static let vpnDotSize: CGFloat = \(Int(dotSize))
@@ -216,6 +241,10 @@ enum PreviewPhase: Int, CaseIterable, Identifiable {
 struct VPNStatusSnapshot: Codable {
     var dotSize: Double
     var menuBarIconSet: Int
+    var shimmerPeriod: Double
+    var shimmerIntensity: Double
+    var shimmerAlways: Bool
+    var statusSlideDuration: Double
     var usesSwitch: Bool
     var switchSizeIndex: Int
     var countdownSize: Double
@@ -236,6 +265,10 @@ struct VPNStatusSnapshot: Codable {
     init(_ params: VPNStatusParams) {
         dotSize = params.dotSize
         menuBarIconSet = params.menuBarIconSet
+        shimmerPeriod = params.shimmerPeriod
+        shimmerIntensity = params.shimmerIntensity
+        shimmerAlways = params.shimmerAlways
+        statusSlideDuration = params.statusSlideDuration
         usesSwitch = params.usesSwitch
         switchSizeIndex = params.switchSizeIndex
         countdownSize = params.countdownSize
@@ -265,6 +298,10 @@ struct VPNStatusSnapshot: Codable {
 
         dotSize = value(.dotSize, 8)
         menuBarIconSet = value(.menuBarIconSet, MenuBarIconSet.keyholeArc.rawValue)
+        shimmerPeriod = value(.shimmerPeriod, 2.2)
+        shimmerIntensity = value(.shimmerIntensity, 0.5)
+        shimmerAlways = value(.shimmerAlways, true)
+        statusSlideDuration = value(.statusSlideDuration, 0.3)
         usesSwitch = value(.usesSwitch, false)
         switchSizeIndex = value(.switchSizeIndex, SwitchSize.mini.rawValue)
         countdownSize = value(.countdownSize, 18)
@@ -592,6 +629,11 @@ struct VPNStatusPlaygroundView: View {
                         $params.menuBarIconSet,
                         MenuBarIconSet.allCases.map { ($0.rawValue, $0.title) }
                     )
+
+                    slider("Shimmer period", $params.shimmerPeriod, 0.6...4, "s", step: 0.1)
+                    slider("Shimmer intensity", $params.shimmerIntensity, 0...1, "", step: 0.05)
+                    toggle("Shimmer in every state", $params.shimmerAlways)
+                    slider("Status slide", $params.statusSlideDuration, 0.1...0.8, "s", step: 0.05)
 
                     toggle("Switch instead of Connect button", $params.usesSwitch)
 
