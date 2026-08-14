@@ -43,7 +43,7 @@ struct SettingsView: View {
     @State private var connectionPendingDeletion: VPNProfile?
 
     enum Tab: Hashable {
-        case general, gateway, authenticator
+        case general, connections, authenticator
     }
 
     var body: some View {
@@ -62,8 +62,8 @@ struct SettingsView: View {
                 switch tab {
                 case .general:
                     generalTab
-                case .gateway:
-                    gatewayTab
+                case .connections:
+                    connectionsTab
                 case .authenticator:
                     authenticatorTab
                 }
@@ -157,7 +157,7 @@ struct SettingsView: View {
 
     // MARK: - Tabs
 
-    private var gatewayTab: some View {
+    private var connectionsTab: some View {
         SettingsTabBody {
             if vpn.profiles.isEmpty {
                 SettingsCard {
@@ -262,7 +262,7 @@ struct SettingsView: View {
 
     private var generalTab: some View {
         SettingsTabBody {
-            SettingsSectionHeader(text: "Connection")
+            SettingsSectionHeader(text: "Reconnect")
             SettingsCard {
                 SettingsRow(title: "Reconnect automatically") {
                     Toggle("", isOn: $vpn.autoReconnect)
@@ -478,7 +478,7 @@ private struct TabBar: View {
             TabButton(title: "General", systemImage: "gearshape.fill",
                       isSelected: selection == .general) { selection = .general }
             TabButton(title: "Connections", systemImage: "network",
-                      isSelected: selection == .gateway) { selection = .gateway }
+                      isSelected: selection == .connections) { selection = .connections }
             TabButton(title: "Authenticator", systemImage: "qrcode",
                       isSelected: selection == .authenticator) { selection = .authenticator }
         }

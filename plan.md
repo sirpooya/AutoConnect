@@ -37,6 +37,12 @@ A webview we control has no secure-input restriction, which is what makes the Sw
 
 ## 3. Gateway facts (discovered by probing, do not re-derive)
 
+These are a record of what this gateway answered, not configuration. Nothing here is compiled
+into the app: `VPNProfile.empty` is what a fresh install gets, Detect asks the gateway for its
+groups, and the fingerprint is learned on first contact and pinned from then on. The table
+stays so the values can be checked by eye, and so a live connect can be reasoned about without
+probing again.
+
 | Item | Value |
 |---|---|
 | Gateway | `https://mfa-vpn.dkservices.ir:28015` |
@@ -198,10 +204,20 @@ Two things that must be true before that run:
    ```
    An earlier version of this rule allowed `pkill -f openconnect`, which would have killed the
    user's own terminal session. Never widen it back.
-2. Settings has a username, a stored password, and an OTP account selected, or autofill has nothing
-   to work with and the login window will simply wait for typing.
+2. A connection exists with an address, a group and a pin (all filled in by Detect), a username
+   chosen from an authenticator account, and a password saved. Without those, autofill has
+   nothing to work with and the login window simply waits for typing.
 
 ### Extras built beyond the original plan
+
+- **Connections as a list.** Several can be configured, one is selected, and the menu bar acts
+  on that one. Each carries its own gateway, credentials and OTP account, and its own Keychain
+  item so deleting one cannot take another's password.
+- **Gateway discovery.** A group-less init POST makes the gateway list its tunnel groups
+  (`ConfigAuth.parseProbe`), and `GatewayClient.TrustPolicy.learnFingerprint` records the
+  certificate on first contact. The only thing typed is the address.
+- **Login-Keychain passwords.** A password a browser already saved can be reused instead of
+  copied: listed by metadata (no prompt) in Settings, read at connect time (one prompt).
 
 - **Statistics and a throughput chart.** openconnect has no stats option, so counters come from
   `netstat -ibn`. Sampling spawns a process, so it only runs while the statistics block is visible.

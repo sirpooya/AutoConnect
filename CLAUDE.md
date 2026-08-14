@@ -3,7 +3,9 @@
 ## Goal
 A native macOS menu-bar app in Swift with two halves that share a Keychain and a crypto layer.
 
-**Primary half: VPN connector.** Replace Cisco AnyConnect for the `MFA-VPN` SAML tunnel group.
+**Primary half: VPN connector.** Replace Cisco AnyConnect for a Cisco SAML tunnel group.
+No gateway, group, fingerprint or username is compiled in: the user types an address and the
+app asks that gateway for the rest.
 Log in through a `WKWebView` we control, capture the `acSamlv2Token` cookie, exchange it for a
 session token, and hand that to `openconnect`. Show live status, assigned IP, and a countdown to
 session expiry. Auto-reconnect.
@@ -42,25 +44,28 @@ bundle a menu-bar app needs. **Anything worth testing belongs in `MacAuthCore`**
 
 ```
 Sources/
-├── MacAuthCore/                      # pure logic, no UI, 103 tests
+├── MacAuthCore/                      # pure logic, no UI, 135 tests
 │   ├── Crypto/
 │   │   ├── Base32.swift              # RFC 4648 decode + encode
 │   │   └── TOTP.swift                # RFC 6238 / RFC 4226 truncation
 │   ├── Models/
 │   │   ├── Account.swift             # metadata + otpauth:// parsing (never holds a secret)
-│   │   └── VPNProfile.swift          # gateway, group, cert pin, credential references
+│   │   ├── Credential.swift          # legacy: decoded only to fold back into a connection
+│   │   └── VPNProfile.swift          # one connection: gateway, group, pin, username, OTP
 │   ├── Storage/
 │   │   ├── AccountStoring.swift      # storage protocol + InMemoryAccountStore for fakes
 │   │   ├── KeychainStore.swift       # accounts and their TOTP secrets
-│   │   └── VPNSettingsStore.swift    # profile in UserDefaults, VPN password in Keychain
+│   │   ├── LoginKeychain.swift       # website passwords a browser already saved
+│   │   └── VPNSettingsStore.swift    # connection list + selection, VPN password in Keychain
 │   └── VPN/
-│       ├── ConfigAuthXML.swift        # Cisco config-auth builders + parser
-│       ├── GatewayClient.swift        # the two POSTs, with SHA1 certificate pinning
+│       ├── ConfigAuthXML.swift        # Cisco config-auth builders, parser, group probe
+│       ├── GatewayClient.swift        # the POSTs, SHA1 pinning, learn-on-first-contact
 │       ├── OpenConnectRunner.swift    # process spawn, output parsing, state machine
 │       ├── ReconnectPolicy.swift      # when to renew, back off, or give up
 │       └── TunnelStats.swift          # netstat counters, rates, byte formatting
 └── MacAuth/                           # the app
-    ├── MacAuthApp.swift               # @main, Settings scene, playground window
+    ├── MacAuthApp.swift               # @main, playground window
+    ├── SettingsWindow.swift           # AppKit-hosted settings, not a Settings scene
     ├── StatusItemController.swift     # NSStatusItem + NSPopover (not MenuBarExtra, see below)
     ├── AppState.swift                 # accounts, ticker, code cache, clipboard
     ├── PanelPin.swift                 # keeps the popover up across system windows
@@ -73,14 +78,24 @@ Sources/
     │   └── LoginFormFiller.swift      # injected scanner/filler for the IdP form
     ├── Views/
     │   ├── MenuPanel.swift            # panel root, account list, add menu
-    │   ├── VPNSection.swift           # status, gateway, statistics
+    │   ├── VPNSection.swift           # status, connection switcher, statistics
     │   ├── ThroughputChart.swift      # download area + upload line sparkline
     │   ├── AccountRow.swift           # code, countdown pie, copy
-    │   ├── AccountFormView.swift      # manual add and edit
-    │   └── SettingsView.swift         # gateway, credentials, OTP source, behaviour
+    │   ├── AccountFormView.swift      # manual add (accounts are read-only once enrolled)
+    │   ├── AccountDetailsView.swift   # what an account is, with nothing to change
+    │   ├── SettingsComponents.swift   # cards, rows, dividers shared by the tabs
+    │   ├── SettingsView.swift         # General / Connections / Authenticator tabs
+    │   ├── ConnectionEditorView.swift # one connection: address, Detect, credentials
+    │   └── SystemCertificateIcon.swift # Keychain Access artwork, loaded from the system
     └── Playground/
         └── VPNStatusPlayground.swift  # dev-only tuning window, fake VPN states
 ```
+
+Settings is an `NSWindow` this app owns (`SettingsWindow`), not a SwiftUI `Settings` scene:
+as the only presentable scene, macOS opened that by itself at launch. Size the window
+explicitly rather than from `preferredContentSize`, or AppKit re-measures the SwiftUI content
+mid-layout and the app dies with "more Update Constraints in Window passes than there are
+views in the window".
 
 `MenuBarExtra` was replaced by `NSStatusItem` + `NSPopover`: `MenuBarExtra` gives no control over
 where its window lands, while a popover anchored to the status button is always centred on the
@@ -114,7 +129,15 @@ section 4 and section 3. Summary of the behavior contract:
 - Autofill injects email, password and TOTP into the IdP page from the Keychain.
   **Never fail closed:** if any selector does not match, show the login window and let the user
   finish by hand.
-- Pin the gateway cert by SHA1. Do not disable TLS validation wholesale.
+- Pin the gateway cert by SHA1. Do not disable TLS validation wholesale. The pin is learned on
+  first contact (Detect, `TrustPolicy.learnFingerprint`) and enforced from then on; that one
+  request is the only time an unknown certificate is accepted, and the user is shown what was
+  learned.
+- A connection is the whole combination: address, group, pin, username, password source and the
+  authenticator account whose code fills the OTP field. Several can exist; one is selected, and
+  the menu bar acts on that one. Credentials were briefly a list of their own and were folded
+  back in: with one gateway it was an entity to keep straight rather than a saving.
+- The group comes from a group-less init POST (`ConfigAuth.parseProbe`), never typed.
 - Detect the openconnect binary at launch; if missing, say so plainly and point at
   `brew install openconnect`.
 - Disconnect must actually tear down the tunnel and restore routing.
@@ -125,6 +148,9 @@ section 4 and section 3. Summary of the behavior contract:
 - **Add account:**
   - *QR:* let user capture a region of the screen (or drop an image); decode with Vision; parse `otpauth://`.
   - *Manual:* text fields for issuer, account, and Base32 secret.
+- An enrolled account is read-only. Every field of it changes what code comes out, and a wrong
+  one produces plausible but useless codes with nothing on screen to say why, so Details shows
+  it and changing anything means deleting and scanning again.
 - Codes refresh every second; recompute on each period boundary.
 - Delete account with confirmation, which also removes it from the Keychain.
 
@@ -170,7 +196,8 @@ VPN connector:
 - [x] Statistics parse real `netstat` output; throughput chart with shared scale.
 - [x] Shutdown targets this app's own process only, never a bare `openconnect` name match.
 - [x] Missing openconnect binary produces a clear, actionable message.
-- [x] Settings pane: gateway, group, cert pin, username, password, OTP source, binary path.
+- [x] Settings: General / Connections / Authenticator, with a connection list.
+- [x] Nothing about any gateway is compiled in: Detect reads its groups and pins its cert.
 - [x] Reconnect decisions are pure and tested (renewal lead, backoff, give-up, network change).
 - [ ] **Connects end to end and brings up a working tunnel with corporate DNS.** Not yet run.
 - [ ] Autofill completes a connect with zero typing, falling back to the visible window.
