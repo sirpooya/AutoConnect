@@ -103,47 +103,26 @@ struct VPNSection: View {
                         .font(.system(size: 7, weight: .semibold))
                         .foregroundStyle(.tertiary)
                 }
-
             }
 
-            // Status sits on the second line with the gateway rather than beside the title,
-            // which left the title too little room and wrapped the address in half.
+            // Status on its own line, not beside the title: sharing the line left the title too
+            // little room and wrapped the address in half. The gateway address is not repeated
+            // here, it is already the title when no account is set, and Settings owns it.
             //
-            // One size throughout this block, matching the account rows below. Weight and colour
-            // carry the hierarchy; a different size per line only made the block look assembled
-            // from spare parts.
-            HStack(spacing: 4) {
-                Text(vpn.phase.label)
-                    .foregroundStyle(.secondary)
-                    .fixedSize()
-
-                Text("·")
-                    .foregroundStyle(.tertiary)
-
-                Text(subtitle)
-                    .foregroundStyle(.tertiary)
-                    .truncationMode(.middle)
-            }
-            .font(.system(size: 11))
-            .lineLimit(1)
+            // One size throughout, matching the account rows below. Weight and colour carry the
+            // hierarchy; a different size per line made the block look assembled from spare parts.
+            Text(vpn.phase.label)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// Who is signing in. The two lines together are the whole connection: an account and the
-    /// gateway it authenticates against. Titling both with the address said one thing twice.
+    /// The gateway this connection dials. Not the username: that is the account row below, and
+    /// showing it here printed the same address twice in one small panel.
     private var title: String {
-        let user = vpn.profile.username.trimmingCharacters(in: .whitespaces)
-        return user.isEmpty ? vpn.profile.displayName : user
-    }
-
-    private var subtitle: String {
-        let host = vpn.profile.host
-        guard !host.isEmpty else { return "No gateway configured" }
-
-        // Not the tunnel group: it is fixed per saved connection, the editor already shows it,
-        // and repeating it here says nothing that changes.
-        return host
+        vpn.profile.displayName
     }
 
     // MARK: - Connected

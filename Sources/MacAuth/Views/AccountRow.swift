@@ -43,22 +43,30 @@ struct AccountRow: View {
                     Text(state.formattedCode(for: account))
                         .font(.system(size: 19, weight: .medium, design: .rounded))
                         .monospacedDigit()
-                        .foregroundStyle(wasJustCopied ? Color.green : Color.primary)
+                        .foregroundStyle(.primary)
                         .contentTransition(.numericText())
                         .animation(.easeInOut(duration: 0.2), value: state.code(for: account))
                 }
 
                 Spacer(minLength: 4)
 
-                // Nothing appears or disappears here on hover or after a copy: any label under
-                // the wedge would resize the row. The row highlight is the hover affordance, the
-                // code turning green is the confirmation, and neither moves anything.
-                CountdownPie(
-                    fraction: state.remainingFraction(for: account),
-                    color: ringColor,
-                    secondsLeft: secondsLeft
-                )
-                .frame(width: 44)
+                // The copy confirmation takes the wedge's place instead of being added beside it,
+                // so the row keeps its size. Nothing here reacts to hover, for the same reason.
+                Group {
+                    if wasJustCopied {
+                        Text("Copied")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.green)
+                    } else {
+                        CountdownPie(
+                            fraction: state.remainingFraction(for: account),
+                            color: ringColor,
+                            secondsLeft: secondsLeft
+                        )
+                    }
+                }
+                .frame(width: 52)
+                .animation(.easeInOut(duration: 0.15), value: wasJustCopied)
             }
             .padding(.vertical, 7)
             .padding(.horizontal, 10)

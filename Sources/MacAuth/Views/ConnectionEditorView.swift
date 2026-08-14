@@ -124,7 +124,7 @@ struct ConnectionEditorView: View {
             }
 
             if let matched = accountMatchingUsername {
-                note("Its one-time code comes from your \(matched.displayTitle) account.")
+                note("OTP comes from your \(matched.displayTitle) account.")
             }
 
             HStack {
@@ -185,8 +185,10 @@ struct ConnectionEditorView: View {
             // control. A second button of equal weight made the pair look like a choice being
             // asked for, when the Keychain is the answer nearly always.
             VStack(alignment: .leading, spacing: 2) {
-                note("Read from the login Keychain at connect time, so macOS asks permission "
-                     + "once. Nothing is copied into this app's Keychain.")
+                // What actually happens to you, in the order you meet it. The longer version
+                // explained the mechanism; this one warns about the prompt, which is the only
+                // part that interrupts a connect.
+                note("macOS asks permission on the first connect. Nothing is copied into this app.")
 
                 Button("Type it instead") { profile.passwordSource = .stored }
                     .buttonStyle(.link)
@@ -298,6 +300,7 @@ struct ConnectionEditorView: View {
                     .foregroundStyle(fingerprint.isEmpty ? .secondary : .primary)
                     .lineLimit(1)
                     .truncationMode(.middle)
+                    .help(fingerprint.isEmpty ? "" : fingerprintTooltip)
 
                 if let issuer = pinned?.issuer {
                     Text(issuer == pinned?.commonName
@@ -361,32 +364,20 @@ struct ConnectionEditorView: View {
                     detailValue("Not pinned yet")
                 }
             } else {
-                if let pinned {
-                    if let expiry = expiryDescription {
-                        GridRow {
-                            detailLabel("Expires")
-                            detailValue(expiry.text, tint: expiry.tint)
-                        }
-                    }
-
-                    // Only when it adds something the title has not already said: a second name,
-                    // or the fact that none of them is the gateway being dialled.
-                    if let names = subjectNames {
-                        GridRow {
-                            detailLabel("Names")
-                            detailValue(names.text, tint: names.tint)
-                        }
-                    }
-
+                if let expiry = expiryDescription {
                     GridRow {
-                        detailLabel("SHA-256")
-                        fingerprintValue(pinned.sha256)
+                        detailLabel("Expires")
+                        detailValue(expiry.text, tint: expiry.tint)
                     }
                 }
 
-                GridRow {
-                    detailLabel("SHA-1")
-                    fingerprintValue(fingerprint.uppercased())
+                // Only when it adds something the title has not already said: a second name, or
+                // the fact that none of them is the gateway being dialled.
+                if let names = subjectNames {
+                    GridRow {
+                        detailLabel("Names")
+                        detailValue(names.text, tint: names.tint)
+                    }
                 }
 
                 GridRow {
@@ -418,16 +409,17 @@ struct ConnectionEditorView: View {
             .gridColumnAlignment(.leading)
     }
 
-    /// Grouped in fours and wrapped rather than elided: a fingerprint you cannot select in full
-    /// is a fingerprint you cannot check against Keychain Access, which is its only use.
-    private func fingerprintValue(_ value: String) -> some View {
-        Text(PinnedCertificate.groupedHex(value))
-            .font(.system(size: 10, design: .monospaced))
-            .foregroundStyle(.secondary)
-            .textSelection(.enabled)
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .gridColumnAlignment(.leading)
+    /// Both digests, grouped the way Keychain Access prints them, as a tooltip rather than rows.
+    ///
+    /// Four lines of hex was the tallest thing in the sheet and the least often read: the pin is
+    /// enforced whether or not anyone looks at it. It stays reachable for the one time it
+    /// matters, which is comparing it against Keychain Access by eye.
+    private var fingerprintTooltip: String {
+        var lines = ["SHA-1  \(PinnedCertificate.groupedHex(fingerprint.uppercased()))"]
+        if let pinned {
+            lines.append("SHA-256  \(PinnedCertificate.groupedHex(pinned.sha256))")
+        }
+        return lines.joined(separator: "\n")
     }
 
     private func note(_ text: String) -> some View {

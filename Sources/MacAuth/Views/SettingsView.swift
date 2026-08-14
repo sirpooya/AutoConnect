@@ -222,10 +222,19 @@ struct SettingsView: View {
                 editingConnection = item
             } label: {
                 HStack(spacing: 8) {
-                    // The title is already the address, so a second line would repeat it with
-                    // a port on the end.
-                    Text(item.displayName)
-                        .font(.system(size: 13))
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(item.displayName)
+                            .font(.system(size: 13))
+
+                        // Who the connection signs in as. The address was tried here once and
+                        // only repeated the title with a port on the end; the username is the
+                        // one thing about a connection the title cannot tell you.
+                        if !item.username.isEmpty {
+                            Text(item.username)
+                                .font(.system(size: 10))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
 
                     Spacer(minLength: 10)
                 }
@@ -373,27 +382,38 @@ struct SettingsView: View {
 
     private func accountRow(_ account: Account) -> some View {
         HStack(spacing: 6) {
-            // The account name alone. The issuer is in the details sheet; on a row that already
-            // carries a code and a countdown it was one more thing to read past.
-            Text(account.displaySubtitle.isEmpty
-                 ? account.displayTitle
-                 : account.displaySubtitle)
-                .font(.system(size: 13))
+            // Clicking the row opens the details sheet, matching the connection rows. Copy Code
+            // stays in the menu: in a management list, reading about the account is the likelier
+            // intent, and the panel is where a code is there to be taken.
+            Button {
+                showDetails(account)
+            } label: {
+                HStack(spacing: 6) {
+                    // The account name alone. The issuer is in the details sheet; on a row that
+                    // already carries a code and a countdown it was one more thing to read past.
+                    Text(account.displaySubtitle.isEmpty
+                         ? account.displayTitle
+                         : account.displaySubtitle)
+                        .font(.system(size: 13))
 
-            Spacer(minLength: 10)
+                    Spacer(minLength: 10)
 
-            Text(state.formattedCode(for: account))
-                .font(.system(size: 13, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
+                    Text(state.formattedCode(for: account))
+                        .font(.system(size: 13, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
 
-            // The same depleting wedge the menu panel uses, rather than a second way of
-            // saying the same thing.
-            CountdownPie(
-                fraction: state.remainingFraction(for: account),
-                color: .secondary,
-                secondsLeft: state.secondsRemaining(for: account)
-            )
+                    // The same depleting wedge the menu panel uses, rather than a second way of
+                    // saying the same thing.
+                    CountdownPie(
+                        fraction: state.remainingFraction(for: account),
+                        color: .secondary,
+                        secondsLeft: state.secondsRemaining(for: account)
+                    )
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
 
             Menu {
                 Button("Copy Code") { state.copy(account) }

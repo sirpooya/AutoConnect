@@ -21,7 +21,7 @@ Keep it minimal and dependency-light. No cloud sync, no accounts, no analytics.
 
 ## Tech Stack (Apple frameworks only, no Swift packages)
 - **Language:** Swift 5.9+
-- **UI:** SwiftUI + `MenuBarExtra` (menu bar app)
+- **UI:** SwiftUI views hosted by AppKit: `NSStatusItem` + `NSPopover`, not `MenuBarExtra`
 - **Min target:** macOS 14 (Sonoma)
 - **QR decode:** `Vision` (`VNDetectBarcodesRequest`) for screen-capture images; `AVFoundation` if using the camera
 - **Crypto / TOTP:** `CryptoKit` (`HMAC<Insecure.SHA1>`, plus SHA256/SHA512 support)
@@ -101,6 +101,54 @@ views in the window".
 `MenuBarExtra` was replaced by `NSStatusItem` + `NSPopover`: `MenuBarExtra` gives no control over
 where its window lands, while a popover anchored to the status button is always centred on the
 icon. Keep it that way.
+
+Two rules come with that popover, both learned from bugs:
+
+- **AppKit installs the monitors that dismiss a `.transient` popover at show time.** `PanelPin`
+  flips the behaviour to `.applicationDefined` so the file picker, the capture overlay and the
+  sign-in window cannot dismiss the panel mid-add. Flipping it back is not enough: the popover
+  must be closed and shown again, or it ignores clicks elsewhere for the rest of its life.
+- The panel also closes on `NSApplication.didResignActiveNotification`, gated on the pin. The
+  popover's own monitors miss cases such as focus leaving while a menu inside it is open, and a
+  menu bar panel left open in the background is the one thing it must never do.
+
+## Menu bar and app icons
+Both are vector artwork the user supplies; neither is drawn in code.
+
+- Status item: `Sources/MacAuth/Resources/on.pdf` and `off.pdf`, shipped as SwiftPM resources and
+  loaded by `MenuBarIcon` at 18x18pt with `isTemplate = true` so macOS tints them for light, dark
+  and the inverted open state. The SVG next to each PDF is the editable source and is excluded
+  from the build. `StatusItemController.apply(phase:)` swaps them: **only `.connected` gets the on
+  glyph**, so the icon never implies a tunnel that is connecting, reconnecting or failed.
+- App icon: `Icons/AppIcon.icon`, an Icon Composer document. `make-app.sh` compiles it with
+  `actool` into both `Assets.car`, which macOS 26 reads for the layered Liquid Glass icon, and a
+  plain `AppIcon.icns` for anything older, then writes `CFBundleIconFile` and `CFBundleIconName`.
+- **Pass `actool` absolute paths.** It resolves relative ones against its own working directory,
+  not the shell's, and fails claiming the output directory does not exist.
+- `make-app.sh` also copies SwiftPM's `MacAuth_MacAuth.bundle` into `Contents/Resources`, which is
+  what makes `Bundle.module` resolve inside the packaged app rather than only under `swift run`.
+
+## Panel UI conventions
+The panel is roughly 320pt wide, so restraint is the whole design. Established by review, and
+worth keeping unless the user says otherwise:
+
+- **11pt is the base text size**, and nearly everything is 11pt: the VPN title, its status line,
+  the account heading, the footer buttons. Weight and `.secondary` / `.tertiary` carry hierarchy,
+  not size. Sizes drifting to 7, 8, 9 and 10pt in one block is what made it look assembled from
+  spare parts. The code itself is the one deliberate exception at 19pt.
+- **Nothing appears, disappears or resizes on hover.** No "Copy" label, no "Copied" label: they
+  changed the row height. The row highlight is the hover affordance, and the code turning green
+  is the copy confirmation.
+- **The countdown is a neutral filled wedge with no digits**, at every stage. No accent colour, no
+  amber, no red: the shape already says how much time is left.
+- The status dot is a plain filled circle. No halo, no pulse.
+- No section headings inside the panel, and no account count. Adding lives in the footer's `+`
+  menu, so the list starts at the top.
+- **Say each thing once.** The VPN block titles the gateway; the account rows title the account.
+  Both have shown the same address at different times, and it always read as a mistake. The tunnel
+  group is not shown at all: it is fixed per connection and the editor already has it.
+- Every way to add an account is declared once, in `AddMethod`, so the menu and the empty state
+  cannot drift apart or offer something the other does not.
 
 ## TOTP Spec (must match RFC 6238 exactly)
 - Default: **SHA1, 6 digits, 30-second period** (Google Authenticator defaults).
@@ -186,6 +234,16 @@ section 4 and section 3. Summary of the behavior contract:
 - If camera QR is used, add `NSCameraUsageDescription` to Info.plist.
 - Keep one signing identity. Re-signing with a different identity can lock the app out of its
   own Keychain items.
+- **Prefer the real Apple Development identity over `SIGN_IDENTITY="-"`.** A Keychain item's ACL
+  and a TCC grant both trust one exact code signature, and every ad-hoc rebuild produces a new
+  one. The app then re-asks for the login Keychain password and for Documents access on every
+  launch, and "Always Allow" only holds until the next build. This is worth saying out loud when
+  the user asks why a prompt keeps coming back: it is the build, not their machine.
+- **Quit the app before running `Scripts/make-app.sh`.** It starts with `rm -rf build/MacAuth.app`,
+  and replacing the bundle under a running process invalidates that process's code signature.
+  The Keychain then refuses the ACL check, so every code renders as `------` while the account
+  names still load, because attribute reads survive and `secret(for:)` does not. It looks like
+  lost secrets and is not: quit, rebuild, reopen.
 - Verified toolchain on this machine: macOS 26.5.1, Xcode 26.6, Swift 6.3.3, arm64.
 
 ## Definition of Done
