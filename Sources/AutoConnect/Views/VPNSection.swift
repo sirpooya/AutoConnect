@@ -15,6 +15,16 @@ struct VPNSection: View {
     /// Whether the statistics block is open. Persisted, so it reopens as it was left.
     @AppStorage("autoconnect.vpnDetailsExpanded") private var showDetails = false
 
+    /// Holds each phase on screen long enough to be read, however fast the real ones move.
+    ///
+    /// The **phase** is paced, not the status string. Pacing the string alone left the rest of the
+    /// row on the real phase, so a connect that finished while the steps were still queued showed a
+    /// green dot beside "Waiting for sign-in". Everything that describes state reads `shown`.
+    @State private var pacer = StatusPacer<VPNController.Phase>()
+
+    /// The phase the row is describing, which trails the real one by at most the dwell.
+    private var shown: VPNController.Phase { pacer.shown ?? vpn.phase }
+
     var body: some View {
         VStack(spacing: 6) {
             HStack(spacing: 8) {
@@ -27,17 +37,17 @@ struct VPNSection: View {
                 actionButton
             }
 
-            if vpn.isConnected {
+            if case .connected = shown {
                 connectedSummary
             }
 
-            if case .failed(let message) = vpn.phase {
+            if case .failed(let message) = shown {
                 errorRow(message)
             }
 
             // While openconnect retries by itself, say so and say why. The address shown above is
             // the one it is trying to keep, not one that is currently carrying traffic.
-            if case .reconnecting = vpn.phase {
+            if case .reconnecting = shown {
                 HStack(spacing: 6) {
                     Image(systemName: "arrow.triangle.2.circlepath")
                         .font(.system(size: 9))
@@ -55,6 +65,26 @@ struct VPNSection: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+        .onAppear { submitPhase() }
+        .onChange(of: vpn.phase) { submitPhase() }
+    }
+
+    private func submitPhase() {
+        pacer.submit(
+            vpn.phase,
+            minimumDwell: params.statusMinimumDwell,
+            immediately: interruptsSequence,
+            // Connecting shows one line; connected adds the pill row, so the block changes height
+            // and the panel with it. The spring goes to the pacer rather than onto this view,
+            // because the pacer owns the moment the phase changes and `withAnimation` there covers
+            // the ancestors that do the resizing. The popover follows too: `StatusItemController`
+            // gives its hosting controller `.preferredContentSize`, so each frame of the spring is
+            // a new content size.
+            animation: .spring(
+                duration: params.rowResizeDuration,
+                bounce: params.rowResizeBounce
+            )
+        )
     }
 
     // MARK: - Which connection
@@ -119,11 +149,11 @@ struct VPNSection: View {
             // repeats the Set Up button beside it, and "Not connected" invites waiting for a
             // connection nothing will ever start.
             if isConfigured {
-                StatusLine(
-                    text: vpn.phase.label,
-                    isShimmering: params.shimmerAlways || vpn.phase.isWorking,
-                    isFinal: interruptsSequence
-                )
+                // Only the four connect steps and reconnecting shimmer. Those are the states where
+                // the app is waiting on something and nothing else on screen moves; "Not
+                // connected", "Connected" and "Failed" are settled, and a highlight crossing them
+                // says work is under way when none is.
+                StatusLine(text: shown.label, isShimmering: shown.isWorking)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -146,15 +176,18 @@ struct VPNSection: View {
     /// Whether this status cuts the sequence short rather than continuing it, and so skips the
     /// pacer's queue.
     ///
-    /// Only three do: a disconnect, which the user just clicked and must see answered; a failure,
-    /// which nobody sees if it waits behind three progress steps; and a drop into reconnecting,
-    /// which is now true of a tunnel that was up. **`connected` is not one of them.** It used to
-    /// be, as "anything that is not working", and that made the dwell knob look broken: the end of
-    /// a connect arrived while the steps were still queued and flushed every one of them, so the
-    /// line jumped from "Not connected" straight to "Connected" whatever the dwell was set to.
+    /// Four do. Two answer a click and must not wait behind anything: a disconnect, and the first
+    /// step of a connect, which is the only feedback that the switch did something. The other two
+    /// are news that nobody sees if it queues: a failure, and a drop into reconnecting.
+    ///
+    /// **`connected` is not one of them.** It used to be, as "anything that is not working", and
+    /// that made the dwell knob look broken: the end of a connect arrived while the steps were still
+    /// queued and flushed every one of them, so the line jumped from "Not connected" straight to
+    /// "Connected" whatever the dwell was set to. Only the *first* step of a connect skips the
+    /// queue; the ones after it are what the dwell exists to pace.
     private var interruptsSequence: Bool {
         switch vpn.phase {
-        case .idle, .failed, .reconnecting: true
+        case .idle, .contactingGateway, .failed, .reconnecting: true
         default: false
         }
     }
@@ -314,7 +347,7 @@ struct VPNSection: View {
     }
 
     private var statusColor: Color {
-        switch vpn.phase {
+        switch shown {
         case .connected: return .green
         case .failed: return .red
         case .idle: return .secondary

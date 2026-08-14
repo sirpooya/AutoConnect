@@ -310,9 +310,8 @@ struct SettingsView: View {
             }
         }
         SettingsFootnote(
-            text: "Renews the session five minutes before the gateway expires it, and "
-                + "restores the tunnel if it drops or the network changes. Never connects "
-                + "on its own before you have connected once."
+            text: "Renews the session before expiry and restores the tunnel if it drops or "
+                + "the network changes. Never connects on its own until you have connected once."
         )
     }
 
