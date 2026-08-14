@@ -19,6 +19,7 @@ struct SettingsView: View {
     @State private var certificateSHA1 = ""
     @State private var openconnectPath = ""
     @State private var status: String?
+    @State private var launchAtLogin = false
 
     var body: some View {
         Form {
@@ -66,6 +67,25 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+            }
+
+            Section("Behaviour") {
+                Toggle("Reconnect automatically", isOn: $vpn.autoReconnect)
+
+                Text("Renews the session five minutes before the gateway expires it, and restores "
+                     + "the tunnel if it drops or the network changes. Never connects on its own "
+                     + "before you have connected once.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Toggle("Launch at login", isOn: $launchAtLogin)
+                    .onChange(of: launchAtLogin) { _, enabled in
+                        if let message = LaunchAtLogin.set(enabled) {
+                            status = message
+                            // Reflect what macOS actually did, not what was asked for.
+                            launchAtLogin = LaunchAtLogin.isEnabled
+                        }
+                    }
             }
 
             Section("openconnect") {
@@ -128,6 +148,7 @@ struct SettingsView: View {
         openconnectPath = profile.openconnectPath
         otpAccountID = profile.otpAccountID
         passwordIsStored = store.hasPassword(account: profile.credentialAccount)
+        launchAtLogin = LaunchAtLogin.isEnabled
     }
 
     private func save() {

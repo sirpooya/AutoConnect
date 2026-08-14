@@ -34,35 +34,57 @@ Keep it minimal and dependency-light. No cloud sync, no accounts, no analytics.
 > `openconnect` is an external binary, not a library dependency; that is the one exception.
 
 ## Project Layout
+
+A Swift package with two targets, so `swift test` covers all the logic from the terminal and the
+UI stays out of the tested surface. `Scripts/make-app.sh` wraps the executable into the `.app`
+bundle a menu-bar app needs. **Anything worth testing belongs in `MacAuthCore`**, which is why
+`ReconnectPolicy` lives there despite being used only by the app.
+
 ```
-MacAuth/
-├── MacAuthApp.swift              # @main, MenuBarExtra scene
-├── Models/
-│   ├── Account.swift             # issuer, label, secret ref, algorithm, digits, period
-│   └── VPNProfile.swift          # gateway URL, tunnel group, cert pin, credential refs
-├── Crypto/
-│   ├── Base32.swift              # RFC 4648 decode
-│   └── TOTP.swift                # RFC 6238 code generation
-├── Storage/
-│   └── KeychainStore.swift       # accounts, VPN password, TOTP seed
-├── QR/
-│   └── QRScanner.swift           # Vision-based otpauth:// extraction
-├── VPN/
-│   ├── GatewayClient.swift       # config-auth init + auth-reply over URLSession
-│   ├── ConfigAuthXML.swift       # request builders + response parsing (pure, unit tested)
-│   ├── SAMLLoginController.swift # WKWebView login, autofill, acSamlv2Token capture
-│   ├── OpenConnectRunner.swift   # Process spawn, stdout parsing, state machine
-│   └── TunnelMonitor.swift       # utun presence, route check, expiry countdown
-├── Views/
-│   ├── MenuView.swift            # VPN status + countdown + account list
-│   ├── LoginWindow.swift         # hosts the WKWebView, shown only when autofill stalls
-│   ├── AddAccountView.swift      # add via QR or manual secret entry
-│   └── SettingsView.swift        # gateway, group, binary path, launch at login
-└── Tests/
-    ├── TOTPTests.swift           # RFC 6238 test vectors
-    ├── Base32Tests.swift         # padding, lowercase, whitespace
-    └── ConfigAuthXMLTests.swift  # parse captured real gateway responses from fixtures
+Sources/
+├── MacAuthCore/                      # pure logic, no UI, 103 tests
+│   ├── Crypto/
+│   │   ├── Base32.swift              # RFC 4648 decode + encode
+│   │   └── TOTP.swift                # RFC 6238 / RFC 4226 truncation
+│   ├── Models/
+│   │   ├── Account.swift             # metadata + otpauth:// parsing (never holds a secret)
+│   │   └── VPNProfile.swift          # gateway, group, cert pin, credential references
+│   ├── Storage/
+│   │   ├── AccountStoring.swift      # storage protocol + InMemoryAccountStore for fakes
+│   │   ├── KeychainStore.swift       # accounts and their TOTP secrets
+│   │   └── VPNSettingsStore.swift    # profile in UserDefaults, VPN password in Keychain
+│   └── VPN/
+│       ├── ConfigAuthXML.swift        # Cisco config-auth builders + parser
+│       ├── GatewayClient.swift        # the two POSTs, with SHA1 certificate pinning
+│       ├── OpenConnectRunner.swift    # process spawn, output parsing, state machine
+│       ├── ReconnectPolicy.swift      # when to renew, back off, or give up
+│       └── TunnelStats.swift          # netstat counters, rates, byte formatting
+└── MacAuth/                           # the app
+    ├── MacAuthApp.swift               # @main, Settings scene, playground window
+    ├── StatusItemController.swift     # NSStatusItem + NSPopover (not MenuBarExtra, see below)
+    ├── AppState.swift                 # accounts, ticker, code cache, clipboard
+    ├── PanelPin.swift                 # keeps the popover up across system windows
+    ├── WindowActivation.swift         # counted .regular/.accessory policy switching
+    ├── LaunchAtLogin.swift            # SMAppService login item
+    ├── QR/QRScanner.swift             # Vision barcode detection
+    ├── VPN/
+    │   ├── VPNController.swift        # sequences the four connect steps, owns VPN state
+    │   ├── SAMLLoginController.swift  # WKWebView login, acSamlv2Token capture
+    │   └── LoginFormFiller.swift      # injected scanner/filler for the IdP form
+    ├── Views/
+    │   ├── MenuPanel.swift            # panel root, account list, add menu
+    │   ├── VPNSection.swift           # status, gateway, statistics
+    │   ├── ThroughputChart.swift      # download area + upload line sparkline
+    │   ├── AccountRow.swift           # code, countdown pie, copy
+    │   ├── AccountFormView.swift      # manual add and edit
+    │   └── SettingsView.swift         # gateway, credentials, OTP source, behaviour
+    └── Playground/
+        └── VPNStatusPlayground.swift  # dev-only tuning window, fake VPN states
 ```
+
+`MenuBarExtra` was replaced by `NSStatusItem` + `NSPopover`: `MenuBarExtra` gives no control over
+where its window lands, while a popover anchored to the status button is always centred on the
+icon. Keep it that way.
 
 ## TOTP Spec (must match RFC 6238 exactly)
 - Default: **SHA1, 6 digits, 30-second period** (Google Authenticator defaults).
@@ -132,34 +154,52 @@ section 4 and section 3. Summary of the behavior contract:
 
 ## Definition of Done
 
-VPN connector (primary):
-- [ ] `ConfigAuthXML` parses captured real init and auth-reply responses in unit tests.
-- [ ] Connects to `MFA-VPN` end to end and brings up a working tunnel with corporate DNS.
-- [ ] Menu bar shows state, assigned IP, and a live countdown to session expiry.
-- [ ] Autofill completes a connect with zero typing, and falls back to a visible window when a
-      selector fails.
-- [ ] Cert pinned by SHA1; a mismatched cert refuses to connect.
-- [ ] Disconnect tears down the tunnel and restores routing.
-- [ ] Auto-reconnect near expiry works.
-- [ ] Missing openconnect binary produces a clear, actionable message.
+Authenticator (done, verified against the user's live accounts):
+- [x] TOTP unit tests pass against all RFC 6238 Appendix B vectors (SHA1/256/512).
+- [x] Base32 decoder handles padding, lowercase, spaces, hyphens, impossible lengths.
+- [x] Can add an account by scanning the screen, by image, by pasted link, by manual entry.
+- [x] Live code + per-account countdown render in the panel.
+- [x] One-click copy with visual confirmation.
+- [x] Secrets persist across launches via Keychain; delete removes them.
+- [x] Codes match the user's existing authenticator.
 
-Authenticator (secondary):
-- [ ] TOTP unit tests pass against RFC 6238 vectors (SHA1/256/512).
-- [ ] Base32 decoder handles padding and lowercase input.
-- [ ] Can add an account via `otpauth://` QR and via manual entry.
-- [ ] Live code + countdown render in the menu bar dropdown.
-- [ ] One-click copy to clipboard works with visual confirmation.
-- [ ] Secrets persist across launches via Keychain; delete removes them.
+VPN connector:
+- [x] `ConfigAuthXML` parses captured real init and auth-reply responses in unit tests.
+- [x] Cert pinning by SHA1, cross-checked against the fingerprint the gateway reports.
+- [x] Menu bar shows state, gateway, assigned IP, session countdown, and statistics.
+- [x] Statistics parse real `netstat` output; throughput chart with shared scale.
+- [x] Shutdown targets this app's own process only, never a bare `openconnect` name match.
+- [x] Missing openconnect binary produces a clear, actionable message.
+- [x] Settings pane: gateway, group, cert pin, username, password, OTP source, binary path.
+- [x] Reconnect decisions are pure and tested (renewal lead, backoff, give-up, network change).
+- [ ] **Connects end to end and brings up a working tunnel with corporate DNS.** Not yet run.
+- [ ] Autofill completes a connect with zero typing, falling back to the visible window.
+- [ ] Disconnect tears down the tunnel and restores routing.
+- [ ] Auto-reconnect near expiry works in practice.
+
+**Everything unchecked needs a live connect, and the user must be asked first.** See below.
 
 ## Working Style for Claude Code
 - **Read `plan.md` first.** Follow its phase order. It exists so the gateway protocol and the
   discovered facts are not rediscovered every session.
-- Start with `Base32.swift` and `TOTP.swift` + tests; get codes matching a real authenticator
-  before touching UI.
-- Then `KeychainStore`, then the gateway XML layer against fixtures, then the manual `WKWebView`
-  login, then status UI, then autofill. QR scanning last.
-- Get a manual path working before automating it. Autofill is the most fragile part and should
-  never be the only path.
-- Capture real gateway and IdP responses as test fixtures, with secrets redacted.
+- **Never connect, disconnect, or kill a VPN process without explicit permission.** The user
+  routinely has their own openconnect running and depends on it; taking it down loses their work.
+  Read-only inspection (`netstat`, `ifconfig`, `scutil --dns`, `pgrep`) is fine.
+- Get a manual path working before automating it. Autofill is the most fragile part and must never
+  be the only path: when a selector does not match, show the window and let the user finish.
+- Capture real gateway and IdP responses as test fixtures, with secrets redacted. The parsers exist
+  to handle the bytes Cisco actually sends, not an idealised version.
+- Put testable logic in `MacAuthCore`, not the app target, and never duplicate a type into a test
+  file to make it reachable.
+- Use the playground for UI work instead of connecting. Preview controllers must never touch the
+  machine: a mock that polls reads the user's real tunnel, which has already happened once.
 - Commit in small, working increments. Explain any deviation from this spec.
 - Ask before adding any external dependency.
+
+## Playground convention
+Dev-only tuning windows follow the pattern in `Sources/MacAuth/Playground/`: an `@Observable`
+params object the shipping views read, a `Codable` snapshot decoded key-by-key with defaults
+(never the synthesized decoder, or adding a knob discards the saved set), a mock stage rendering
+the real views, and a controls sidebar. Sliders snap by rounding inside the binding, never with
+`Slider(step:)`, which draws tick marks. Only expose knobs that cannot be judged from a static
+screenshot; measured constants stay constants.

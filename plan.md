@@ -139,6 +139,11 @@ Two stages. **Stage A ships a complete, usable authenticator app** that can repl
 extension on its own. **Stage B** adds the VPN connector on top of it. Ordered this way on the
 user's call, so there is a real working app in the menu bar before any VPN work starts.
 
+> **Progress as of 2026-08-14.** Stage A is complete and in use. Stage B is written through B5 but
+> **nothing has been run against the live gateway yet**: B1 is fixture-tested, B2 to B5 are
+> unverified code. 103 tests pass. The user keeps their own `openconnect-sso` session running, so
+> no connect, disconnect, or process kill happens without asking.
+
 ### Stage A: the authenticator app (ships standalone)
 
 **A1. Crypto + tests.** `Base32.swift`, `TOTP.swift`, RFC 6238 vectors for SHA1/256/512.
@@ -179,6 +184,32 @@ fallback whenever a selector does not match. Done when a connect needs zero typi
 login, disconnect that tears down cleanly.
 
 **B6 (optional).** Replace the sudoers rule with an `SMAppService` privileged helper.
+
+### What is written but unverified
+
+Code exists and compiles for B2 to B5; none of it has met the gateway. The first live connect is
+the next real milestone and needs the user present, because it disconnects their current session.
+
+Two things that must be true before that run:
+
+1. The sudoers rule is installed, scoped to the pid-file marker:
+   ```
+   pooya ALL=(root) NOPASSWD: /opt/homebrew/bin/openconnect, /usr/bin/pkill -INT -f /tmp/macauth-openconnect.pid
+   ```
+   An earlier version of this rule allowed `pkill -f openconnect`, which would have killed the
+   user's own terminal session. Never widen it back.
+2. Settings has a username, a stored password, and an OTP account selected, or autofill has nothing
+   to work with and the login window will simply wait for typing.
+
+### Extras built beyond the original plan
+
+- **Statistics and a throughput chart.** openconnect has no stats option, so counters come from
+  `netstat -ibn`. Sampling spawns a process, so it only runs while the statistics block is visible.
+- **A tuning playground** (`Sources/MacAuth/Playground/`) that drives the real VPN row through all
+  seven phases with fake data, so UI work needs no gateway.
+- **`WindowActivation`**, a counted activation-policy switch. A menu-bar app must return to
+  `.accessory` when its last window closes; left in `.regular`, `NSApp.activate` makes AppKit
+  conjure a window, which surfaced as a blank Settings panel.
 
 ## 8. Risks
 

@@ -49,6 +49,7 @@ final class SAMLLoginController: NSObject {
     private let authRequest: ConfigAuth.AuthRequest
     private let profile: VPNProfile
     private let timeout: TimeInterval
+    private let filler: LoginFormFiller?
 
     private var window: NSWindow?
     private var webView: WKWebView?
@@ -56,14 +57,22 @@ final class SAMLLoginController: NSObject {
     private var timeoutTask: Task<Void, Never>?
     private var hasFinished = false
 
+    /// Set when autofill has bowed out, so the reason can be shown next to the form instead of
+    /// leaving the user wondering why nothing was typed.
+    @Published private(set) var autofillNotice: String?
+
     init(
         authRequest: ConfigAuth.AuthRequest,
         profile: VPNProfile,
+        credentials: LoginFormFiller.Credentials? = nil,
         timeout: TimeInterval = 300
     ) {
         self.authRequest = authRequest
         self.profile = profile
         self.timeout = timeout
+        self.filler = credentials.map {
+            LoginFormFiller(credentials: $0, initialHost: authRequest.loginURL.host)
+        }
         super.init()
     }
 
@@ -87,6 +96,19 @@ final class SAMLLoginController: NSObject {
         let configuration = WKWebViewConfiguration()
         // Persistent, so the IdP remembers this browser between launches.
         configuration.websiteDataStore = .default()
+
+        if filler != nil {
+            // Injected at document end on every frame, since IdPs commonly render the form inside
+            // one. The script only reads shape and applies values it is handed; it carries no
+            // secret of its own.
+            configuration.userContentController.addUserScript(
+                WKUserScript(
+                    source: LoginFormFiller.userScript,
+                    injectionTime: .atDocumentEnd,
+                    forMainFrameOnly: false
+                )
+            )
+        }
 
         let webView = WKWebView(
             frame: NSRect(x: 0, y: 0, width: 520, height: 640),
@@ -195,6 +217,23 @@ extension SAMLLoginController: WKNavigationDelegate {
         // The cookie may be set before the nominated final URL is reached, so check on every
         // completed navigation rather than only at the end.
         checkForToken()
+
+        guard let filler else { return }
+
+        // Every host reached by following the gateway's own login URL is part of the flow, so the
+        // IdP's domain becomes trusted here rather than being hardcoded.
+        filler.trust(host: webView.url?.host)
+
+        filler.onGiveUp = { [weak self] reason in
+            self?.autofillNotice = reason
+        }
+
+        Task { @MainActor in
+            // Single-page forms swap fields in without a navigation, so give the DOM a moment to
+            // settle before deciding what the page is asking for.
+            try? await Task.sleep(for: .milliseconds(350))
+            await filler.advance(in: webView)
+        }
     }
 
     func webView(

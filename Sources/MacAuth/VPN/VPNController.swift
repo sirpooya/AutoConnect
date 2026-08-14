@@ -1,5 +1,6 @@
 import Foundation
 import MacAuthCore
+import Network
 
 /// Drives the whole connect sequence and owns the VPN's observable state.
 ///
@@ -71,6 +72,25 @@ final class VPNController: ObservableObject {
     /// True for controllers built by `preview`. Suppresses anything that would touch the real
     /// machine, so a mock cannot display or disturb a live tunnel.
     private var isPreview = false
+
+    // MARK: Reconnection
+
+    /// Whether automatic reconnection is wanted. Off by default: an app that dials a corporate
+    /// VPN unasked is worse than one that waits to be told.
+    @Published var autoReconnect = UserDefaults.standard.bool(forKey: "macauth.autoReconnect") {
+        didSet {
+            UserDefaults.standard.set(autoReconnect, forKey: "macauth.autoReconnect")
+            autoReconnect ? scheduleRenewal() : cancelRenewal()
+        }
+    }
+
+    private let policy = ReconnectPolicy()
+    private var renewalTask: Task<Void, Never>?
+    private var pathMonitor: NWPathMonitor?
+    private var consecutiveFailures = 0
+    /// True once the user has connected at least once this launch, so a network change can restore
+    /// a tunnel they asked for without ever starting one they did not.
+    private var userHasConnected = false
 
     /// Loads the saved profile, falling back to the verified defaults for this project's gateway
     /// so a fresh install is usable before anyone opens Settings.
@@ -147,6 +167,9 @@ final class VPNController: ObservableObject {
     func connect() {
         guard connectTask == nil, !isConnected else { return }
 
+        userHasConnected = true
+        startNetworkMonitorIfNeeded()
+
         connectTask = Task { [weak self] in
             // The sign-in window takes focus, which would otherwise dismiss the transient panel
             // before the user could see the result.
@@ -168,7 +191,11 @@ final class VPNController: ObservableObject {
 
             // Step 2.
             phase = .awaitingLogin
-            let login = SAMLLoginController(authRequest: authRequest, profile: profile)
+            let login = SAMLLoginController(
+                authRequest: authRequest,
+                profile: profile,
+                credentials: autofillCredentials()
+            )
             self.login = login
             let ssoToken = try await login.obtainSSOToken()
             self.login = nil
@@ -213,6 +240,43 @@ final class VPNController: ObservableObject {
         }
     }
 
+    /// Gathers what autofill needs, or nil when there is nothing useful to fill.
+    ///
+    /// The password is read from the Keychain at connect time, and the one-time code is produced
+    /// by a closure so it is generated at the instant the field is reached rather than seconds
+    /// earlier, when it might already have rolled over.
+    private func autofillCredentials() -> LoginFormFiller.Credentials? {
+        let settings = VPNSettingsStore()
+        let password = settings.password(account: profile.credentialAccount)
+
+        // With no username there is nothing to start from, so let the user drive.
+        guard !profile.username.isEmpty else { return nil }
+
+        let otpAccountID = profile.otpAccountID
+        let accountStore = KeychainStore()
+
+        return LoginFormFiller.Credentials(
+            username: profile.username,
+            password: password,
+            oneTimeCode: {
+                guard let otpAccountID,
+                      let account = (try? accountStore.loadAccounts())?
+                        .first(where: { $0.id == otpAccountID }),
+                      let secret = try? accountStore.secret(for: otpAccountID)
+                else {
+                    return nil
+                }
+
+                return TOTP.generate(
+                    secret: secret,
+                    algorithm: account.algorithm,
+                    digits: account.digits,
+                    period: account.period
+                )
+            }
+        )
+    }
+
     private func startTunnel(sessionToken: String, serverCertHash: String) throws {
         let runner = OpenConnectRunner(profile: profile)
         self.runner = runner
@@ -231,20 +295,115 @@ final class VPNController: ObservableObject {
         case .disconnected:
             phase = .idle
             stopClock()
+            // A tunnel that dropped on its own is exactly what auto-reconnect is for.
+            if autoReconnect, userHasConnected { scheduleRetryAfterFailure() }
+
         case .connecting:
             phase = .startingTunnel
+
         case .connected(let tunnel):
             phase = .connected(tunnel)
+            consecutiveFailures = 0
             startClock()
+            if autoReconnect { scheduleRenewal() }
+
         case .failed(let message):
             phase = .failed(message)
             stopClock()
+            if autoReconnect { scheduleRetryAfterFailure() }
         }
+    }
+
+    // MARK: - Reconnection
+
+    /// Schedules a renewal shortly before the gateway's session expires, so a twelve-hour day does
+    /// not end with an abrupt disconnection mid-task.
+    private func scheduleRenewal() {
+        cancelRenewal()
+        guard !isPreview, autoReconnect else { return }
+
+        switch policy.decideRenewal(expiry: tunnel?.sessionExpiry, now: Date()) {
+        case .wait, .giveUp:
+            return
+        case .reconnectNow:
+            renew()
+        case .reconnect(let delay):
+            renewalTask = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(delay))
+                guard !Task.isCancelled else { return }
+                self?.renew()
+            }
+        }
+    }
+
+    private func scheduleRetryAfterFailure() {
+        cancelRenewal()
+        guard !isPreview else { return }
+
+        consecutiveFailures += 1
+
+        switch policy.decideAfterFailure(consecutiveFailures: consecutiveFailures) {
+        case .giveUp(let reason):
+            phase = .failed(reason)
+            consecutiveFailures = 0
+        case .reconnect(let delay):
+            renewalTask = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(delay))
+                guard !Task.isCancelled else { return }
+                self?.renew()
+            }
+        case .wait, .reconnectNow:
+            renew()
+        }
+    }
+
+    /// Tears down and reconnects. The IdP cookie usually survives in the webview's persistent
+    /// store, so this often completes without any typing.
+    private func renew() {
+        guard autoReconnect, userHasConnected else { return }
+
+        runner?.disconnect()
+        runner = nil
+        connectTask?.cancel()
+        connectTask = nil
+        connect()
+    }
+
+    private func cancelRenewal() {
+        renewalTask?.cancel()
+        renewalTask = nil
+    }
+
+    /// Watches for the network coming back, so a laptop waking on a different Wi-Fi restores the
+    /// tunnel instead of sitting silently disconnected.
+    private func startNetworkMonitorIfNeeded() {
+        guard pathMonitor == nil, !isPreview else { return }
+
+        let monitor = NWPathMonitor()
+        monitor.pathUpdateHandler = { [weak self] path in
+            Task { @MainActor in
+                guard let self else { return }
+                let shouldReconnect = self.policy.shouldReconnectOnNetworkChange(
+                    isNetworkAvailable: path.status == .satisfied,
+                    isTunnelUp: self.isConnected,
+                    wasConnectedBefore: self.userHasConnected
+                )
+                if shouldReconnect, self.autoReconnect { self.scheduleRetryAfterFailure() }
+            }
+        }
+        monitor.start(queue: DispatchQueue(label: "macauth.network"))
+        pathMonitor = monitor
     }
 
     // MARK: - Disconnect
 
     func disconnect() {
+        // An explicit disconnect is an instruction, not a fault: cancel any pending retry and
+        // clear the "user wanted this" flag so nothing dials back in behind their back.
+        cancelRenewal()
+        userHasConnected = false
+        consecutiveFailures = 0
+
         connectTask?.cancel()
         connectTask = nil
         runner?.disconnect()

@@ -10,9 +10,15 @@ directly.
 ## Build and run
 
 ```bash
-swift test              # 44 tests, including every RFC 6238 Appendix B vector
+swift test              # 103 tests, including every RFC 6238 Appendix B vector
 ./Scripts/make-app.sh   # produces build/MacAuth.app, signed
 open build/MacAuth.app
+```
+
+For a build with the tuning playground and its footer button:
+
+```bash
+CONFIG=debug ./Scripts/make-app.sh
 ```
 
 To keep it around:
@@ -70,23 +76,28 @@ final five seconds. Accounts using non-default settings (anything other than SHA
 
 ```
 Sources/
-  MacAuthCore/            # pure logic, no UI, fully unit tested
-    Crypto/Base32.swift   # RFC 4648
-    Crypto/TOTP.swift     # RFC 6238 + RFC 4226 truncation
-    Models/Account.swift  # account model + otpauth:// parsing
-    Storage/KeychainStore.swift
-  MacAuth/                # the menu bar app
-    MacAuthApp.swift      # MenuBarExtra scene
-    AppState.swift        # accounts, ticker, code cache, clipboard
-    QR/QRScanner.swift    # Vision barcode detection
-    Views/                # panel, rows, form, confirmations
-Tests/MacAuthCoreTests/   # 44 tests
+  MacAuthCore/              # pure logic, no UI, all of it unit tested
+    Crypto/                 # Base32 (RFC 4648), TOTP (RFC 6238 + 4226)
+    Models/                 # Account + otpauth:// parsing, VPNProfile
+    Storage/                # AccountStoring, KeychainStore, VPNSettingsStore
+    VPN/                    # ConfigAuthXML, GatewayClient, OpenConnectRunner,
+                            # ReconnectPolicy, TunnelStats
+  MacAuth/                  # the app
+    StatusItemController.swift   # NSStatusItem + NSPopover
+    AppState.swift               # accounts, ticker, code cache, clipboard
+    WindowActivation.swift       # counted activation-policy switching
+    QR/                          # Vision barcode detection
+    VPN/                         # VPNController, SAMLLoginController, LoginFormFiller
+    Views/                       # panel, VPN section, chart, rows, forms, settings
+    Playground/                  # dev-only tuning window
+Tests/MacAuthCoreTests/     # 103 tests
 ```
 
-This is a Swift package rather than an Xcode project, so `swift test` runs the whole core suite
-from the terminal. `Scripts/make-app.sh` wraps the executable into the `.app` bundle that a
-menu-bar app needs. That is the one deviation from the layout in CLAUDE.md, which assumed a
-single flat target.
+A Swift package rather than an Xcode project, so `swift test` runs the whole suite from the
+terminal, and `Scripts/make-app.sh` wraps the executable into the `.app` bundle a menu-bar app
+needs. Two deviations from the layout sketched in CLAUDE.md, both deliberate and documented there:
+the split into a core library plus an app target, and `NSStatusItem` in place of `MenuBarExtra`
+(which gives no control over where its window lands).
 
 ## How secrets are stored
 
@@ -107,6 +118,54 @@ lifetime of their 30-second step, so the Keychain is touched roughly once per ac
 instead of once per second.
 
 Nothing is written to `UserDefaults` or to any plist. Secrets are never logged.
+
+## The VPN half
+
+Settings (Cmd+comma, or the footer button) configures everything; nothing is hardcoded:
+
+| Setting | Purpose |
+|---|---|
+| Address, Group | The gateway and its tunnel group, as AnyConnect's dropdown shows them |
+| Certificate SHA1 | Pins the gateway, which typically has no publicly trusted signer |
+| Username | Typed into the identity provider's form |
+| Password | Stored in the Keychain, never in a plist |
+| OTP from | Which authenticator account supplies the one-time code |
+| Reconnect automatically | Renews before expiry, restores after a drop or network change |
+| Launch at login | Registers a login item via `SMAppService` |
+| Binary | Path to openconnect, with a warning when it is missing |
+
+Connecting runs four steps: ask the gateway how to authenticate, log in through a `WKWebView` this
+app owns, trade the resulting SAML token for a session token, then hand that to `openconnect` over
+stdin. The full protocol is documented in [plan.md](plan.md) section 4.
+
+While connected the panel shows the gateway, the assigned address, a countdown to session expiry,
+and behind a disclosure a throughput chart plus traffic, transferred, uptime, transport, interface
+and MTU. Counters come from `netstat`, sampled only while that block is open.
+
+### Two safety properties worth knowing
+
+**Shutdown cannot touch another openconnect.** The tunnel is started with
+`--pid-file /tmp/macauth-openconnect.pid` and stopped by matching that path, so an openconnect you
+started yourself in a terminal is never a target. A test asserts the kill pattern contains no bare
+process-name match.
+
+**Autofill never fails closed.** The injected script reports what the page is asking for and the
+app answers with one value; the password is only ever sent to an HTTPS origin reached by following
+redirects from the gateway's own login URL. When a field cannot be found, or the page reports an
+error, autofill stops and the window stays open for you to finish by hand.
+
+### Root privilege
+
+openconnect needs root to create the tunnel device. Either accept a password prompt per connect, or
+install a narrowly scoped sudoers rule:
+
+```
+pooya ALL=(root) NOPASSWD: /opt/homebrew/bin/openconnect, /usr/bin/pkill -INT -f /tmp/macauth-openconnect.pid
+```
+
+Be aware of what that buys: openconnect can run arbitrary scripts via `--script`, so the rule is
+effectively passwordless root for anything running as you. Replacing it with a privileged helper is
+the remaining optional phase.
 
 ## Verifying correctness
 
