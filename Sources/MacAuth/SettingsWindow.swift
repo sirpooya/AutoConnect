@@ -16,7 +16,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     private var window: NSWindow?
 
     /// Opens the pane, or brings it forward if it is already up.
-    func show(state: AppState, vpn: VPNController) {
+    func show(state: AppState, vpn: VPNController, notifier: VPNStatusNotifier) {
         // A menu-bar-only app is `.accessory` and cannot take key focus, so text fields would
         // refuse first responder. WindowActivation switches to `.regular` and back.
         WindowActivation.claim()
@@ -30,6 +30,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
             rootView: SettingsView()
                 .environmentObject(state)
                 .environmentObject(vpn)
+                .environmentObject(notifier)
         )
         // The pane is a fixed size (tabs, each scrolling inside a constant frame), so the window
         // gets that size directly. Sizing it from `preferredContentSize` instead makes AppKit

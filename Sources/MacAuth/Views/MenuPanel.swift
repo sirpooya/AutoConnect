@@ -64,11 +64,12 @@ struct AccountListView: View {
     @EnvironmentObject private var state: AppState
     /// Needed to hand the settings window the same objects the panel uses.
     @EnvironmentObject private var vpn: VPNController
+    @EnvironmentObject private var notifier: VPNStatusNotifier
 
     /// Opens the app's own settings window. Deliberately not SwiftUI's `Settings` scene, which
     /// macOS opens by itself at launch.
     private func openSettings() {
-        SettingsWindow.shared.show(state: state, vpn: vpn)
+        SettingsWindow.shared.show(state: state, vpn: vpn, notifier: notifier)
     }
 
     var body: some View {

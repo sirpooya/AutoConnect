@@ -48,7 +48,22 @@ final class VPNController: ObservableObject {
         }
     }
 
-    @Published private(set) var phase: Phase = .idle
+    @Published private(set) var phase: Phase = .idle {
+        didSet {
+            // A renewal ends the moment it has an answer, either way. `didSet` rather than a
+            // line in each of the places that reach these phases, because missing one leaves
+            // the flag stuck on and the next real drop silently unreported.
+            switch phase {
+            case .connected, .failed: isRenewing = false
+            default: break
+            }
+        }
+    }
+
+    /// True while an automatic renewal is tearing the tunnel down in order to build it again.
+    /// That drop is a step of the renewal, not a disconnection, and nothing should report it as
+    /// one: a session renewed at midday would otherwise announce itself twice for no change.
+    @Published private(set) var isRenewing = false
     /// The connection the menu bar acts on. Assigning it switches which gateway Connect dials.
     @Published var profile: VPNProfile
     /// Every configured connection, so the panel and Settings can list and switch between them.
@@ -456,6 +471,7 @@ final class VPNController: ObservableObject {
     private func renew() {
         guard autoReconnect, userHasConnected else { return }
 
+        isRenewing = true
         runner?.disconnect()
         runner = nil
         connectTask?.cancel()
@@ -557,6 +573,9 @@ final class VPNController: ObservableObject {
         cancelRenewal()
         userHasConnected = false
         consecutiveFailures = 0
+        // Whatever a renewal was doing, this supersedes it: the tunnel is going down and staying
+        // down, which is worth reporting even if a renewal was mid-flight.
+        isRenewing = false
 
         connectTask?.cancel()
         connectTask = nil

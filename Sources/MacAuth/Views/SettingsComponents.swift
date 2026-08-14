@@ -89,6 +89,19 @@ struct SettingsFieldRow: View {
     }
 }
 
+/// The small unlabelled switch every toggle row uses, so seven of them cannot
+/// drift into three sizes.
+struct SettingsSwitch: View {
+    @Binding var isOn: Bool
+
+    var body: some View {
+        Toggle("", isOn: $isOn)
+            .toggleStyle(.switch)
+            .controlSize(.small)
+            .labelsHidden()
+    }
+}
+
 /// A bold section header above a card.
 struct SettingsSectionHeader: View {
     let text: String

@@ -16,6 +16,7 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject private var state: AppState
     @EnvironmentObject private var vpn: VPNController
+    @EnvironmentObject private var notifier: VPNStatusNotifier
 
     private let store = VPNSettingsStore()
 
@@ -279,60 +280,120 @@ struct SettingsView: View {
     }
 
 
+    /// Split into one property per section. As one ViewBuilder it was both over the ten-child
+    /// limit and slow enough to type-check to be worth avoiding.
     private var generalTab: some View {
         SettingsTabBody {
-            SettingsSectionHeader(text: "Reconnect")
-            SettingsCard {
-                SettingsRow(title: "Reconnect automatically") {
-                    Toggle("", isOn: $vpn.autoReconnect)
-                        .toggleStyle(.switch)
-                        .controlSize(.small)
-                        .labelsHidden()
-                }
-            }
-            SettingsFootnote(
-                text: "Renews the session five minutes before the gateway expires it, and "
-                    + "restores the tunnel if it drops or the network changes. Never connects "
-                    + "on its own before you have connected once."
-            )
-
-            SettingsSectionHeader(text: "Startup")
-                .padding(.top, 10)
-            SettingsCard {
-                SettingsRow(title: "Launch at login") {
-                    Toggle("", isOn: $launchAtLogin)
-                        .toggleStyle(.switch)
-                        .controlSize(.small)
-                        .labelsHidden()
-                        .onChange(of: launchAtLogin) { _, enabled in
-                            if let message = LaunchAtLogin.set(enabled) {
-                                status = message
-                                // Reflect what macOS actually did, not what was asked for.
-                                launchAtLogin = LaunchAtLogin.isEnabled
-                            }
-                        }
-                }
-            }
-
-            SettingsSectionHeader(text: "openconnect")
-                .padding(.top, 10)
-            SettingsCard {
-                SettingsFieldRow(
-                    title: "Binary",
-                    placeholder: "/opt/homebrew/bin/openconnect",
-                    text: $openconnectPath,
-                    monospaced: true
-                )
-            }
-
-            if !binaryExists {
-                SettingsFootnote(text: "Not found. Install with: brew install openconnect")
-                    .foregroundStyle(.orange)
-            }
+            reconnectSection
+            notificationsSection
+            startupSection
+            openconnectSection
 
             if let status, tab == .general {
                 SettingsFootnote(text: status)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var reconnectSection: some View {
+        SettingsSectionHeader(text: "Reconnect")
+        SettingsCard {
+            SettingsRow(title: "Reconnect automatically") {
+                SettingsSwitch(isOn: $vpn.autoReconnect)
+            }
+        }
+        SettingsFootnote(
+            text: "Renews the session five minutes before the gateway expires it, and "
+                + "restores the tunnel if it drops or the network changes. Never connects "
+                + "on its own before you have connected once."
+        )
+    }
+
+    /// Banners for what the tunnel did while you were looking elsewhere.
+    ///
+    /// One master switch, then a row per kind. The three kinds only appear once the master switch
+    /// is on: with notifications off they are three controls that do nothing, and hiding them is
+    /// what makes the first row read as the decision it is.
+    @ViewBuilder
+    private var notificationsSection: some View {
+        SettingsSectionHeader(text: "Notifications")
+            .padding(.top, 10)
+
+        SettingsCard {
+            SettingsRow(title: "Notify on VPN status changes") {
+                SettingsSwitch(isOn: $notifier.isEnabled)
+            }
+
+            if notifier.isEnabled {
+                SettingsDivider()
+                SettingsRow(title: "Connected") {
+                    SettingsSwitch(isOn: $notifier.notifiesOnConnect)
+                }
+                SettingsDivider()
+                SettingsRow(title: "Disconnected") {
+                    SettingsSwitch(isOn: $notifier.notifiesOnDisconnect)
+                }
+                SettingsDivider()
+                SettingsRow(title: "Reconnecting or failed") {
+                    SettingsSwitch(isOn: $notifier.notifiesOnProblem)
+                }
+                SettingsDivider()
+                // Otherwise the only way to find out whether permission was ever granted is to
+                // connect the VPN and hope.
+                SettingsRow(title: "Send a test notification") {
+                    Button("Send") { notifier.sendTest() }
+                        .controlSize(.small)
+                }
+            }
+        }
+
+        if let note = notifier.authorizationNote {
+            SettingsFootnote(text: note)
+                .foregroundStyle(.orange)
+        } else {
+            SettingsFootnote(
+                text: "A banner when the tunnel comes up, goes down, or gets into trouble. "
+                    + "The steps of a connect are not announced, and the same state twice "
+                    + "running only ever says so once."
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var startupSection: some View {
+        SettingsSectionHeader(text: "Startup")
+            .padding(.top, 10)
+        SettingsCard {
+            SettingsRow(title: "Launch at login") {
+                SettingsSwitch(isOn: $launchAtLogin)
+                    .onChange(of: launchAtLogin) { _, enabled in
+                        if let message = LaunchAtLogin.set(enabled) {
+                            status = message
+                            // Reflect what macOS actually did, not what was asked for.
+                            launchAtLogin = LaunchAtLogin.isEnabled
+                        }
+                    }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var openconnectSection: some View {
+        SettingsSectionHeader(text: "openconnect")
+            .padding(.top, 10)
+        SettingsCard {
+            SettingsFieldRow(
+                title: "Binary",
+                placeholder: "/opt/homebrew/bin/openconnect",
+                text: $openconnectPath,
+                monospaced: true
+            )
+        }
+
+        if !binaryExists {
+            SettingsFootnote(text: "Not found. Install with: brew install openconnect")
+                .foregroundStyle(.orange)
         }
     }
 
@@ -455,6 +516,9 @@ struct SettingsView: View {
         openconnectPath = profile.openconnectPath
         otpAccountID = profile.otpAccountID
         launchAtLogin = LaunchAtLogin.isEnabled
+        // Permission may have been granted in System Settings since the app launched, and this
+        // pane is where the warning about it is shown.
+        notifier.refreshAuthorization()
         isLoaded = true
     }
 

@@ -44,7 +44,7 @@ bundle a menu-bar app needs. **Anything worth testing belongs in `MacAuthCore`**
 
 ```
 Sources/
-├── MacAuthCore/                      # pure logic, no UI, 153 tests
+├── MacAuthCore/                      # pure logic, no UI, 167 tests
 │   ├── Crypto/
 │   │   ├── Base32.swift              # RFC 4648 decode + encode
 │   │   └── TOTP.swift                # RFC 6238 / RFC 4226 truncation
@@ -63,6 +63,7 @@ Sources/
 │       ├── OpenConnectRunner.swift    # process spawn, output parsing, state machine
 │       ├── PinnedCertificate.swift    # what the pinned cert says: names, issuer, expiry
 │       ├── ReconnectPolicy.swift      # when to renew, back off, or give up
+│       ├── StatusNotification.swift   # which status changes earn a banner, and what it says
 │       └── TunnelStats.swift          # netstat counters, rates, byte formatting
 └── MacAuth/                           # the app
     ├── MacAuthApp.swift               # @main, playground window
@@ -73,6 +74,8 @@ Sources/
     ├── WindowActivation.swift         # counted .regular/.accessory policy switching
     ├── LaunchAtLogin.swift            # SMAppService login item
     ├── QR/QRScanner.swift             # Vision barcode detection
+    ├── Notifications/
+    │   └── VPNStatusNotifier.swift    # permission and delivery for the status banners
     ├── VPN/
     │   ├── VPNController.swift        # sequences the four connect steps, owns VPN state
     │   ├── SAMLLoginController.swift  # WKWebView login, acSamlv2Token capture
@@ -173,6 +176,14 @@ section 4 and section 3. Summary of the behavior contract:
 - Menu bar icon reflects state: disconnected, connecting, connected, reconnecting, error.
 - Connected state shows the assigned tunnel IP and a live countdown to session expiry, parsed
   from openconnect's `Session authentication will expire at ...` line.
+- Notifications are opt-in and cover state, not progress. The icon serves whoever is looking at
+  the menu bar; a banner is for whoever is not, so only connect, disconnect and trouble are
+  announced. The steps of a connect are not, the same event twice running says so once, the
+  launch state is never announced, and a renewal, which drops the tunnel to rebuild it, is
+  silent unless it fails (`VPNController.isRenewing`). The decision lives in
+  `StatusNotificationPolicy`; `VPNStatusNotifier` only asks permission and posts. Every call into
+  `UNUserNotificationCenter` is gated on the process being a real `.app`, since it traps in a
+  bare executable, which is how `swift run` runs the app.
 - Connect flow: gateway init, `WKWebView` SAML login, auth-reply, spawn openconnect with
   `--cookie-on-stdin --servercert <pin>` and write the session token to stdin.
 - Autofill injects email, password and TOTP into the IdP page from the Keychain.
@@ -267,6 +278,8 @@ VPN connector:
 - [x] Shutdown targets this app's own process only, never a bare `openconnect` name match.
 - [x] Missing openconnect binary produces a clear, actionable message.
 - [x] Settings: General / Connections / Authenticator, with a connection list.
+- [x] Status notifications, off by default, with a switch per kind and a test button. Which
+      transitions are news is pure and tested.
 - [x] Nothing about any gateway is compiled in: Detect reads its groups and pins its cert.
 - [x] Reconnect decisions are pure and tested (renewal lead, backoff, give-up, network change).
 - [ ] **Connects end to end and brings up a working tunnel with corporate DNS.** Not yet run.

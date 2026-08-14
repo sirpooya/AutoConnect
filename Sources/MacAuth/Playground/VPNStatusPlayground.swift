@@ -312,6 +312,10 @@ struct VPNStatusStage: View {
         }
     }
 
+    /// A notifier that reads the saved switches but delivers nothing, so the mock panel cannot
+    /// put a banner about a tunnel that does not exist on screen.
+    private var mockNotifier: VPNStatusNotifier { .preview() }
+
     /// Fresh in-memory accounts, so the mock never reads or writes the real Keychain.
     private var mockState: AppState {
         let names = [
@@ -338,6 +342,8 @@ struct VPNStatusStage: View {
             MenuPanel()
                 .environmentObject(mockState)
                 .environmentObject(mockController)
+                // The panel's Settings button needs one; the preview copy cannot post anything.
+                .environmentObject(mockNotifier)
                 .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 .shadow(color: .black.opacity(0.35), radius: 20, y: 8)

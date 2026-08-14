@@ -12,6 +12,8 @@ final class StatusItemController: NSObject, NSApplicationDelegate {
     // Reachable from the App scene, which hands them to the Settings pane.
     let state = AppState()
     let vpn = VPNController()
+    /// Turns phase changes into banners, when Settings says to. Silent by default.
+    let notifier = VPNStatusNotifier()
     private var statusItem: NSStatusItem?
     private let popover = NSPopover()
 
@@ -75,13 +77,24 @@ final class StatusItemController: NSObject, NSApplicationDelegate {
         // fact worth knowing at a glance: whether the tunnel is up.
         apply(phase: vpn.phase)
         vpn.$phase
-            .sink { [weak self] phase in self?.apply(phase: phase) }
+            .sink { [weak self] phase in
+                guard let self else { return }
+                apply(phase: phase)
+                // The icon is for whoever is looking at the menu bar; the banner is for whoever
+                // is not. Both are driven from the one place the phase is observed.
+                notifier.record(
+                    phase: phase,
+                    gateway: vpn.profile.displayName,
+                    isRenewing: vpn.isRenewing
+                )
+            }
             .store(in: &cancellables)
 
         let hosting = NSHostingController(
             rootView: MenuPanel()
                 .environmentObject(state)
                 .environmentObject(vpn)
+                .environmentObject(notifier)
         )
         // Let SwiftUI drive the popover's height, so the panel grows and shrinks with the
         // account list instead of being pinned to a guessed size.

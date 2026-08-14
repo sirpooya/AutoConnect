@@ -10,7 +10,7 @@ directly.
 ## Build and run
 
 ```bash
-swift test              # 103 tests, including every RFC 6238 Appendix B vector
+swift test              # 167 tests, including every RFC 6238 Appendix B vector
 ./Scripts/make-app.sh   # produces build/MacAuth.app, signed
 open build/MacAuth.app
 ```
@@ -81,16 +81,17 @@ Sources/
     Models/                 # Account + otpauth:// parsing, VPNProfile
     Storage/                # AccountStoring, KeychainStore, VPNSettingsStore
     VPN/                    # ConfigAuthXML, GatewayClient, OpenConnectRunner,
-                            # ReconnectPolicy, TunnelStats
+                            # ReconnectPolicy, StatusNotification, TunnelStats
   MacAuth/                  # the app
     StatusItemController.swift   # NSStatusItem + NSPopover
     AppState.swift               # accounts, ticker, code cache, clipboard
     WindowActivation.swift       # counted activation-policy switching
     QR/                          # Vision barcode detection
     VPN/                         # VPNController, SAMLLoginController, LoginFormFiller
+    Notifications/               # VPNStatusNotifier, the delivery half of the banners
     Views/                       # panel, VPN section, chart, rows, forms, settings
     Playground/                  # dev-only tuning window
-Tests/MacAuthCoreTests/     # 103 tests
+Tests/MacAuthCoreTests/     # 167 tests
 ```
 
 A Swift package rather than an Xcode project, so `swift test` runs the whole suite from the
@@ -131,6 +132,7 @@ Settings (Cmd+comma, or the footer button) configures everything; nothing is har
 | Password | Stored in the Keychain, never in a plist |
 | OTP from | Which authenticator account supplies the one-time code |
 | Reconnect automatically | Renews before expiry, restores after a drop or network change |
+| Notify on VPN status changes | Banners for connect, disconnect, and trouble. Off until switched on |
 | Launch at login | Registers a login item via `SMAppService` |
 | Binary | Path to openconnect, with a warning when it is missing |
 
@@ -141,6 +143,20 @@ stdin. The full protocol is documented in [plan.md](plan.md) section 4.
 While connected the panel shows the gateway, the assigned address, a countdown to session expiry,
 and behind a disclosure a throughput chart plus traffic, transferred, uptime, transport, interface
 and MTU. Counters come from `netstat`, sampled only while that block is open.
+
+### Status notifications
+
+Off until switched on in Settings, General. Flipping the switch is what asks macOS for
+permission, and the three kinds below it (connected, disconnected, reconnecting or failed) can be
+turned off separately. Banners are silent, and each one replaces the last rather than stacking.
+
+Only changes in whether the machine is on the VPN are announced: the steps of a connect are not,
+the same state twice running says so once, and an automatic renewal, which takes the tunnel down
+in order to bring it back, stays quiet unless it fails. A test notification button is there
+because the alternative way to check permission is to connect the VPN and hope.
+
+Notifications need the packaged `build/MacAuth.app`. Under `swift run` there is no bundle
+identifier, `UNUserNotificationCenter` would trap, and the app says so instead.
 
 ### Two safety properties worth knowing
 
