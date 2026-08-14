@@ -243,13 +243,10 @@ struct SettingsView: View {
                         .font(.system(size: 12))
                         .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
 
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(item.displayName)
-                            .font(.system(size: 13))
-                        Text(item.host.isEmpty ? "No address" : item.host)
-                            .font(.system(size: 10))
-                            .foregroundStyle(.secondary)
-                    }
+                    // The title is already the address, so a second line would repeat it with
+                    // a port on the end.
+                    Text(item.displayName)
+                        .font(.system(size: 13))
 
                     Spacer(minLength: 10)
                 }
