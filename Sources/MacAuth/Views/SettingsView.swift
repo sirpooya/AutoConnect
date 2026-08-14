@@ -522,20 +522,12 @@ struct SettingsView: View {
 
     private func accountRow(_ account: Account) -> some View {
         HStack(spacing: 6) {
-            // Account first, issuer beneath it. One line of "Issuer: account" fits the cramped
-            // menu panel, but here there is room to put the name you actually scan for on top.
-            VStack(alignment: .leading, spacing: 1) {
-                Text(account.displaySubtitle.isEmpty
-                     ? account.displayTitle
-                     : account.displaySubtitle)
-                    .font(.system(size: 13))
-
-                if !account.displaySubtitle.isEmpty {
-                    Text(account.displayTitle)
-                        .font(.system(size: 10))
-                        .foregroundStyle(.tertiary)
-                }
-            }
+            // The account name alone. The issuer is in the details sheet; on a row that already
+            // carries a code and a countdown it was one more thing to read past.
+            Text(account.displaySubtitle.isEmpty
+                 ? account.displayTitle
+                 : account.displaySubtitle)
+                .font(.system(size: 13))
 
             Spacer(minLength: 10)
 
