@@ -50,23 +50,14 @@ struct AccountRow: View {
 
                 Spacer(minLength: 4)
 
-                VStack(spacing: 4) {
-                    CountdownPie(
-                        fraction: state.remainingFraction(for: account),
-                        color: ringColor,
-                        secondsLeft: secondsLeft
-                    )
-
-                    if wasJustCopied {
-                        Text("Copied")
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundStyle(.green)
-                    } else if isHovering {
-                        Text("Copy")
-                            .font(.system(size: 9))
-                            .foregroundStyle(.secondary)
-                    }
-                }
+                // Nothing appears or disappears here on hover or after a copy: any label under
+                // the wedge would resize the row. The row highlight is the hover affordance, the
+                // code turning green is the confirmation, and neither moves anything.
+                CountdownPie(
+                    fraction: state.remainingFraction(for: account),
+                    color: ringColor,
+                    secondsLeft: secondsLeft
+                )
                 .frame(width: 44)
             }
             .padding(.vertical, 7)

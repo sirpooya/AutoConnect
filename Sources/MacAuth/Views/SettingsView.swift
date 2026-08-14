@@ -133,7 +133,8 @@ struct SettingsView: View {
                     credential: credential,
                     isNew: false,
                     store: store,
-                    idpHost: vpn.profile.idpHost
+                    idpHost: vpn.profile.idpHost,
+                    suggestion: usernameSuggestion
                 ) { save(credential: $0) }
             }
             .sheet(item: $newCredential) { credential in
@@ -141,7 +142,8 @@ struct SettingsView: View {
                     credential: credential,
                     isNew: true,
                     store: store,
-                    idpHost: vpn.profile.idpHost
+                    idpHost: vpn.profile.idpHost,
+                    suggestion: usernameSuggestion
                 ) { save(credential: $0) }
             }
             .confirmationDialog(
@@ -378,6 +380,14 @@ struct SettingsView: View {
         .frame(minHeight: 42)
     }
 
+    /// The authenticator account whose label is an email address, preferring the one the
+    /// selected connection already uses. A credential's username is almost always that address,
+    /// so it is offered rather than asked for.
+    private var usernameSuggestion: Account? {
+        let withAddress = state.accounts.filter { $0.label.contains("@") }
+        return withAddress.first { $0.id == vpn.profile.otpAccountID } ?? withAddress.first
+    }
+
     /// Points the selected connection at this credential.
     private func assign(credential: Credential) {
         guard !vpn.profiles.isEmpty else { return }
@@ -534,13 +544,13 @@ struct SettingsView: View {
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
 
-            Text("\(state.secondsRemaining(for: account))s")
-                .font(.system(size: 10))
-                .foregroundStyle(.tertiary)
-                .monospacedDigit()
-                // A fixed width so the row does not twitch as the count drops from two
-                // digits to one.
-                .frame(width: 22, alignment: .trailing)
+            // The same depleting wedge the menu panel uses, rather than a second way of
+            // saying the same thing.
+            CountdownPie(
+                fraction: state.remainingFraction(for: account),
+                color: .secondary,
+                secondsLeft: state.secondsRemaining(for: account)
+            )
 
             Menu {
                 Button("Copy Code") { state.copy(account) }

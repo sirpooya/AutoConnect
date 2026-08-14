@@ -18,6 +18,9 @@ struct CredentialEditorView: View {
     private let isNew: Bool
     private let store: VPNSettingsStore
     private let idpHost: String?
+    /// An authenticator account whose label is already an email address, used to fill the
+    /// username in rather than making it be typed a second time.
+    private let suggestion: Account?
     private let onSave: (Credential) -> Void
 
     init(
@@ -25,8 +28,10 @@ struct CredentialEditorView: View {
         isNew: Bool,
         store: VPNSettingsStore,
         idpHost: String? = nil,
+        suggestion: Account? = nil,
         onSave: @escaping (Credential) -> Void
     ) {
+        self.suggestion = suggestion
         _credential = State(initialValue: credential)
         _passwordIsStored = State(
             initialValue: store.hasPassword(account: credential.keychainAccount)
@@ -54,6 +59,11 @@ struct CredentialEditorView: View {
                     .font(.system(size: 11))
                     .focused($usernameFocused)
                     .onChange(of: credential.username) { _, _ in refreshKeychainItems() }
+
+                if let suggestion, credential.username == suggestion.label {
+                    note("Taken from your \(suggestion.displayTitle) code. Change it if you "
+                         + "sign in under a different name.")
+                }
             }
 
             VStack(alignment: .leading, spacing: 6) {
@@ -80,6 +90,11 @@ struct CredentialEditorView: View {
         .padding(16)
         .frame(width: 380)
         .onAppear {
+            // Your authenticator account is already labelled with the address you sign in
+            // with, so a new credential starts from it and only the password is left to type.
+            if isNew, credential.username.isEmpty, let suggestion {
+                credential.username = suggestion.label
+            }
             refreshKeychainItems()
             usernameFocused = isNew
         }
