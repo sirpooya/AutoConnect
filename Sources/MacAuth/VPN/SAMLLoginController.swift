@@ -61,6 +61,10 @@ final class SAMLLoginController: NSObject {
     /// leaving the user wondering why nothing was typed.
     @Published private(set) var autofillNotice: String?
 
+    /// The first host the gateway handed the login off to, which is the identity provider.
+    /// Recorded so Settings can offer that site's saved password first, and for nothing else.
+    private(set) var observedIdPHost: String?
+
     init(
         authRequest: ConfigAuth.AuthRequest,
         profile: VPNProfile,
@@ -223,6 +227,13 @@ extension SAMLLoginController: WKNavigationDelegate {
         // Every host reached by following the gateway's own login URL is part of the flow, so the
         // IdP's domain becomes trusted here rather than being hardcoded.
         filler.trust(host: webView.url?.host)
+
+        // The first host that is not the gateway is the identity provider.
+        if observedIdPHost == nil,
+           let host = webView.url?.host,
+           host != authRequest.loginURL.host {
+            observedIdPHost = host
+        }
 
         filler.onGiveUp = { [weak self] reason in
             self?.autofillNotice = reason

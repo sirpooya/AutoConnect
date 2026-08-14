@@ -88,12 +88,12 @@ final class OpenConnectRunnerTests: XCTestCase {
 
     func testArgumentsImpersonateAnyConnectAndPinTheCertificate() {
         let arguments = OpenConnectRunner.arguments(
-            profile: .digikalaMFA,
+            profile: .example,
             serverCertHash: "AA46A448019A03FFDAF8803558C9B19CE77B951B"
         )
 
         XCTAssertEqual(arguments.first, "/opt/homebrew/bin/openconnect")
-        XCTAssertEqual(arguments.last, "https://mfa-vpn.dkservices.ir:28015/")
+        XCTAssertEqual(arguments.last, "https://vpn.example.com:443/")
         XCTAssertTrue(arguments.contains("--cookie-on-stdin"))
         XCTAssertTrue(arguments.contains("AnyConnect Linux_64 4.7.00136"))
 
@@ -105,7 +105,7 @@ final class OpenConnectRunnerTests: XCTestCase {
     /// through the process table.
     func testArgumentsNeverContainTheSessionToken() {
         let arguments = OpenConnectRunner.arguments(
-            profile: .digikalaMFA,
+            profile: .example,
             serverCertHash: "HASH"
         )
 
@@ -114,14 +114,14 @@ final class OpenConnectRunnerTests: XCTestCase {
     }
 
     func testArgumentsIncludeVPNCScriptWhenConfigured() {
-        let arguments = OpenConnectRunner.arguments(profile: .digikalaMFA, serverCertHash: "H")
+        let arguments = OpenConnectRunner.arguments(profile: .example, serverCertHash: "H")
 
         let scriptIndex = try? XCTUnwrap(arguments.firstIndex(of: "--script"))
         XCTAssertEqual(arguments[(scriptIndex ?? 0) + 1], "/opt/homebrew/etc/vpnc/vpnc-script")
     }
 
     func testArgumentsOmitScriptWhenNotConfigured() {
-        var profile = VPNProfile.digikalaMFA
+        var profile = VPNProfile.example
         profile.vpncScriptPath = nil
 
         let arguments = OpenConnectRunner.arguments(profile: profile, serverCertHash: "H")
@@ -131,7 +131,7 @@ final class OpenConnectRunnerTests: XCTestCase {
     /// Safety property: the app must be able to identify its own openconnect process, because a
     /// user may have an unrelated openconnect running in a terminal.
     func testArgumentsCarryThePIDFileMarker() {
-        let arguments = OpenConnectRunner.arguments(profile: .digikalaMFA, serverCertHash: "H")
+        let arguments = OpenConnectRunner.arguments(profile: .example, serverCertHash: "H")
 
         let markerIndex = try? XCTUnwrap(arguments.firstIndex(of: "--pid-file"))
         XCTAssertEqual(arguments[(markerIndex ?? 0) + 1], OpenConnectRunner.pidFilePath)
@@ -253,7 +253,7 @@ final class OpenConnectRunnerTests: XCTestCase {
     /// The retry window is capped well below openconnect's 300s default: after sleep every attempt
     /// fails anyway, and a fresh login is what actually recovers.
     func testCapsOpenConnectInternalRetryWindow() {
-        let arguments = OpenConnectRunner.arguments(profile: .digikalaMFA, serverCertHash: "H")
+        let arguments = OpenConnectRunner.arguments(profile: .example, serverCertHash: "H")
 
         let index = try? XCTUnwrap(arguments.firstIndex(of: "--reconnect-timeout"))
         XCTAssertEqual(arguments[(index ?? 0) + 1], "30")
@@ -271,7 +271,7 @@ final class OpenConnectRunnerTests: XCTestCase {
     /// The real binary is present on this machine, which the connect path depends on.
     func testInstalledBinaryPasses() {
         XCTAssertNoThrow(
-            try OpenConnectRunner.verifyBinary(at: VPNProfile.digikalaMFA.openconnectPath)
+            try OpenConnectRunner.verifyBinary(at: VPNProfile.example.openconnectPath)
         )
     }
 }

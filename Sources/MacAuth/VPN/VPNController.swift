@@ -99,10 +99,10 @@ final class VPNController: ObservableObject {
     /// a tunnel they asked for without ever starting one they did not.
     private var userHasConnected = false
 
-    /// Loads the saved profile, falling back to the verified defaults for this project's gateway
-    /// so a fresh install is usable before anyone opens Settings.
+    /// Loads the saved profile, or starts empty. Nothing about any particular gateway is
+    /// compiled in: Settings takes an address and asks that gateway for the rest.
     init(profile: VPNProfile? = nil) {
-        self.profile = profile ?? VPNSettingsStore().loadProfile() ?? .digikalaMFA
+        self.profile = profile ?? VPNSettingsStore().loadProfile() ?? .empty
     }
 
     /// Builds a controller parked in a fixed phase, for the playground and for previews.
@@ -113,7 +113,7 @@ final class VPNController: ObservableObject {
     /// `referenceDate` with the wall clock, turning a "2h" uptime into months.
     static func preview(
         phase: Phase,
-        profile: VPNProfile = .digikalaMFA,
+        profile: VPNProfile = .example,
         referenceDate: Date = Date()
     ) -> VPNController {
         // Pass the profile explicitly so a preview never picks up saved settings.
@@ -215,6 +215,13 @@ final class VPNController: ObservableObject {
             )
             self.login = login
             let ssoToken = try await login.obtainSSOToken()
+
+            // Remember which identity provider this gateway uses, so Settings can offer that
+            // site's saved password first. Nothing depends on it being right.
+            if let idpHost = login.observedIdPHost, idpHost != profile.idpHost {
+                profile.idpHost = idpHost
+                VPNSettingsStore().save(profile: profile)
+            }
             self.login = nil
 
             // Step 3.
@@ -263,11 +270,10 @@ final class VPNController: ObservableObject {
     /// by a closure so it is generated at the instant the field is reached rather than seconds
     /// earlier, when it might already have rolled over.
     private func autofillCredentials() -> LoginFormFiller.Credentials? {
-        let settings = VPNSettingsStore()
-        let password = settings.password(account: profile.credentialAccount)
-
         // With no username there is nothing to start from, so let the user drive.
         guard !profile.username.isEmpty else { return nil }
+
+        let password = passwordForAutofill()
 
         let otpAccountID = profile.otpAccountID
         let accountStore = KeychainStore()
@@ -292,6 +298,26 @@ final class VPNController: ObservableObject {
                 )
             }
         )
+    }
+
+    /// The password to type into the IdP page, from wherever the profile says it lives.
+    ///
+    /// Never fails closed: any source that comes up empty just means the login window opens with
+    /// the password field blank and the user finishes by hand.
+    private func passwordForAutofill() -> String? {
+        switch profile.passwordSource {
+        case .ask:
+            return nil
+
+        case .stored:
+            return VPNSettingsStore().password(account: profile.credentialAccount)
+
+        case .loginKeychain:
+            guard let server = profile.passwordKeychainServer else { return nil }
+            // This is the call that makes macOS ask permission, which is why it happens here,
+            // at connect time, rather than while Settings is merely listing candidates.
+            return try? LoginKeychain.password(server: server, account: profile.username)
+        }
     }
 
     private func startTunnel(sessionToken: String, serverCertHash: String) throws {

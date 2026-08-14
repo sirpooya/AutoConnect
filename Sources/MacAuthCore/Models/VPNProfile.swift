@@ -7,6 +7,24 @@ import Foundation
 /// the IdP's OTP field.
 public struct VPNProfile: Codable, Equatable, Sendable {
 
+    /// Where the IdP password comes from.
+    public enum PasswordSource: String, Codable, CaseIterable, Sendable {
+        /// Nothing stored. The login window opens with the password field empty.
+        case ask
+        /// This app's own Keychain item, typed once in Settings.
+        case stored
+        /// An item a browser already saved in the login Keychain, reused rather than copied.
+        case loginKeychain
+
+        public var title: String {
+            switch self {
+            case .ask: "Ask me each time"
+            case .stored: "Save it here"
+            case .loginKeychain: "Login Keychain"
+            }
+        }
+    }
+
     /// Gateway host, optionally with a port: `mfa-vpn.example.com:28015`.
     public var host: String
     /// Tunnel group alias, as shown in AnyConnect's GROUP dropdown.
@@ -16,8 +34,16 @@ public struct VPNProfile: Codable, Equatable, Sendable {
     /// SHA1 fingerprint of the gateway certificate, uppercase hex without separators.
     /// Required because the gateway certificate has no publicly trusted signer.
     public var certificateSHA1: String?
-    /// Keychain account name holding the IdP password.
+    /// Keychain account name holding the IdP password, when this app stores it itself.
     public var credentialAccount: String
+    /// Where the password comes from.
+    public var passwordSource: PasswordSource
+    /// The login-Keychain server whose item supplies the password, when `passwordSource` is
+    /// `.loginKeychain`. Nil means "no item chosen yet".
+    public var passwordKeychainServer: String?
+    /// Host of the identity provider the gateway redirects to, remembered from the last login so
+    /// the Keychain lookup can offer that site's entry first. Not required for anything.
+    public var idpHost: String?
     /// The authenticator account whose TOTP fills the OTP field.
     public var otpAccountID: UUID?
     /// Absolute path to the openconnect binary.
@@ -31,6 +57,9 @@ public struct VPNProfile: Codable, Equatable, Sendable {
         username: String = "",
         certificateSHA1: String? = nil,
         credentialAccount: String = "vpn-password",
+        passwordSource: PasswordSource = .stored,
+        passwordKeychainServer: String? = nil,
+        idpHost: String? = nil,
         otpAccountID: UUID? = nil,
         openconnectPath: String = "/opt/homebrew/bin/openconnect",
         vpncScriptPath: String? = "/opt/homebrew/etc/vpnc/vpnc-script"
@@ -40,9 +69,41 @@ public struct VPNProfile: Codable, Equatable, Sendable {
         self.username = username
         self.certificateSHA1 = certificateSHA1
         self.credentialAccount = credentialAccount
+        self.passwordSource = passwordSource
+        self.passwordKeychainServer = passwordKeychainServer
+        self.idpHost = idpHost
         self.otpAccountID = otpAccountID
         self.openconnectPath = openconnectPath
         self.vpncScriptPath = vpncScriptPath
+    }
+
+    /// Decoded key by key with defaults, never by the synthesized initialiser.
+    ///
+    /// A profile saved by an older build has none of the keys added since, and the synthesized
+    /// decoder treats every one of those as a hard failure. That reads to the user as their
+    /// settings vanishing on upgrade, so each key falls back to the value a fresh profile uses.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let fallback = VPNProfile(host: "", tunnelGroup: "")
+
+        func value<T: Decodable>(_ key: CodingKeys, _ fallback: T) -> T {
+            (try? container.decode(T.self, forKey: key)) ?? fallback
+        }
+
+        host = value(.host, fallback.host)
+        tunnelGroup = value(.tunnelGroup, fallback.tunnelGroup)
+        username = value(.username, fallback.username)
+        certificateSHA1 = try? container.decodeIfPresent(String.self, forKey: .certificateSHA1)
+        credentialAccount = value(.credentialAccount, fallback.credentialAccount)
+        passwordSource = value(.passwordSource, fallback.passwordSource)
+        passwordKeychainServer = try? container.decodeIfPresent(
+            String.self, forKey: .passwordKeychainServer
+        )
+        idpHost = try? container.decodeIfPresent(String.self, forKey: .idpHost)
+        otpAccountID = try? container.decodeIfPresent(UUID.self, forKey: .otpAccountID)
+        openconnectPath = value(.openconnectPath, fallback.openconnectPath)
+        vpncScriptPath = (try? container.decodeIfPresent(String.self, forKey: .vpncScriptPath))
+            ?? fallback.vpncScriptPath
     }
 
     /// The gateway root, which is where `config-auth` POSTs go.
@@ -65,11 +126,25 @@ public struct VPNProfile: Codable, Equatable, Sendable {
         return stripped.isEmpty ? nil : stripped
     }
 
-    /// The verified profile for this project's gateway. Values were discovered by probing and
-    /// are recorded in plan.md section 3.
-    public static let digikalaMFA = VPNProfile(
-        host: "mfa-vpn.dkservices.ir:28015",
-        tunnelGroup: "MFA-VPN",
-        certificateSHA1: "AA46A448019A03FFDAF8803558C9B19CE77B951B"
+    /// True once the profile has everything a connect needs.
+    public var isComplete: Bool {
+        !host.trimmingCharacters(in: .whitespaces).isEmpty
+            && !tunnelGroup.trimmingCharacters(in: .whitespaces).isEmpty
+            && normalizedCertificateSHA1 != nil
+    }
+
+    /// What a fresh install starts with: nothing but the defaults that are true of any machine.
+    ///
+    /// No gateway, group or fingerprint is compiled in. The user types an address, and the app
+    /// asks that gateway for the rest. Shipping a particular employer's values as defaults made
+    /// every install look pre-configured for one company and left stale values in UserDefaults
+    /// long after they changed.
+    public static let empty = VPNProfile(host: "", tunnelGroup: "")
+
+    /// A stand-in for tests and previews. Not a real gateway.
+    public static let example = VPNProfile(
+        host: "vpn.example.com:443",
+        tunnelGroup: "EXAMPLE-VPN",
+        certificateSHA1: "0123456789ABCDEF0123456789ABCDEF01234567"
     )
 }

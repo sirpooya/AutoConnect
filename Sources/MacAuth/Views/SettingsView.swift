@@ -19,7 +19,7 @@ struct SettingsView: View {
 
     private let store = VPNSettingsStore()
 
-    @State private var tab: Tab = .gateway
+    @State private var tab: Tab = .general
 
     @State private var host = ""
     @State private var tunnelGroup = ""
@@ -37,8 +37,26 @@ struct SettingsView: View {
 
     @FocusState private var passwordFocused: Bool
 
+    /// The account being edited, and whether the manual add form is up. Both are
+    /// presented as sheets over the pane and mirrored into `AppState.route`, which
+    /// is what AccountFormView's own Cancel and Save buttons reset.
+    @State private var editingAccount: Account?
+    @State private var isAddingAccount = false
+    @State private var accountPendingDeletion: Account?
+
+    @State private var passwordSource: VPNProfile.PasswordSource = .stored
+    @State private var passwordKeychainServer: String?
+    /// Login-Keychain items matching the username. Metadata only, so listing them prompts for
+    /// nothing; the password itself is read at connect time.
+    @State private var keychainItems: [LoginKeychain.Item] = []
+
+    /// Filled by Detect. Empty until the gateway has been asked what it offers.
+    @State private var discoveredGroups: [ConfigAuth.TunnelGroupOption] = []
+    @State private var isProbing = false
+    @State private var probeStatus: String?
+
     enum Tab: Hashable {
-        case gateway, signIn, behaviour
+        case general, gateway, signIn, authenticator
     }
 
     var body: some View {
@@ -48,12 +66,14 @@ struct SettingsView: View {
 
             Group {
                 switch tab {
+                case .general:
+                    generalTab
                 case .gateway:
                     gatewayTab
                 case .signIn:
                     signInTab
-                case .behaviour:
-                    behaviourTab
+                case .authenticator:
+                    authenticatorTab
                 }
             }
             .frame(minHeight: SettingsMetrics.bodyHeight, maxHeight: .infinity, alignment: .top)
@@ -66,7 +86,12 @@ struct SettingsView: View {
         .onAppear(perform: load)
         .onChange(of: host) { _, _ in persist() }
         .onChange(of: tunnelGroup) { _, _ in persist() }
-        .onChange(of: username) { _, _ in persist() }
+        .onChange(of: username) { _, _ in
+            persist()
+            refreshKeychainItems()
+        }
+        .onChange(of: passwordSource) { _, _ in persist() }
+        .onChange(of: passwordKeychainServer) { _, _ in persist() }
         .onChange(of: certificateSHA1) { _, _ in persist() }
         .onChange(of: openconnectPath) { _, _ in persist() }
         .onChange(of: otpAccountID) { _, _ in persist() }
@@ -76,6 +101,36 @@ struct SettingsView: View {
         .onDisappear {
             savePassword()
             WindowActivation.release()
+        }
+        // AccountFormView ends by routing the panel back to its list. That is also
+        // the signal that its sheet here is finished with.
+        .onChange(of: state.route) { _, route in
+            if route == .list {
+                editingAccount = nil
+                isAddingAccount = false
+            }
+        }
+        .sheet(item: $editingAccount) { account in
+            AccountFormView(mode: .edit(account))
+                .frame(width: 320)
+        }
+        .sheet(isPresented: $isAddingAccount) {
+            AccountFormView(mode: .add)
+                .frame(width: 320)
+        }
+        .confirmationDialog(
+            "Delete this account?",
+            isPresented: Binding(
+                get: { accountPendingDeletion != nil },
+                set: { if !$0 { accountPendingDeletion = nil } }
+            ),
+            presenting: accountPendingDeletion
+        ) { account in
+            Button("Delete", role: .destructive) { state.delete(account) }
+            Button("Cancel", role: .cancel) {}
+        } message: { account in
+            Text("\(accountLabel(account))\n\nIts secret is removed from the Keychain and "
+                 + "cannot be recovered. You would need to re-enrol this account.")
         }
     }
 
@@ -91,28 +146,110 @@ struct SettingsView: View {
                     text: $host
                 )
                 SettingsDivider()
-                SettingsFieldRow(
-                    title: "Group",
-                    placeholder: "MFA-VPN",
-                    text: $tunnelGroup
-                )
-            }
-            SettingsFootnote(text: "The tunnel group the gateway offers on its login page.")
+                SettingsRow(title: "Group") {
+                    if discoveredGroups.isEmpty {
+                        Text(tunnelGroup.isEmpty ? "Not detected yet" : tunnelGroup)
+                            .font(.system(size: 13))
+                            .foregroundStyle(tunnelGroup.isEmpty ? .tertiary : .secondary)
+                    } else {
+                        Picker("", selection: $tunnelGroup) {
+                            ForEach(discoveredGroups) { group in
+                                Text(group.label).tag(group.value)
+                            }
+                        }
+                        .labelsHidden()
+                        .controlSize(.small)
+                        .frame(maxWidth: SettingsMetrics.fieldWidth)
+                    }
+                }
+                SettingsDivider()
+                SettingsRow(title: "Certificate") {
+                    HStack(spacing: 8) {
+                        Text(certificateSHA1.isEmpty ? "Not pinned yet" : shortFingerprint)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(certificateSHA1.isEmpty ? .tertiary : .secondary)
+                            .help(certificateSHA1)
 
-            SettingsSectionHeader(text: "Security")
-                .padding(.top, 10)
-            SettingsCard {
-                SettingsFieldRow(
-                    title: "Certificate SHA1",
-                    placeholder: "optional",
-                    text: $certificateSHA1,
-                    monospaced: true
-                )
+                        if !certificateSHA1.isEmpty {
+                            Button("Forget") {
+                                certificateSHA1 = ""
+                                discoveredGroups = []
+                            }
+                            .controlSize(.small)
+                        }
+                    }
+                }
             }
+
+            HStack(spacing: 8) {
+                Button(isProbing ? "Checking..." : "Detect") { detectGateway() }
+                    .controlSize(.small)
+                    .disabled(isProbing || host.trimmingCharacters(in: .whitespaces).isEmpty)
+
+                if isProbing { ProgressView().controlSize(.small) }
+                Spacer()
+            }
+            .padding(.horizontal, SettingsMetrics.rowHPadding)
+            .padding(.top, 2)
+
             SettingsFootnote(
-                text: "Pins the gateway certificate. Leave it empty to fall back to the "
-                    + "system trust store."
+                text: probeStatus ?? "Type the address, then Detect. The gateway is asked which "
+                    + "tunnel groups it offers, and its certificate fingerprint is recorded and "
+                    + "pinned from then on. The first check has to trust whatever answers, so "
+                    + "compare the fingerprint if you have it from elsewhere."
             )
+        }
+    }
+
+    /// First and last eight characters, which is enough to compare by eye. The full value is in
+    /// the tooltip; the row is not wide enough for forty monospaced characters plus a button.
+    private var shortFingerprint: String {
+        let value = certificateSHA1.uppercased()
+        guard value.count > 20 else { return value }
+        return "\(value.prefix(8))...\(value.suffix(8))"
+    }
+
+    private func detectGateway() {
+        let address = host.trimmingCharacters(in: .whitespaces)
+        guard !address.isEmpty else { return }
+
+        isProbing = true
+        probeStatus = nil
+
+        Task {
+            var probeProfile = VPNProfile.empty
+            probeProfile.host = address
+            probeProfile.certificateSHA1 = certificateSHA1.isEmpty ? nil : certificateSHA1
+
+            // Learn the fingerprint only while there is none to check against. Once pinned, a
+            // detect behaves like every other request and refuses a certificate that changed.
+            let client = GatewayClient(
+                profile: probeProfile,
+                trustPolicy: certificateSHA1.isEmpty ? .learnFingerprint : .pinned
+            )
+
+            do {
+                let probe = try await client.probe()
+                discoveredGroups = probe.groups
+
+                // Keep the current group if the gateway still offers it, otherwise take its
+                // own preselection.
+                if !probe.groups.contains(where: { $0.value == tunnelGroup }) {
+                    tunnelGroup = probe.defaultGroup ?? ""
+                }
+                if certificateSHA1.isEmpty, let learned = client.observedCertificateSHA1 {
+                    certificateSHA1 = learned
+                }
+
+                let names = probe.groups.map(\.label).joined(separator: ", ")
+                probeStatus = probe.groups.count == 1
+                    ? "Found one group: \(names)."
+                    : "Found \(probe.groups.count) groups: \(names)."
+            } catch {
+                probeStatus = "\(error)"
+            }
+
+            isProbing = false
         }
     }
 
@@ -126,25 +263,71 @@ struct SettingsView: View {
                     text: $username
                 )
                 SettingsDivider()
-                SettingsRow(title: "Password") {
-                    HStack(spacing: 6) {
-                        SecureField(
-                            passwordIsStored ? "Stored in Keychain" : "Not set",
-                            text: $password
-                        )
-                        .textFieldStyle(.plain)
-                        .multilineTextAlignment(.trailing)
-                        .font(.system(size: 13))
-                        .focused($passwordFocused)
-                        .onSubmit { savePassword() }
-
-                        if passwordIsStored {
-                            Button("Remove") { removePassword() }
-                                .controlSize(.small)
+                SettingsRow(title: "Password from") {
+                    Picker("", selection: $passwordSource) {
+                        ForEach(VPNProfile.PasswordSource.allCases, id: \.self) { source in
+                            Text(source.title).tag(source)
                         }
                     }
+                    .labelsHidden()
+                    .controlSize(.small)
                     .frame(maxWidth: SettingsMetrics.fieldWidth)
                 }
+
+                switch passwordSource {
+                case .stored:
+                    SettingsDivider()
+                    SettingsRow(title: "Password") {
+                        HStack(spacing: 6) {
+                            SecureField(
+                                passwordIsStored ? "Stored in Keychain" : "Not set",
+                                text: $password
+                            )
+                            .textFieldStyle(.plain)
+                            .multilineTextAlignment(.trailing)
+                            .font(.system(size: 13))
+                            .focused($passwordFocused)
+                            .onSubmit { savePassword() }
+
+                            if passwordIsStored {
+                                Button("Remove") { removePassword() }
+                                    .controlSize(.small)
+                            }
+                        }
+                        .frame(maxWidth: SettingsMetrics.fieldWidth)
+                    }
+
+                case .loginKeychain:
+                    SettingsDivider()
+                    SettingsRow(title: "Keychain item") {
+                        if keychainItems.isEmpty {
+                            Text(username.isEmpty ? "Enter a username first" : "No match")
+                                .font(.system(size: 13))
+                                .foregroundStyle(.tertiary)
+                        } else {
+                            Picker("", selection: $passwordKeychainServer) {
+                                ForEach(keychainItems) { item in
+                                    Text(item.server).tag(String?.some(item.server))
+                                }
+                            }
+                            .labelsHidden()
+                            .controlSize(.small)
+                            .frame(maxWidth: SettingsMetrics.fieldWidth)
+                        }
+                    }
+
+                case .ask:
+                    EmptyView()
+                }
+            }
+
+            if passwordSource == .loginKeychain {
+                SettingsFootnote(text: keychainItems.isEmpty
+                    ? "Looks for a website password saved under this username. Safari and iCloud "
+                        + "Keychain entries are visible here; Chrome and Firefox keep theirs in "
+                        + "their own stores, which this cannot read."
+                    : "Read at connect time, so macOS asks permission once. Nothing is copied "
+                        + "into this app's Keychain.")
             }
 
             SettingsSectionHeader(text: "One-time code")
@@ -178,7 +361,7 @@ struct SettingsView: View {
         }
     }
 
-    private var behaviourTab: some View {
+    private var generalTab: some View {
         SettingsTabBody {
             SettingsSectionHeader(text: "Connection")
             SettingsCard {
@@ -229,10 +412,103 @@ struct SettingsView: View {
                     .foregroundStyle(.orange)
             }
 
-            if let status, tab == .behaviour {
+            if let status, tab == .general {
                 SettingsFootnote(text: status)
             }
         }
+    }
+
+    // MARK: - Authenticator
+
+    private var authenticatorTab: some View {
+        SettingsTabBody {
+            SettingsSectionHeader(text: "Accounts")
+
+            if state.accounts.isEmpty {
+                SettingsCard {
+                    SettingsRow(title: "No accounts yet") {
+                        EmptyView()
+                    }
+                }
+            } else {
+                SettingsCard {
+                    ForEach(Array(state.accounts.enumerated()), id: \.element.id) { index, account in
+                        if index > 0 { SettingsDivider() }
+                        accountRow(account)
+                    }
+                }
+            }
+
+            HStack {
+                Menu("Add Account") {
+                    ForEach(AddMethod.allCases) { method in
+                        // Manual entry is the odd one out: it takes a form rather than
+                        // reading a code from somewhere, so it sits below a separator.
+                        if method == .manual { Divider() }
+                        Button(method.menuTitle) { add(method) }
+                    }
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                Spacer()
+            }
+            .padding(.horizontal, SettingsMetrics.rowHPadding)
+            .padding(.top, 2)
+
+            SettingsFootnote(
+                text: "Codes are generated on this Mac from secrets in its Keychain. "
+                    + "Deleting an account removes its secret for good."
+            )
+        }
+    }
+
+    private func accountRow(_ account: Account) -> some View {
+        SettingsRow(title: accountLabel(account)) {
+            HStack(spacing: 10) {
+                Text(state.formattedCode(for: account))
+                    .font(.system(size: 13, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+
+                Text("\(state.secondsRemaining(for: account))s")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                    .monospacedDigit()
+                    // A fixed width so the row does not twitch as the count drops
+                    // from two digits to one.
+                    .frame(width: 22, alignment: .trailing)
+
+                Menu {
+                    Button("Copy Code") { state.copy(account) }
+                    Button("Edit...") { edit(account) }
+                    Divider()
+                    Button("Delete...", role: .destructive) {
+                        accountPendingDeletion = account
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+            }
+        }
+    }
+
+    private func add(_ method: AddMethod) {
+        if method == .manual {
+            state.route = .add
+            isAddingAccount = true
+        } else {
+            // The scanners run against the screen, a file, or the clipboard and add
+            // the account themselves. Nothing to present here.
+            method.run(state)
+        }
+    }
+
+    private func edit(_ account: Account) {
+        state.route = .edit(account)
+        editingAccount = account
     }
 
     // MARK: - State
@@ -256,8 +532,29 @@ struct SettingsView: View {
         openconnectPath = profile.openconnectPath
         otpAccountID = profile.otpAccountID
         passwordIsStored = store.hasPassword(account: profile.credentialAccount)
+        passwordSource = profile.passwordSource
+        passwordKeychainServer = profile.passwordKeychainServer
         launchAtLogin = LaunchAtLogin.isEnabled
         isLoaded = true
+        refreshKeychainItems()
+    }
+
+    /// Re-runs the login-Keychain lookup for the current username. Metadata only: no prompt.
+    private func refreshKeychainItems() {
+        keychainItems = LoginKeychain.rank(
+            LoginKeychain.items(account: username),
+            preferring: vpn.profile.idpHost
+        )
+
+        // Keep a chosen item only while it still exists; otherwise take the best match, so the
+        // picker never shows a server this Mac no longer has a password for.
+        if let chosen = passwordKeychainServer,
+           !keychainItems.contains(where: { $0.server == chosen }) {
+            passwordKeychainServer = nil
+        }
+        if passwordKeychainServer == nil {
+            passwordKeychainServer = keychainItems.first?.server
+        }
     }
 
     /// Writes the edited fields through to the profile. Called on every edit, so it
@@ -274,6 +571,10 @@ struct SettingsView: View {
         profile.certificateSHA1 = certificateSHA1.isEmpty ? nil : certificateSHA1
         profile.openconnectPath = openconnectPath.trimmingCharacters(in: .whitespaces)
         profile.otpAccountID = otpAccountID
+        profile.passwordSource = passwordSource
+        profile.passwordKeychainServer = passwordSource == .loginKeychain
+            ? passwordKeychainServer
+            : nil
 
         store.save(profile: profile)
         vpn.profile = profile
@@ -320,13 +621,15 @@ private struct TabBar: View {
     @Binding var selection: SettingsView.Tab
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 4) {
+            TabButton(title: "General", systemImage: "gearshape.fill",
+                      isSelected: selection == .general) { selection = .general }
             TabButton(title: "Gateway", systemImage: "network",
                       isSelected: selection == .gateway) { selection = .gateway }
+            TabButton(title: "Authenticator", systemImage: "qrcode",
+                      isSelected: selection == .authenticator) { selection = .authenticator }
             TabButton(title: "Sign-in", systemImage: "person.badge.key.fill",
                       isSelected: selection == .signIn) { selection = .signIn }
-            TabButton(title: "Behaviour", systemImage: "switch.2",
-                      isSelected: selection == .behaviour) { selection = .behaviour }
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 10)
@@ -348,7 +651,9 @@ private struct TabBar: View {
                         .font(.system(size: 11))
                 }
                 .foregroundStyle(isSelected ? Color.accentColor : .secondary)
-                .frame(width: 78)
+                // Wide enough for "Authenticator" without wrapping, and four of these
+                // still fit the window width.
+                .frame(width: 96)
                 .padding(.vertical, 7)
                 .background(
                     // Neutral grey pill behind the selected tab; the accent lives in

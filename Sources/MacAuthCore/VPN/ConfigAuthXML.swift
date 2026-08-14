@@ -69,6 +69,39 @@ public enum ConfigAuth {
         case complete(AuthComplete)
     }
 
+    /// One entry of the gateway's GROUP dropdown.
+    public struct TunnelGroupOption: Equatable, Hashable, Identifiable, Sendable {
+        /// The alias to send back as `group-select`.
+        public let value: String
+        /// What the gateway calls it on its login page. Usually the same as `value`.
+        public let label: String
+        /// The gateway's own preselection.
+        public let isDefault: Bool
+
+        public var id: String { value }
+
+        public init(value: String, label: String, isDefault: Bool = false) {
+            self.value = value
+            self.label = label
+            self.isDefault = isDefault
+        }
+    }
+
+    /// What a first, group-less init POST tells us about a gateway: which tunnel groups it
+    /// offers, and which one it would pick itself. This is how the app fills in the group
+    /// instead of having it typed in or, worse, compiled in.
+    public struct GatewayProbe: Equatable, Sendable {
+        public let groups: [TunnelGroupOption]
+        /// The gateway's preselected group, or the only one it named.
+        public var defaultGroup: String? {
+            groups.first(where: \.isDefault)?.value ?? groups.first?.value
+        }
+
+        public init(groups: [TunnelGroupOption]) {
+            self.groups = groups
+        }
+    }
+
     public enum ParseError: Error, Equatable, CustomStringConvertible {
         case notXML
         case missingType(String)
@@ -117,6 +150,77 @@ public enum ConfigAuth {
         default:
             throw ParseError.unexpectedType(type)
         }
+    }
+
+    /// Reads the tunnel groups out of a response to a group-less init POST.
+    ///
+    /// Deliberately separate from `parse`: a gateway answering without a chosen group replies
+    /// with a login *form*, which has none of the SSO elements `parseAuthRequest` insists on.
+    /// Both shapes are accepted here, since a gateway with a single SAML group skips the form
+    /// and answers with the SSO challenge for its default group instead.
+    public static func parseProbe(_ data: Data) throws -> GatewayProbe {
+        guard let document = try? XMLDocument(data: data, options: [.nodePreserveWhitespace]),
+              let root = document.rootElement()
+        else {
+            throw ParseError.notXML
+        }
+
+        guard let type = root.attribute(forName: "type")?.stringValue else {
+            throw ParseError.missingType(root.name ?? "unknown root element")
+        }
+        guard type == "auth-request" else {
+            throw ParseError.unexpectedType(type)
+        }
+
+        if let error = root.firstChild(named: "auth")?.childText("error"), !error.isEmpty {
+            throw ParseError.gatewayError(error)
+        }
+
+        var groups = groupOptions(in: root)
+
+        // No dropdown means the gateway offers exactly one group and went straight to its
+        // challenge. It names that group in the opaque block it wants echoed back.
+        if groups.isEmpty, let only = root.firstChild(named: "opaque")?.childText("tunnel-group"),
+           !only.isEmpty {
+            groups = [TunnelGroupOption(value: only, label: only, isDefault: true)]
+        }
+
+        guard !groups.isEmpty else {
+            throw ParseError.missingElement("group-select options")
+        }
+
+        return GatewayProbe(groups: groups)
+    }
+
+    /// Options of the login form's group dropdown, in the order the gateway listed them.
+    private static func groupOptions(in root: XMLElement) -> [TunnelGroupOption] {
+        guard
+            let form = root.firstChild(named: "auth")?.firstChild(named: "form"),
+            let selects = form.children?.compactMap({ $0 as? XMLElement })
+                .filter({ $0.localName == "select" || $0.name == "select" }),
+            // Cisco names it `group_list`; accept anything group-ish so a gateway with a
+            // differently named dropdown still works rather than silently offering nothing.
+            let select = selects.first(where: {
+                ($0.attribute(forName: "name")?.stringValue ?? "").lowercased().contains("group")
+            }) ?? selects.first
+        else {
+            return []
+        }
+
+        return (select.children?.compactMap { $0 as? XMLElement } ?? [])
+            .filter { $0.localName == "option" || $0.name == "option" }
+            .compactMap { option in
+                let text = option.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let value = option.attribute(forName: "value")?.stringValue ?? text
+                guard let value, !value.isEmpty else { return nil }
+
+                let selected = option.attribute(forName: "selected")?.stringValue?.lowercased()
+                return TunnelGroupOption(
+                    value: value,
+                    label: (text?.isEmpty == false ? text : value) ?? value,
+                    isDefault: selected == "true" || selected == "selected"
+                )
+            }
     }
 
     private static func parseAuthRequest(_ root: XMLElement) throws -> AuthRequest {
@@ -193,22 +297,27 @@ public enum ConfigAuth {
 
     // MARK: - Requests
 
-    /// Step 1. Asks the gateway how to authenticate against a named tunnel group.
+    /// Step 1. Asks the gateway how to authenticate against a tunnel group.
     ///
     /// - Parameters:
-    ///   - groupSelect: the tunnel group alias, for example `MFA-VPN`.
+    ///   - groupSelect: the tunnel group alias, for example `MFA-VPN`. Pass nil or an empty
+    ///     string to omit the element, which is how the gateway is asked what groups it has:
+    ///     it then answers with its group dropdown, or with the challenge for its default.
     ///   - groupAccess: the gateway URL the client is dialling.
     public static func initRequest(
-        groupSelect: String,
+        groupSelect: String?,
         groupAccess: String,
         clientVersion: String = defaultClientVersion
     ) -> String {
-        """
+        let groupLine = (groupSelect?.isEmpty == false)
+            ? "\n<group-select>\(escape(groupSelect!))</group-select>"
+            : ""
+
+        return """
         <?xml version="1.0" encoding="UTF-8"?>
         <config-auth client="vpn" type="init" aggregate-auth-version="2">
         <version who="vpn">\(escape(clientVersion))</version>
-        <device-id>mac-intel</device-id>
-        <group-select>\(escape(groupSelect))</group-select>
+        <device-id>mac-intel</device-id>\(groupLine)
         <group-access>\(escape(groupAccess))</group-access>
         <capabilities>
         <auth-method>single-sign-on-v2</auth-method>

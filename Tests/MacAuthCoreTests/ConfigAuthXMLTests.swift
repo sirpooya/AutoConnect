@@ -285,18 +285,105 @@ final class ConfigAuthXMLTests: XCTestCase {
         XCTAssertEqual(headers["Accept-Encoding"], "identity")
     }
 
+    // MARK: - Group discovery
+
+    /// The whole point of the probe: the group comes off the gateway, so nobody types or
+    /// hardcodes it. Both captured fixtures carry the real GROUP dropdown.
+    func testProbeListsTheGatewaysGroups() throws {
+        let probe = try ConfigAuth.parseProbe(Data(passwordAuthRequest.utf8))
+
+        XCTAssertEqual(probe.groups.map(\.value), ["HQ-VPN", "MFA-VPN"])
+        XCTAssertEqual(probe.defaultGroup, "HQ-VPN")
+    }
+
+    func testProbeHonoursTheGatewaysPreselection() throws {
+        let probe = try ConfigAuth.parseProbe(Data(samlAuthRequest.utf8))
+
+        // The alias is what goes back as group-select, not the tunnel-group in <opaque>.
+        XCTAssertEqual(probe.defaultGroup, "MFA-VPN")
+        XCTAssertEqual(probe.groups.count, 2)
+    }
+
+    /// A gateway with one group answers with its challenge and no dropdown. The group it names
+    /// in the opaque block is then the only choice there is.
+    func testProbeFallsBackToTheOpaqueTunnelGroup() throws {
+        let noDropdown = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <config-auth client="vpn" type="auth-request" aggregate-auth-version="2">
+        <opaque is-for="sg">
+        <tunnel-group>ONLY-VPN</tunnel-group>
+        </opaque>
+        <auth id="main">
+        <title>Login</title>
+        </auth>
+        </config-auth>
+        """
+
+        let probe = try ConfigAuth.parseProbe(Data(noDropdown.utf8))
+
+        XCTAssertEqual(probe.groups, [
+            ConfigAuth.TunnelGroupOption(value: "ONLY-VPN", label: "ONLY-VPN", isDefault: true)
+        ])
+    }
+
+    func testProbeSurfacesAGatewayError() {
+        let rejected = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <config-auth client="vpn" type="auth-request" aggregate-auth-version="2">
+        <auth id="main">
+        <error id="1" param1="" param2="">Login denied, unauthorized.</error>
+        </auth>
+        </config-auth>
+        """
+
+        XCTAssertThrowsError(try ConfigAuth.parseProbe(Data(rejected.utf8))) { error in
+            XCTAssertEqual(
+                error as? ConfigAuth.ParseError,
+                .gatewayError("Login denied, unauthorized.")
+            )
+        }
+    }
+
+    func testInitRequestWithoutAGroupOmitsGroupSelect() {
+        let xml = ConfigAuth.initRequest(
+            groupSelect: nil,
+            groupAccess: "https://vpn.example.com:443"
+        )
+
+        XCTAssertFalse(xml.contains("<group-select>"))
+        XCTAssertTrue(xml.contains("<group-access>https://vpn.example.com:443</group-access>"))
+        // An empty string means the same thing as nil: ask, do not assert.
+        XCTAssertFalse(
+            ConfigAuth.initRequest(groupSelect: "", groupAccess: "x").contains("<group-select>")
+        )
+    }
+
     // MARK: - Profile
 
     func testProfileDerivesGatewayURLs() {
-        let profile = VPNProfile.digikalaMFA
+        let profile = VPNProfile.example
 
-        XCTAssertEqual(profile.gatewayURL?.absoluteString, "https://mfa-vpn.dkservices.ir:28015/")
-        XCTAssertEqual(profile.groupAccess, "https://mfa-vpn.dkservices.ir:28015")
-        XCTAssertEqual(profile.tunnelGroup, "MFA-VPN")
+        XCTAssertEqual(profile.gatewayURL?.absoluteString, "https://vpn.example.com:443/")
+        XCTAssertEqual(profile.groupAccess, "https://vpn.example.com:443")
+        XCTAssertEqual(profile.tunnelGroup, "EXAMPLE-VPN")
+    }
+
+    func testEmptyProfileIsIncompleteUntilAGatewayIsConfigured() {
+        XCTAssertFalse(VPNProfile.empty.isComplete)
+        XCTAssertTrue(VPNProfile.example.isComplete)
+
+        // A gateway with no group or no pin is not ready to connect either.
+        var missingGroup = VPNProfile.example
+        missingGroup.tunnelGroup = ""
+        XCTAssertFalse(missingGroup.isComplete)
+
+        var missingPin = VPNProfile.example
+        missingPin.certificateSHA1 = nil
+        XCTAssertFalse(missingPin.isComplete)
     }
 
     func testProfileNormalizesFingerprint() {
-        var profile = VPNProfile.digikalaMFA
+        var profile = VPNProfile.example
         profile.certificateSHA1 = "aa:46:a4:48:01:9a:03:ff:da:f8:80:35:58:c9:b1:9c:e7:7b:95:1b"
 
         XCTAssertEqual(
