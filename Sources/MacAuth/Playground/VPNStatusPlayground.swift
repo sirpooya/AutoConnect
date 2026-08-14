@@ -24,13 +24,29 @@ final class VPNStatusParams {
     // knob that no longer drives anything is worse than no knob: it invites tuning a value the
     // app has stopped reading.
 
+    /// Which menu bar glyph set the status item draws. See `MenuBarIconSet`.
+    var menuBarIconSet: Int = MenuBarIconSet.keyholeArc.rawValue
+
     /// Whether the connect control is a switch instead of a Connect / Disconnect button. A real
     /// choice, not a fake: the switch reads as state, the button reads as an instruction, and only
     /// the button can say "Cancel" while a connect is in flight.
     var usesSwitch: Bool = false
 
-    /// Diameter of the countdown wedge on each account row.
-    var countdownSize: Double = 14
+    /// Size of the connect switch, as one of AppKit's four control sizes.
+    ///
+    /// Deliberately not a free slider. A switch is an AppKit control drawn at fixed sizes, so a
+    /// continuous scale would have to be a `scaleEffect`, which renders it at its native size and
+    /// then resamples: soft edges and a thumb that no longer matches any other control on screen.
+    var switchSizeIndex: Int = SwitchSize.mini.rawValue
+
+    var switchControlSize: ControlSize {
+        SwitchSize(rawValue: switchSizeIndex)?.controlSize ?? .mini
+    }
+
+    /// Diameter of the countdown wedge on each account row. 18 pt was chosen by eye against the
+    /// 19 pt code beside it: smaller and the wedge reads as a stray dot, larger and it competes
+    /// with the number.
+    var countdownSize: Double = 18
 
     /// Gap between the countdown wedge and the row's trailing edge, on top of the row's own
     /// padding. The wedge and the "Copied" label share a trailing-aligned slot, so this moves
@@ -77,11 +93,18 @@ final class VPNStatusParams {
         save()
     }
 
-    func save() { VPNStatusSnapshot(self).save() }
+    func save() {
+        VPNStatusSnapshot(self).save()
+        // The status item is AppKit and observes nothing, so tell it a knob moved. Without this
+        // the menu bar keeps the old glyph set until the next launch.
+        NotificationCenter.default.post(name: .vpnStatusParamsChanged, object: nil)
+    }
 
     private func apply(_ snapshot: VPNStatusSnapshot) {
         dotSize = snapshot.dotSize
+        menuBarIconSet = snapshot.menuBarIconSet
         usesSwitch = snapshot.usesSwitch
+        switchSizeIndex = snapshot.switchSizeIndex
         countdownSize = snapshot.countdownSize
         countdownMarginRight = snapshot.countdownMarginRight
         phaseIndex = snapshot.phaseIndex
@@ -98,7 +121,8 @@ final class VPNStatusParams {
     /// Autosave watches this, and the stage rebuilds its mock controller from it.
     var signature: [Double] {
         [
-            dotSize, usesSwitch ? 1 : 0, countdownSize, countdownMarginRight,
+            dotSize, Double(menuBarIconSet), usesSwitch ? 1 : 0, Double(switchSizeIndex),
+            countdownSize, countdownMarginRight,
             Double(phaseIndex), hoursRemaining, usingDTLS ? 1 : 0, accountCount,
             uptimeHours, rateExponent, transferredExponent,
             Double(assignedIP.hashValue & 0xffff), Double(errorText.hashValue & 0xffff),
@@ -109,14 +133,46 @@ final class VPNStatusParams {
     /// mock, not the app.
     var swiftSnippet: String {
         """
+        // Menu bar
+        static let menuBarIconSet: MenuBarIconSet = .\(MenuBarIconSet(rawValue: menuBarIconSet).map { "\($0)" } ?? "keyholeArc")
+
         // VPN status row
         static let vpnDotSize: CGFloat = \(Int(dotSize))
         static let vpnUsesSwitch = \(usesSwitch)
+        static let vpnSwitchSize: ControlSize = .\(SwitchSize(rawValue: switchSizeIndex)?.title.lowercased() ?? "mini")
 
         // Account row countdown
         static let countdownSize: CGFloat = \(Int(countdownSize))
         static let countdownMarginRight: CGFloat = \(Int(countdownMarginRight))
         """
+    }
+}
+
+/// The sizes AppKit draws a switch at, smallest first.
+enum SwitchSize: Int, CaseIterable, Identifiable {
+    case mini
+    case small
+    case regular
+    case large
+
+    var id: Int { rawValue }
+
+    var title: String {
+        switch self {
+        case .mini: "Mini"
+        case .small: "Small"
+        case .regular: "Regular"
+        case .large: "Large"
+        }
+    }
+
+    var controlSize: ControlSize {
+        switch self {
+        case .mini: .mini
+        case .small: .small
+        case .regular: .regular
+        case .large: .large
+        }
     }
 }
 
@@ -152,7 +208,9 @@ enum PreviewPhase: Int, CaseIterable, Identifiable {
 /// Flat mirror of the params, persisted as one JSON blob.
 struct VPNStatusSnapshot: Codable {
     var dotSize: Double
+    var menuBarIconSet: Int
     var usesSwitch: Bool
+    var switchSizeIndex: Int
     var countdownSize: Double
     var countdownMarginRight: Double
     var phaseIndex: Int
@@ -170,7 +228,9 @@ struct VPNStatusSnapshot: Codable {
     @MainActor
     init(_ params: VPNStatusParams) {
         dotSize = params.dotSize
+        menuBarIconSet = params.menuBarIconSet
         usesSwitch = params.usesSwitch
+        switchSizeIndex = params.switchSizeIndex
         countdownSize = params.countdownSize
         countdownMarginRight = params.countdownMarginRight
         phaseIndex = params.phaseIndex
@@ -197,8 +257,10 @@ struct VPNStatusSnapshot: Codable {
         }
 
         dotSize = value(.dotSize, 8)
+        menuBarIconSet = value(.menuBarIconSet, MenuBarIconSet.keyholeArc.rawValue)
         usesSwitch = value(.usesSwitch, false)
-        countdownSize = value(.countdownSize, 14)
+        switchSizeIndex = value(.switchSizeIndex, SwitchSize.mini.rawValue)
+        countdownSize = value(.countdownSize, 18)
         countdownMarginRight = value(.countdownMarginRight, 0)
         phaseIndex = value(.phaseIndex, PreviewPhase.connected.rawValue)
         assignedIP = value(.assignedIP, "10.250.232.188")
@@ -233,6 +295,20 @@ struct VPNStatusStage: View {
 
     /// Rebuilt whenever the fake state changes, so the real `VPNSection` renders it unmodified.
     private var mockController: VPNController {
+        let controller = buildMockController()
+
+        // Make the controls live. The mock cannot connect, so Connect, Disconnect and the switch
+        // move the stage's own phase instead: the point is to exercise the control and watch the
+        // row and the menu bar glyph follow, which a dead button cannot show.
+        controller.onPreviewConnectRequest = { [params] wantsConnect in
+            params.phaseIndex = wantsConnect
+                ? PreviewPhase.connected.rawValue
+                : PreviewPhase.idle.rawValue
+        }
+        return controller
+    }
+
+    private func buildMockController() -> VPNController {
         let phase = PreviewPhase(rawValue: params.phaseIndex) ?? .connected
         let reference = Date(timeIntervalSince1970: 1_776_000_000)
 
@@ -339,19 +415,50 @@ struct VPNStatusStage: View {
                 endPoint: .bottomTrailing
             )
 
-            MenuPanel()
-                .environmentObject(mockState)
-                .environmentObject(mockController)
-                // The panel's Settings button needs one; the preview copy cannot post anything.
-                .environmentObject(mockNotifier)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .shadow(color: .black.opacity(0.35), radius: 20, y: 8)
-                .padding(40)
-                // Identity keyed on the fake state so the panel rebuilds when a knob moves,
-                // rather than caching a stale controller.
-                .id(params.signature.description)
+            // The icon above the panel it opens, so a phase can be judged as the menu bar shows
+            // it: the glyph is the only thing visible when the panel is closed.
+            VStack(spacing: 0) {
+                menuBarStrip
+
+                MenuPanel()
+                    .environmentObject(mockState)
+                    .environmentObject(mockController)
+                    // The panel's Settings button needs one; the preview copy cannot post anything.
+                    .environmentObject(mockNotifier)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .shadow(color: .black.opacity(0.35), radius: 20, y: 8)
+                    .padding(.top, 8)
+
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 40)
+            .padding(.vertical, 24)
+            // Identity keyed on the fake state so the panel rebuilds when a knob moves,
+            // rather than caching a stale controller.
+            .id(params.signature.description)
         }
+    }
+
+    /// A mock menu bar. Not a screenshot of the real one: the point is the glyph this phase
+    /// produces, at the size and tint the real status item draws it, with the panel hanging off it.
+    private var menuBarStrip: some View {
+        HStack(spacing: 12) {
+            Spacer(minLength: 0)
+
+            MenuBarIconView(isConnected: mockController.isConnected)
+                // The glyphs are template images; in the real menu bar AppKit tints them, so the
+                // mock has to tint them too or a white icon would vanish on a light strip.
+                .foregroundStyle(.primary)
+
+            Text("13:45")
+                .font(.system(size: 11))
+                .foregroundStyle(.primary)
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 24)
+        .frame(maxWidth: .infinity)
+        .background(.bar)
     }
 }
 
@@ -370,8 +477,15 @@ struct VPNStatusPlaygroundView: View {
         nonmutating set { expandedRaw = newValue.sorted().joined(separator: "\n") }
     }
 
-    /// Shared row geometry, so every control's trailing edge agrees.
+    /// Shared row geometry, so every control's trailing edge agrees. Owned by the row helpers
+    /// below and applied exactly once: a section that also insets its own stack double-insets
+    /// every slider inside it, which is how three sections ended up at three different margins.
     private static let rowInset: CGFloat = 10
+
+    /// Gap between two controls in a section. It has to be clearly larger than the 6 pt between a
+    /// label and the slider it names, or a label reads as belonging to the slider above it just as
+    /// much as to its own. This is the whole reason the sidebar looked mislabelled.
+    private static let rowSpacing: CGFloat = 10
 
     @State private var copied = false
 
@@ -400,14 +514,38 @@ struct VPNStatusPlaygroundView: View {
 
     private var controlsForm: some View {
         Form {
-            accordion("State") {
-                VStack(alignment: .leading, spacing: 8) {
-                    Picker("Phase", selection: $params.phaseIndex) {
-                        ForEach(PreviewPhase.allCases) { phase in
-                            Text(phase.title).tag(phase.rawValue)
-                        }
+            // The two things being decided right now sit first: which glyph the menu bar draws,
+            // and whether the connect control is a switch. The stage-only fakes come after, since
+            // they set up a scene rather than change the app.
+            accordion("Menu bar") {
+                section {
+                    picker(
+                        "Menu bar icon",
+                        $params.menuBarIconSet,
+                        MenuBarIconSet.allCases.map { ($0.rawValue, $0.title) }
+                    )
+
+                    toggle("Switch instead of Connect button", $params.usesSwitch)
+
+                    // Only while the switch is the control being used: a size picker for a
+                    // control that is not on screen is a dead knob.
+                    if params.usesSwitch {
+                        picker(
+                            "Switch size",
+                            $params.switchSizeIndex,
+                            SwitchSize.allCases.map { ($0.rawValue, $0.title) }
+                        )
                     }
-                    .font(.caption)
+                }
+            }
+
+            accordion("State") {
+                section {
+                    picker(
+                        "Phase",
+                        $params.phaseIndex,
+                        PreviewPhase.allCases.map { ($0.rawValue, $0.title) }
+                    )
 
                     if params.phaseIndex == PreviewPhase.connected.rawValue {
                         textField("Assigned IP", $params.assignedIP)
@@ -419,11 +557,10 @@ struct VPNStatusPlaygroundView: View {
                         textField("Error", $params.errorText)
                     }
                 }
-                .padding(.horizontal, Self.rowInset)
             }
 
             accordion("Statistics") {
-                VStack(alignment: .leading, spacing: 2) {
+                section {
                     slider("Uptime", $params.uptimeHours, 0...12, "h")
                     magnitudeSlider(
                         "Traffic rate",
@@ -436,20 +573,20 @@ struct VPNStatusPlaygroundView: View {
                         0...12
                     ) { TunnelStats.formatBytes(UInt64($0)) }
                 }
-                .padding(.horizontal, Self.rowInset)
             }
 
             accordion("Appearance") {
-                VStack(alignment: .leading, spacing: 2) {
+                section {
                     slider("Dot size", $params.dotSize, 5...14, "pt")
-                    toggle("Switch instead of Connect button", $params.usesSwitch)
                     slider("Countdown size", $params.countdownSize, 8...24, "pt")
                     slider("Countdown margin right", $params.countdownMarginRight, 0...24, "pt")
                 }
             }
 
             accordion("Panel") {
-                slider("Accounts", $params.accountCount, 0...6, "")
+                section {
+                    slider("Accounts", $params.accountCount, 0...6)
+                }
             }
 
             Section {
@@ -477,6 +614,69 @@ struct VPNStatusPlaygroundView: View {
         }
     }
 
+    /// One accordion's worth of controls. The spacing is the only thing that says which label goes
+    /// with which slider, so it lives here rather than at each call site, where the three sections
+    /// had drifted to 8, 2 and 2.
+    private func section(@ViewBuilder content: () -> some View) -> some View {
+        VStack(alignment: .leading, spacing: Self.rowSpacing, content: content)
+    }
+
+    /// A row whose control sits below its label: sliders, whose track has to span the full width.
+    ///
+    /// The label and its readout are drawn here, never by the control, so a slider row and a
+    /// magnitude row cannot end up with different typography.
+    private func stackedRow(
+        _ label: String,
+        _ readout: String,
+        @ViewBuilder control: () -> some View
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 8) {
+                Text(label)
+                Spacer(minLength: 8)
+                Text(readout)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+            .font(.caption)
+
+            // `.labelsHidden()` is what makes the track span the row, and it is not optional.
+            // Inside `.formStyle(.grouped)` a `Slider` is laid out as a form row with a LEADING
+            // LABEL COLUMN, and it reserves that column even though the slider has no label: the
+            // track then starts at about 46% of the row width while its label sits at the far
+            // left, which is what made every label look detached from the control it names.
+            // Measured on a 320 pt sidebar: track started 108 pt in. Of the wrappers that look
+            // like they should fix it, none does except this one. `HStack { Slider }`,
+            // `LabeledContent` with an `EmptyView` label, `.frame(maxWidth: .infinity)` and
+            // `Slider { EmptyView() }` all still reserve the column.
+            //
+            // The vertical padding is room for the knob, which is taller than its track and casts
+            // a shadow past that again.
+            control()
+                .labelsHidden()
+                .padding(.vertical, 4)
+        }
+        // The inset belongs to the whole row, so labels line up with the track ends. Applied here
+        // and nowhere else, or a section that insets its stack too doubles it.
+        .padding(.horizontal, Self.rowInset)
+    }
+
+    /// A row whose control sits beside its label: switches and popups, which have a natural width.
+    ///
+    /// The label is a plain `Text` styled directly rather than the control's own, because
+    /// `.formStyle(.grouped)` restyles a `Toggle`'s or `Picker`'s built-in label and the
+    /// `.font(.caption)` applied from outside loses. That is why one switch label was rendering
+    /// bigger than every slider label next to it.
+    private func inlineRow(_ label: String, @ViewBuilder control: () -> some View) -> some View {
+        HStack(spacing: 8) {
+            Text(label)
+                .font(.caption)
+            Spacer(minLength: 8)
+            control()
+        }
+        .padding(.horizontal, Self.rowInset)
+    }
+
     /// Knobs snap by rounding inside the binding, never with `Slider`'s `step:`, because a step
     /// makes AppKit draw tick marks under the track.
     private func slider(
@@ -492,29 +692,54 @@ struct VPNStatusPlaygroundView: View {
             get: { value.wrappedValue },
             set: { value.wrappedValue = ($0 / step).rounded() * step }
         )
+        // Joined rather than interpolated with a space, or a unitless knob reads "2 " and its
+        // readout hangs a space short of the rows above it.
+        let readout = [String(format: format, value.wrappedValue), unit]
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
 
-        return VStack(alignment: .leading, spacing: 2) {
-            HStack {
-                Text(label)
-                Spacer()
-                Text("\(value.wrappedValue, specifier: format) \(unit)")
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-            }
-            .font(.caption)
-
-            // Vertical room for the knob, which is taller than its track.
+        return stackedRow(label, readout) {
             Slider(value: snapped, in: range)
-                .padding(.vertical, 3)
         }
-        // The inset belongs to the whole row, so labels line up with the track ends.
-        .padding(.horizontal, Self.rowInset)
     }
 
-    /// A toggle sized to match the sliders: a bare `Toggle` renders its label at body size.
+    /// A toggle that matches the sliders: caption label on the left, switch aligned with the
+    /// trailing end of every slider track.
     private func toggle(_ label: String, _ isOn: Binding<Bool>) -> some View {
-        Toggle(label, isOn: isOn)
+        inlineRow(label) {
+            Toggle("", isOn: isOn)
+                .labelsHidden()
+                .accessibilityLabel(label)
+        }
+    }
+
+    /// A popup over an `Int`-tagged choice list.
+    ///
+    /// Taking `(tag, title)` pairs rather than the enum keeps this free of generics while still
+    /// being the only place a popup row is built: a `Picker` written inline at a call site puts its
+    /// label at the form's own inset, 10 pt left of every other label in the column, which is
+    /// exactly how "Menu bar icon" and "Switch size" ended up out of line.
+    ///
+    /// `.fixedSize()` rather than a fixed width: a `Picker` given a width centres its popup inside
+    /// it, which left the control floating 34 pt short of the trailing edge that every slider
+    /// track and switch lines up on. Sized to its content and pushed by the `Spacer`, its trailing
+    /// edge is pinned and only its leading edge moves with the selection.
+    private func picker(
+        _ label: String,
+        _ selection: Binding<Int>,
+        _ options: [(tag: Int, title: String)]
+    ) -> some View {
+        inlineRow(label) {
+            Picker("", selection: selection) {
+                ForEach(options, id: \.tag) { option in
+                    Text(option.title).tag(option.tag)
+                }
+            }
+            .labelsHidden()
+            .accessibilityLabel(label)
             .font(.caption)
+            .fixedSize()
+        }
     }
 
     /// A slider over a power of ten, showing the formatted quantity rather than the exponent.
@@ -533,20 +758,9 @@ struct VPNStatusPlaygroundView: View {
             set: { exponent.wrappedValue = ($0 / 0.1).rounded() * 0.1 }
         )
 
-        return VStack(alignment: .leading, spacing: 2) {
-            HStack {
-                Text(label)
-                Spacer()
-                Text(format(pow(10, exponent.wrappedValue)))
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-            }
-            .font(.caption)
-
+        return stackedRow(label, format(pow(10, exponent.wrappedValue))) {
             Slider(value: snapped, in: range)
-                .padding(.vertical, 3)
         }
-        .padding(.horizontal, Self.rowInset)
     }
 
     private func textField(_ label: String, _ text: Binding<String>) -> some View {
@@ -563,6 +777,7 @@ struct VPNStatusPlaygroundView: View {
                 .font(.caption)
                 .lineLimit(1...3)
         }
+        .padding(.horizontal, Self.rowInset)
     }
 
     private func accordion(_ title: String, @ViewBuilder content: () -> some View) -> some View {
@@ -580,11 +795,20 @@ struct VPNStatusPlaygroundView: View {
                     }
                 )
             ) {
-                // Bottom inset too, or the section's clip cuts the last slider's knob in half.
-                body.padding(.top, 4).padding(.bottom, 2)
+                // Bottom inset too, and more of it than the top: a slider that lands last in a
+                // section is drawn with its knob overhanging the track, and the knob's shadow
+                // overhangs that again, so 2 pt left a visibly sliced circle.
+                body.padding(.top, 4).padding(.bottom, 6)
             } label: {
                 Text(title).font(.headline)
             }
         }
     }
+}
+
+
+extension Notification.Name {
+    /// Posted whenever a playground knob is saved, so AppKit-side code that reads the params can
+    /// redraw. SwiftUI views observing `VPNStatusParams` do not need it.
+    static let vpnStatusParamsChanged = Notification.Name("macauth.vpnStatusParamsChanged")
 }

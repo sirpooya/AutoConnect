@@ -38,7 +38,7 @@ struct VPNSection: View {
                 HStack(spacing: 6) {
                     Image(systemName: "arrow.triangle.2.circlepath")
                         .font(.system(size: 9))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(.secondary)
 
                     Text(vpn.reconnectReason ?? "The tunnel stopped responding.")
                         .font(.system(size: 9))
@@ -247,9 +247,11 @@ struct VPNSection: View {
 
     private func errorRow(_ message: String) -> some View {
         HStack(alignment: .top, spacing: 6) {
-            Image(systemName: "exclamationmark.triangle.fill")
+            // Neutral, not a coloured alert glyph. The text already says what went wrong, and the
+            // status dot is the one thing in this panel that carries state as colour.
+            Image(systemName: "exclamationmark.circle")
                 .font(.system(size: 9))
-                .foregroundStyle(.orange)
+                .foregroundStyle(.secondary)
 
             Text(message)
                 .font(.system(size: 9))
@@ -313,7 +315,7 @@ struct VPNSection: View {
             set: { wantsOn in wantsOn ? vpn.connect() : vpn.disconnect() }
         ))
         .toggleStyle(.switch)
-        .controlSize(.mini)
+        .controlSize(params.switchControlSize)
         .labelsHidden()
         .help(vpn.isConnected ? "Disconnect" : "Connect")
     }

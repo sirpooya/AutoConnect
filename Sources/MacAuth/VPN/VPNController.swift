@@ -96,6 +96,10 @@ final class VPNController: ObservableObject {
     /// machine, so a mock cannot display or disturb a live tunnel.
     private var isPreview = false
 
+    /// Preview only. Receives what Connect and Disconnect were asked to do, so the playground can
+    /// move its own phase and the controls can be exercised without a gateway. `true` is connect.
+    var onPreviewConnectRequest: ((Bool) -> Void)?
+
     // MARK: Reconnection
 
     /// Whether automatic reconnection is wanted. Off by default: an app that dials a corporate
@@ -238,8 +242,11 @@ final class VPNController: ObservableObject {
     func connect() {
         // A preview controller must never touch the machine. Without this, Connect in the
         // playground ran the real sequence against the example gateway: a webview sign-in, and
-        // then openconnect.
-        guard !isPreview else { return }
+        // then openconnect. The playground gets the request instead, and moves its own state.
+        guard !isPreview else {
+            onPreviewConnectRequest?(true)
+            return
+        }
         guard connectTask == nil, !isConnected else { return }
 
         userHasConnected = true
@@ -566,7 +573,10 @@ final class VPNController: ObservableObject {
     func disconnect() {
         // Same reason as connect: a mock must not be able to tear down the real tunnel, which is
         // the user's actual network connection.
-        guard !isPreview else { return }
+        guard !isPreview else {
+            onPreviewConnectRequest?(false)
+            return
+        }
 
         // An explicit disconnect is an instruction, not a fault: cancel any pending retry and
         // clear the "user wanted this" flag so nothing dials back in behind their back.

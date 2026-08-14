@@ -131,6 +131,15 @@ final class StatusItemController: NSObject, NSApplicationDelegate {
             name: NSApplication.didResignActiveNotification,
             object: nil
         )
+
+        // Choosing a different glyph set in the playground should show up in the real menu bar
+        // immediately. AppKit observes nothing by itself, hence the notification.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(paramsChanged),
+            name: .vpnStatusParamsChanged,
+            object: nil
+        )
     }
 
     /// Only a live tunnel counts as connected: connecting and failed both show the off glyph, so
@@ -139,8 +148,13 @@ final class StatusItemController: NSObject, NSApplicationDelegate {
         let isConnected: Bool
         if case .connected = phase { isConnected = true } else { isConnected = false }
 
-        statusItem?.button?.image = MenuBarIcon.image(connected: isConnected)
+        let set = MenuBarIconSet(rawValue: VPNStatusParams.shared.menuBarIconSet) ?? .keyholeArc
+        statusItem?.button?.image = MenuBarIcon.image(connected: isConnected, set: set)
         statusItem?.button?.toolTip = "MacAuth: \(phase.label)"
+    }
+
+    @objc private func paramsChanged() {
+        apply(phase: vpn.phase)
     }
 
     @objc private func appDidResignActive() {

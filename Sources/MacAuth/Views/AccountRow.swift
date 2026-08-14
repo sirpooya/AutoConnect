@@ -110,7 +110,8 @@ struct CountdownPie: View {
     let fraction: Double
     let color: Color
     let secondsLeft: Int
-    var size: CGFloat = 14
+    /// 18 pt, settled in the playground against the 19 pt code beside it.
+    var size: CGFloat = 18
 
     var body: some View {
         PieSlice(fraction: fraction)

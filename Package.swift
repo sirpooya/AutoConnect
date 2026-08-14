@@ -22,6 +22,20 @@ let package = Package(
             resources: [
                 .copy("Resources/on.pdf"),
                 .copy("Resources/off.pdf"),
+                // Alternative sets, chosen in the playground. Same rule throughout: the outline
+                // glyph means disconnected, the filled one means a live tunnel.
+                .copy("Resources/2-on.pdf"),
+                .copy("Resources/2-off.pdf"),
+                .copy("Resources/3-on.pdf"),
+                .copy("Resources/3-off.pdf"),
+                .copy("Resources/4-on.pdf"),
+                .copy("Resources/4-off.pdf"),
+                .copy("Resources/earth-on.pdf"),
+                .copy("Resources/earth-off.pdf"),
+                .copy("Resources/globe-on.pdf"),
+                .copy("Resources/globe-off.pdf"),
+                .copy("Resources/lock-on.pdf"),
+                .copy("Resources/lock-off.pdf"),
             ]
         ),
         .testTarget(

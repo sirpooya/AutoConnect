@@ -144,6 +144,13 @@ While connected the panel shows the gateway, the assigned address, a countdown t
 and behind a disclosure a throughput chart plus traffic, transferred, uptime, transport, interface
 and MTU. Counters come from `netstat`, sampled only while that block is open.
 
+With automatic reconnect on, that countdown is not meant to reach zero. `ReconnectPolicy` renews
+five minutes before the gateway's hard expiry, which takes the tunnel down and brings it back with
+a fresh session, so the countdown jumps back to a full session rather than running out. A minute or
+less on the clock therefore means the renewal did not take: failures back off 30s, 60s, 120s and so
+on up to ten minutes, and after three in a row automatic retries stop and the panel says so. With
+automatic reconnect off, the session simply expires and openconnect exits.
+
 ### Status notifications
 
 Off until switched on in Settings, General. Flipping the switch is what asks macOS for
