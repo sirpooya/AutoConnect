@@ -84,6 +84,7 @@ Sources/
     ├── Views/
     │   ├── MenuPanel.swift            # panel root, account list, add menu
     │   ├── VPNSection.swift           # status, connection switcher, statistics
+    │   ├── StatusLine.swift           # the status text, its shimmer, and StatusPacer
     │   ├── ThroughputChart.swift      # download area + upload line sparkline
     │   ├── AccountRow.swift           # code, countdown pie, copy
     │   ├── AccountFormView.swift      # manual add (accounts are read-only once enrolled)
@@ -161,6 +162,23 @@ worth keeping unless the user says otherwise:
 - **The countdown is a neutral filled wedge with no digits**, at every stage. No accent colour, no
   amber, no red: the shape already says how much time is left.
 - The status dot is a plain filled circle. No halo, no pulse.
+- **The phase is paced, not the status string.** `StatusPacer` holds each phase on screen for a
+  minimum dwell, so a gateway that answers in milliseconds cannot flash a status past unread. The
+  dot, the connected block and the error row all read the paced phase, or a connect that finished
+  while its steps were still queued shows a green dot beside "Waiting for sign-in". The switch is
+  the exception and follows the real phase, since a click must be answered at once.
+  Four phases skip the queue: `idle` and `contactingGateway` because they answer a click, `failed`
+  and `reconnecting` because nobody sees news that waits. `connected` must not, or the end of a
+  connect flushes every queued step and the dwell looks broken.
+- **Only the working states shimmer**, meaning the four connect steps and reconnecting. Settled
+  states (`idle`, `connected`, `failed`) are plain: a highlight crossing them says work is under way
+  when none is. The shimmer is a gradient the glyphs are *filled* with, not a band drawn over them,
+  and it is clock-driven (`TimelineView`), because an ancestor `.animation` re-applies its own curve
+  to a `repeatForever` started in `onAppear` and kills it.
+- **The row's height change springs, and the animation lives at the mutation.** `StatusPacer` wraps
+  every change of `shown` in `withAnimation`. An `.animation(_:value:)` on the row animates only
+  what that view draws; the height it reports to its parent, and the panel and popover sizing
+  themselves off it, are laid out outside it, so the spring looked dead at every setting.
 - No section headings inside the panel, and no account count. Adding lives in the footer's `+`
   menu, so the list starts at the top.
 - **Say each thing once.** The VPN block titles the gateway; the account rows title the account.
@@ -354,10 +372,10 @@ Four more rules, each one paid for:
   cannot raise a restored window because it cannot become active. Presenting it also needs
   `canJoinAllSpaces`, `fullScreenAuxiliary` and `orderFrontRegardless`, or with a full-screen app
   in front the window lands on the desktop Space and is invisible behind it.
-- Open it without hunting for the footer button:
-  `build/AutoConnect.app/Contents/MacOS/AutoConnect --playground` (DEBUG only). The panel's own
-  button cannot be clicked by UI scripting, because a popover in an accessory app is not exposed to
-  accessibility at all.
+- **The only way in is the launch flag:**
+  `build/AutoConnect.app/Contents/MacOS/AutoConnect --playground` (DEBUG only). The panel's footer
+  button is gone; it was never usable by UI scripting anyway, because a popover in an accessory app
+  is not exposed to accessibility at all.
 - **Mock controls must do something.** Connect, Disconnect and the switch route through
   `VPNController.onPreviewConnectRequest` and walk the stage through the real phase sequence
   (`PhaseScripter`, 700ms a step). Note the guard this depends on: `connect()` and `disconnect()`
