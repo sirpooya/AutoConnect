@@ -21,7 +21,41 @@ final class StatusItemController: NSObject, NSApplicationDelegate {
 
     private var cancellables = Set<AnyCancellable>()
 
+    /// Refuses AppKit's offer to open an "untitled" window at launch.
+    ///
+    /// Launching an app with no document and no visible window makes AppKit ask for one, and with
+    /// a SwiftUI `Settings` scene as the only candidate that is what it opens. This app's entire
+    /// interface is the menu bar item, so the answer is always no.
+    func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool {
+        false
+    }
+
+    /// Refuses AppKit's offer to open a window when the app is activated with none visible.
+    ///
+    /// Without this, clicking the menu bar icon can surface the Settings scene: AppKit treats an
+    /// activation with no visible windows as a reopen and picks a scene itself. Settings must only
+    /// appear when it is asked for.
+    func applicationShouldHandleReopen(
+        _ sender: NSApplication,
+        hasVisibleWindows: Bool
+    ) -> Bool {
+        false
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Opt out of window restoration. With the system's "Close windows when quitting an app"
+        // unchecked, macOS reopens whatever was on screen at quit, so a Settings window left open
+        // comes back by itself on the next launch and reads as the app opening it unbidden.
+        //
+        // Do NOT try to fix this by closing windows in this method: closing SwiftUI's own scene
+        // windows during launch makes the app terminate immediately with exit 0.
+        UserDefaults.standard.register(defaults: ["NSQuitAlwaysKeepsWindows": false])
+
+        // Keeps the activation policy honest even for windows opened outside `claim`, such as
+        // Settings via Cmd+comma.
+        WindowActivation.startObserving()
+        WindowActivation.evaluate()
+
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         item.button?.imagePosition = .imageOnly
         item.button?.target = self

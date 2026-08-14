@@ -7,14 +7,19 @@ struct MacAuthApp: App {
     // icon. See StatusItemController.
     @NSApplicationDelegateAdaptor(StatusItemController.self) private var controller
 
+    /// Never true. See the scene below.
+    @State private var placeholderInserted = false
+
     var body: some Scene {
-        // Settings is opened by Cmd+comma and by the panel's own button. It is a real pane, not a
-        // placeholder: an empty Settings scene is what AppKit surfaces as a blank window when a
-        // regular-policy app is activated with nothing else open.
-        Settings {
-            SettingsView()
-                .environmentObject(controller.state)
-                .environmentObject(controller.vpn)
+        // An App must declare a Scene, but every scene type that can present a window will be
+        // presented at launch by macOS: a `Settings` scene opens itself as soon as it is the only
+        // candidate, which is how this app used to come up showing an unrequested settings window.
+        //
+        // A `MenuBarExtra` that is never inserted satisfies the requirement while presenting
+        // nothing at all. The real menu bar item is the AppKit `NSStatusItem`, and settings live in
+        // an `NSWindow` this app owns. See SettingsWindow.
+        MenuBarExtra("MacAuth", isInserted: $placeholderInserted) {
+            EmptyView()
         }
 
         #if DEBUG

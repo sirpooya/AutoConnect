@@ -1,14 +1,21 @@
 import MacAuthCore
 import SwiftUI
 
-/// Settings for the VPN connection. Nothing here is hardcoded: the gateway, the group, the
-/// username, the password and which authenticator account supplies the OTP are all chosen here
-/// and persisted, so the same build works for any Cisco SAML gateway.
+/// Settings for the VPN connection, split into three tabs: where to connect, who
+/// to connect as, and how the app behaves. Nothing here is hardcoded: the
+/// gateway, the group, the username, the password and which authenticator
+/// account supplies the OTP are all chosen here and persisted, so the same build
+/// works for any Cisco SAML gateway.
+///
+/// All of the edited fields live in this shell rather than in the tab views, so
+/// switching tabs never discards a half-typed value and one Save commits the lot.
 struct SettingsView: View {
     @EnvironmentObject private var state: AppState
     @EnvironmentObject private var vpn: VPNController
 
     private let store = VPNSettingsStore()
+
+    @State private var tab: Tab = .gateway
 
     @State private var host = ""
     @State private var tunnelGroup = ""
@@ -21,113 +28,203 @@ struct SettingsView: View {
     @State private var status: String?
     @State private var launchAtLogin = false
 
+    enum Tab: Hashable {
+        case gateway, signIn, behaviour
+    }
+
     var body: some View {
-        Form {
-            Section("Gateway") {
-                LabeledContent("Address") {
-                    TextField("vpn.example.com:443", text: $host)
-                }
-                LabeledContent("Group") {
-                    TextField("MFA-VPN", text: $tunnelGroup)
-                }
-                LabeledContent("Certificate SHA1") {
-                    TextField("optional, pins the gateway", text: $certificateSHA1)
-                        .font(.system(size: 11, design: .monospaced))
+        VStack(spacing: 0) {
+            TabBar(selection: $tab)
+            Divider().overlay(Color.primary.opacity(0.03))
+
+            Group {
+                switch tab {
+                case .gateway:
+                    gatewayTab
+                case .signIn:
+                    signInTab
+                case .behaviour:
+                    behaviourTab
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
-            Section("Sign-in") {
-                LabeledContent("Username") {
-                    TextField("you@example.com", text: $username)
-                }
+            saveBar
+        }
+        .frame(width: SettingsMetrics.windowWidth)
+        .frame(minHeight: SettingsMetrics.bodyHeight)
+        .onAppear(perform: load)
+        .onDisappear { WindowActivation.release() }
+    }
 
-                LabeledContent("Password") {
+    // MARK: - Tabs
+
+    private var gatewayTab: some View {
+        SettingsTabBody {
+            SettingsSectionHeader(text: "Gateway")
+            SettingsCard {
+                SettingsFieldRow(
+                    title: "Address",
+                    placeholder: "vpn.example.com:443",
+                    text: $host
+                )
+                SettingsDivider()
+                SettingsFieldRow(
+                    title: "Group",
+                    placeholder: "MFA-VPN",
+                    text: $tunnelGroup
+                )
+            }
+            SettingsFootnote(text: "The tunnel group the gateway offers on its login page.")
+
+            SettingsSectionHeader(text: "Security")
+                .padding(.top, 10)
+            SettingsCard {
+                SettingsFieldRow(
+                    title: "Certificate SHA1",
+                    placeholder: "optional",
+                    text: $certificateSHA1,
+                    monospaced: true
+                )
+            }
+            SettingsFootnote(
+                text: "Pins the gateway certificate. Leave it empty to fall back to the "
+                    + "system trust store."
+            )
+        }
+    }
+
+    private var signInTab: some View {
+        SettingsTabBody {
+            SettingsSectionHeader(text: "Credentials")
+            SettingsCard {
+                SettingsFieldRow(
+                    title: "Username",
+                    placeholder: "you@example.com",
+                    text: $username
+                )
+                SettingsDivider()
+                SettingsRow(title: "Password") {
                     HStack(spacing: 6) {
                         SecureField(
                             passwordIsStored ? "Stored in Keychain" : "Not set",
                             text: $password
                         )
+                        .textFieldStyle(.plain)
+                        .multilineTextAlignment(.trailing)
+                        .font(.system(size: 13))
 
                         if passwordIsStored {
                             Button("Remove") { removePassword() }
                                 .controlSize(.small)
                         }
                     }
-                }
-
-                Picker("OTP from", selection: $otpAccountID) {
-                    Text("Type it manually").tag(UUID?.none)
-                    ForEach(state.accounts) { account in
-                        Text(accountLabel(account)).tag(UUID?.some(account.id))
-                    }
-                }
-
-                if state.accounts.isEmpty {
-                    Text("Add an account in the menu to use its code automatically.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    .frame(maxWidth: SettingsMetrics.fieldWidth)
                 }
             }
 
-            Section("Behaviour") {
-                Toggle("Reconnect automatically", isOn: $vpn.autoReconnect)
-
-                Text("Renews the session five minutes before the gateway expires it, and restores "
-                     + "the tunnel if it drops or the network changes. Never connects on its own "
-                     + "before you have connected once.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Toggle("Launch at login", isOn: $launchAtLogin)
-                    .onChange(of: launchAtLogin) { _, enabled in
-                        if let message = LaunchAtLogin.set(enabled) {
-                            status = message
-                            // Reflect what macOS actually did, not what was asked for.
-                            launchAtLogin = LaunchAtLogin.isEnabled
+            SettingsSectionHeader(text: "One-time code")
+                .padding(.top, 10)
+            SettingsCard {
+                SettingsRow(title: "OTP from") {
+                    Picker("", selection: $otpAccountID) {
+                        Text("Type it manually").tag(UUID?.none)
+                        ForEach(state.accounts) { account in
+                            Text(accountLabel(account)).tag(UUID?.some(account.id))
                         }
                     }
+                    .labelsHidden()
+                    .controlSize(.small)
+                    .frame(maxWidth: SettingsMetrics.fieldWidth)
+                }
             }
 
-            Section("openconnect") {
-                LabeledContent("Binary") {
-                    TextField("/opt/homebrew/bin/openconnect", text: $openconnectPath)
-                        .font(.system(size: 11, design: .monospaced))
-                }
+            if state.accounts.isEmpty {
+                SettingsFootnote(
+                    text: "Add an account in the menu to use its code automatically."
+                )
+            }
 
-                if !binaryExists {
-                    Label(
-                        "Not found. Install with: brew install openconnect",
-                        systemImage: "exclamationmark.triangle"
-                    )
-                    .font(.caption)
+            SettingsFootnote(
+                text: "The password and the OTP secret both live in this Mac's Keychain. "
+                    + "Storing them together means this Mac alone satisfies both factors."
+            )
+            .padding(.top, 4)
+        }
+    }
+
+    private var behaviourTab: some View {
+        SettingsTabBody {
+            SettingsSectionHeader(text: "Connection")
+            SettingsCard {
+                SettingsRow(title: "Reconnect automatically") {
+                    Toggle("", isOn: $vpn.autoReconnect)
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                        .labelsHidden()
+                }
+            }
+            SettingsFootnote(
+                text: "Renews the session five minutes before the gateway expires it, and "
+                    + "restores the tunnel if it drops or the network changes. Never connects "
+                    + "on its own before you have connected once."
+            )
+
+            SettingsSectionHeader(text: "Startup")
+                .padding(.top, 10)
+            SettingsCard {
+                SettingsRow(title: "Launch at login") {
+                    Toggle("", isOn: $launchAtLogin)
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                        .labelsHidden()
+                        .onChange(of: launchAtLogin) { _, enabled in
+                            if let message = LaunchAtLogin.set(enabled) {
+                                status = message
+                                // Reflect what macOS actually did, not what was asked for.
+                                launchAtLogin = LaunchAtLogin.isEnabled
+                            }
+                        }
+                }
+            }
+
+            SettingsSectionHeader(text: "openconnect")
+                .padding(.top, 10)
+            SettingsCard {
+                SettingsFieldRow(
+                    title: "Binary",
+                    placeholder: "/opt/homebrew/bin/openconnect",
+                    text: $openconnectPath,
+                    monospaced: true
+                )
+            }
+
+            if !binaryExists {
+                SettingsFootnote(text: "Not found. Install with: brew install openconnect")
                     .foregroundStyle(.orange)
-                }
-            }
-
-            Section {
-                HStack {
-                    if let status {
-                        Text(status)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Button("Save") { save() }
-                        .keyboardShortcut(.defaultAction)
-                }
-            } footer: {
-                Text("The password and the OTP secret both live in this Mac's Keychain. "
-                     + "Storing them together means this Mac alone satisfies both factors.")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
             }
         }
-        .formStyle(.grouped)
-        .frame(width: 460)
-        .fixedSize(horizontal: false, vertical: true)
-        .onAppear(perform: load)
-        .onDisappear { WindowActivation.release() }
     }
+
+    // MARK: - Save bar
+
+    private var saveBar: some View {
+        HStack {
+            if let status {
+                Text(status)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button("Save") { save() }
+                .keyboardShortcut(.defaultAction)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
+        .background(.bar)
+    }
+
+    // MARK: - State
 
     private var binaryExists: Bool {
         FileManager.default.isExecutableFile(atPath: openconnectPath)
@@ -189,6 +286,56 @@ struct SettingsView: View {
             status = "Password removed"
         } catch {
             status = "Could not remove the password: \(error)"
+        }
+    }
+}
+
+// MARK: - Top tab bar
+
+private struct TabBar: View {
+    @Binding var selection: SettingsView.Tab
+
+    var body: some View {
+        HStack(spacing: 8) {
+            TabButton(title: "Gateway", systemImage: "network",
+                      isSelected: selection == .gateway) { selection = .gateway }
+            TabButton(title: "Sign-in", systemImage: "person.badge.key.fill",
+                      isSelected: selection == .signIn) { selection = .signIn }
+            TabButton(title: "Behaviour", systemImage: "switch.2",
+                      isSelected: selection == .behaviour) { selection = .behaviour }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 10)
+        .padding(.bottom, 8)
+    }
+
+    private struct TabButton: View {
+        let title: String
+        let systemImage: String
+        let isSelected: Bool
+        let action: () -> Void
+
+        var body: some View {
+            Button(action: action) {
+                VStack(spacing: 3) {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 18))
+                    Text(title)
+                        .font(.system(size: 11))
+                }
+                .foregroundStyle(isSelected ? Color.accentColor : .secondary)
+                .frame(width: 78)
+                .padding(.vertical, 7)
+                .background(
+                    // Neutral grey pill behind the selected tab; the accent lives in
+                    // the icon and label, not the fill.
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(isSelected ? Color.primary.opacity(0.06) : .clear)
+                )
+                // The whole pill is clickable, not just the glyphs.
+                .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+            }
+            .buttonStyle(.plain)
         }
     }
 }

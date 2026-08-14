@@ -62,15 +62,17 @@ enum AddMethod: String, CaseIterable, Identifiable {
 
 struct AccountListView: View {
     @EnvironmentObject private var state: AppState
+    /// Needed to hand the settings window the same objects the panel uses.
+    @EnvironmentObject private var vpn: VPNController
 
     #if DEBUG
     @Environment(\.openWindow) private var openWindow
     #endif
 
-    /// Settings needs a focusable window, so the app has to leave accessory mode for its lifetime.
+    /// Opens the app's own settings window. Deliberately not SwiftUI's `Settings` scene, which
+    /// macOS opens by itself at launch.
     private func openSettings() {
-        WindowActivation.claim()
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        SettingsWindow.shared.show(state: state, vpn: vpn)
     }
 
     var body: some View {
