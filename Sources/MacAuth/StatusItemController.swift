@@ -101,6 +101,15 @@ final class StatusItemController: NSObject, NSApplicationDelegate {
             if !pinned { reopen() }
         }
 
+        #if DEBUG
+        // Lets the playground be opened straight from a launch, without hunting for the footer
+        // button inside a popover that accessibility cannot see:
+        //   build/MacAuth.app/Contents/MacOS/MacAuth --playground
+        if CommandLine.arguments.contains("--playground") {
+            PlaygroundWindow.shared.show()
+        }
+        #endif
+
         // Switching to another app should put the panel away. A popover left open while the app
         // is in the background is the one thing a menu bar panel must never do.
         NotificationCenter.default.addObserver(

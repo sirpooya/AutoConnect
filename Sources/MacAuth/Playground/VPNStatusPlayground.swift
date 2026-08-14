@@ -20,13 +20,22 @@ final class VPNStatusParams {
     /// below 7 the colour is too small to name at a glance.
     var dotSize: Double = 8
 
-    /// How far the halo grows while a connect is in progress. 1.6x is the smallest scale that
-    /// reads as "working" without the halo colliding with the label baseline.
-    var pulseScale: Double = 1.6
+    // The pulsing halo behind the dot is gone, so its scale and duration knobs went with it. A
+    // knob that no longer drives anything is worse than no knob: it invites tuning a value the
+    // app has stopped reading.
 
-    /// One breath of the working pulse. 0.9 s matches the pace of the system's own indeterminate
-    /// indicators; faster reads as agitated, slower reads as stalled.
-    var pulseDuration: Double = 0.9
+    /// Whether the connect control is a switch instead of a Connect / Disconnect button. A real
+    /// choice, not a fake: the switch reads as state, the button reads as an instruction, and only
+    /// the button can say "Cancel" while a connect is in flight.
+    var usesSwitch: Bool = false
+
+    /// Diameter of the countdown wedge on each account row.
+    var countdownSize: Double = 14
+
+    /// Gap between the countdown wedge and the row's trailing edge, on top of the row's own
+    /// padding. The wedge and the "Copied" label share a trailing-aligned slot, so this moves
+    /// both and neither can shift the row.
+    var countdownMarginRight: Double = 0
 
     // MARK: Fake state (stage-only)
 
@@ -72,8 +81,9 @@ final class VPNStatusParams {
 
     private func apply(_ snapshot: VPNStatusSnapshot) {
         dotSize = snapshot.dotSize
-        pulseScale = snapshot.pulseScale
-        pulseDuration = snapshot.pulseDuration
+        usesSwitch = snapshot.usesSwitch
+        countdownSize = snapshot.countdownSize
+        countdownMarginRight = snapshot.countdownMarginRight
         phaseIndex = snapshot.phaseIndex
         assignedIP = snapshot.assignedIP
         hoursRemaining = snapshot.hoursRemaining
@@ -88,7 +98,7 @@ final class VPNStatusParams {
     /// Autosave watches this, and the stage rebuilds its mock controller from it.
     var signature: [Double] {
         [
-            dotSize, pulseScale, pulseDuration,
+            dotSize, usesSwitch ? 1 : 0, countdownSize, countdownMarginRight,
             Double(phaseIndex), hoursRemaining, usingDTLS ? 1 : 0, accountCount,
             uptimeHours, rateExponent, transferredExponent,
             Double(assignedIP.hashValue & 0xffff), Double(errorText.hashValue & 0xffff),
@@ -101,8 +111,11 @@ final class VPNStatusParams {
         """
         // VPN status row
         static let vpnDotSize: CGFloat = \(Int(dotSize))
-        static let vpnPulseScale: CGFloat = \(String(format: "%.1f", pulseScale))
-        static let vpnPulseDuration: TimeInterval = \(String(format: "%.1f", pulseDuration))
+        static let vpnUsesSwitch = \(usesSwitch)
+
+        // Account row countdown
+        static let countdownSize: CGFloat = \(Int(countdownSize))
+        static let countdownMarginRight: CGFloat = \(Int(countdownMarginRight))
         """
     }
 }
@@ -139,8 +152,9 @@ enum PreviewPhase: Int, CaseIterable, Identifiable {
 /// Flat mirror of the params, persisted as one JSON blob.
 struct VPNStatusSnapshot: Codable {
     var dotSize: Double
-    var pulseScale: Double
-    var pulseDuration: Double
+    var usesSwitch: Bool
+    var countdownSize: Double
+    var countdownMarginRight: Double
     var phaseIndex: Int
     var assignedIP: String
     var hoursRemaining: Double
@@ -156,8 +170,9 @@ struct VPNStatusSnapshot: Codable {
     @MainActor
     init(_ params: VPNStatusParams) {
         dotSize = params.dotSize
-        pulseScale = params.pulseScale
-        pulseDuration = params.pulseDuration
+        usesSwitch = params.usesSwitch
+        countdownSize = params.countdownSize
+        countdownMarginRight = params.countdownMarginRight
         phaseIndex = params.phaseIndex
         assignedIP = params.assignedIP
         hoursRemaining = params.hoursRemaining
@@ -182,8 +197,9 @@ struct VPNStatusSnapshot: Codable {
         }
 
         dotSize = value(.dotSize, 8)
-        pulseScale = value(.pulseScale, 1.6)
-        pulseDuration = value(.pulseDuration, 0.9)
+        usesSwitch = value(.usesSwitch, false)
+        countdownSize = value(.countdownSize, 14)
+        countdownMarginRight = value(.countdownMarginRight, 0)
         phaseIndex = value(.phaseIndex, PreviewPhase.connected.rawValue)
         assignedIP = value(.assignedIP, "10.250.232.188")
         hoursRemaining = value(.hoursRemaining, 11.9)
@@ -368,6 +384,15 @@ struct VPNStatusPlaygroundView: View {
     }
 
     private var controls: some View {
+        controlsForm
+            // Empty space is not a focus target, so a text field kept first responder (and its
+            // focus ring) until some other control took it. Clicking the sidebar background now
+            // resigns it, whichever field held it.
+            .contentShape(Rectangle())
+            .onTapGesture { NSApp.keyWindow?.makeFirstResponder(nil) }
+    }
+
+    private var controlsForm: some View {
         Form {
             accordion("State") {
                 VStack(alignment: .leading, spacing: 8) {
@@ -411,8 +436,9 @@ struct VPNStatusPlaygroundView: View {
             accordion("Appearance") {
                 VStack(alignment: .leading, spacing: 2) {
                     slider("Dot size", $params.dotSize, 5...14, "pt")
-                    slider("Pulse scale", $params.pulseScale, 1...2.5, "x")
-                    slider("Pulse duration", $params.pulseDuration, 0.3...2, "s")
+                    toggle("Switch instead of Connect button", $params.usesSwitch)
+                    slider("Countdown size", $params.countdownSize, 8...24, "pt")
+                    slider("Countdown margin right", $params.countdownMarginRight, 0...24, "pt")
                 }
             }
 
@@ -521,7 +547,12 @@ struct VPNStatusPlaygroundView: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label)
                 .font(.caption)
-            TextField(label, text: text, axis: .vertical)
+            // The label is drawn above, so the field's own must be hidden. Inside a Section,
+            // SwiftUI renders a TextField's title as a leading label, which printed every name
+            // twice.
+            TextField("", text: text, axis: .vertical)
+                .labelsHidden()
+                .accessibilityLabel(label)
                 .textFieldStyle(.roundedBorder)
                 .font(.caption)
                 .lineLimit(1...3)

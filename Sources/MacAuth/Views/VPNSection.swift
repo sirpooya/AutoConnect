@@ -288,7 +288,9 @@ struct VPNSection: View {
 
     @ViewBuilder
     private var actionButton: some View {
-        if vpn.isConnected {
+        if params.usesSwitch {
+            connectSwitch
+        } else if vpn.isConnected {
             Button("Disconnect") { vpn.disconnect() }
                 .controlSize(.small)
         } else if vpn.phase.isWorking {
@@ -299,5 +301,20 @@ struct VPNSection: View {
                 .controlSize(.small)
                 .keyboardShortcut("k")
         }
+    }
+
+    /// The switch alternative. It reads as state rather than as an instruction, and it has one
+    /// honest problem the button does not: a connect takes seconds and can fail, so the switch is
+    /// on while nothing is connected yet. It stays on during the working phases and flips back if
+    /// the attempt fails, which is why the status line still has to say what is happening.
+    private var connectSwitch: some View {
+        Toggle("", isOn: Binding(
+            get: { vpn.isConnected || vpn.phase.isWorking },
+            set: { wantsOn in wantsOn ? vpn.connect() : vpn.disconnect() }
+        ))
+        .toggleStyle(.switch)
+        .controlSize(.mini)
+        .labelsHidden()
+        .help(vpn.isConnected ? "Disconnect" : "Connect")
     }
 }

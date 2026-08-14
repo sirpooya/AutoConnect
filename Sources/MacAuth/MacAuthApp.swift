@@ -22,13 +22,8 @@ struct MacAuthApp: App {
             EmptyView()
         }
 
-        #if DEBUG
-        // Dev-only tuning window. Drives the real VPN row through every phase with fake data, so
-        // the status UI can be designed without a live gateway.
-        Window("VPN Status Playground", id: VPNStatusPlaygroundWindow.id) {
-            VPNStatusPlaygroundView()
-        }
-        .defaultSize(width: 1020, height: 660)
-        #endif
+        // The playground is deliberately not a scene either. As a `Window` scene it restored
+        // itself at launch after any session that had opened it, and an accessory app cannot
+        // raise a restored window because it cannot become active. See PlaygroundWindow.
     }
 }

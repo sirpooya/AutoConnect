@@ -6,6 +6,9 @@ import SwiftUI
 struct AccountRow: View {
     @EnvironmentObject private var state: AppState
 
+    /// Live tuning values, the same object VPNSection reads. See the playground.
+    private var params: VPNStatusParams { VPNStatusParams.shared }
+
     let account: Account
 
     @State private var isHovering = false
@@ -61,11 +64,15 @@ struct AccountRow: View {
                         CountdownPie(
                             fraction: state.remainingFraction(for: account),
                             color: ringColor,
-                            secondsLeft: secondsLeft
+                            secondsLeft: secondsLeft,
+                            size: params.countdownSize
                         )
                     }
                 }
-                .frame(width: 52)
+                // A fixed slot wide enough for "Copied", both contents trailing-aligned, so the
+                // swap cannot move anything however the wedge is sized.
+                .frame(width: 52, alignment: .trailing)
+                .padding(.trailing, params.countdownMarginRight)
                 .animation(.easeInOut(duration: 0.15), value: wasJustCopied)
             }
             .padding(.vertical, 7)
@@ -103,11 +110,12 @@ struct CountdownPie: View {
     let fraction: Double
     let color: Color
     let secondsLeft: Int
+    var size: CGFloat = 14
 
     var body: some View {
         PieSlice(fraction: fraction)
             .fill(color)
-            .frame(width: 14, height: 14)
+            .frame(width: size, height: size)
             .animation(.linear(duration: 0.95), value: fraction)
             .accessibilityLabel("\(secondsLeft) seconds remaining")
     }

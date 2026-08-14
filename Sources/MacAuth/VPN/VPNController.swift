@@ -221,6 +221,10 @@ final class VPNController: ObservableObject {
     // MARK: - Connect
 
     func connect() {
+        // A preview controller must never touch the machine. Without this, Connect in the
+        // playground ran the real sequence against the example gateway: a webview sign-in, and
+        // then openconnect.
+        guard !isPreview else { return }
         guard connectTask == nil, !isConnected else { return }
 
         userHasConnected = true
@@ -544,6 +548,10 @@ final class VPNController: ObservableObject {
     // MARK: - Disconnect
 
     func disconnect() {
+        // Same reason as connect: a mock must not be able to tear down the real tunnel, which is
+        // the user's actual network connection.
+        guard !isPreview else { return }
+
         // An explicit disconnect is an instruction, not a fault: cancel any pending retry and
         // clear the "user wanted this" flag so nothing dials back in behind their back.
         cancelRenewal()

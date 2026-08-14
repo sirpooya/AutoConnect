@@ -65,10 +65,6 @@ struct AccountListView: View {
     /// Needed to hand the settings window the same objects the panel uses.
     @EnvironmentObject private var vpn: VPNController
 
-    #if DEBUG
-    @Environment(\.openWindow) private var openWindow
-    #endif
-
     /// Opens the app's own settings window. Deliberately not SwiftUI's `Settings` scene, which
     /// macOS opens by itself at launch.
     private func openSettings() {
@@ -157,7 +153,7 @@ struct AccountListView: View {
                 .foregroundStyle(.secondary)
 
             #if DEBUG
-            Button("Playground") { VPNStatusPlaygroundWindow.open(openWindow) }
+            Button("Playground") { PlaygroundWindow.shared.show() }
                 .buttonStyle(.plain)
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
