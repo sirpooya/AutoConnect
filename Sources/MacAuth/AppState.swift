@@ -7,7 +7,7 @@ import MacAuthCore
 enum PanelRoute: Equatable {
     case list
     case add
-    case edit(Account)
+    case details(Account)
     case confirmDelete(Account)
 }
 
@@ -145,22 +145,6 @@ final class AppState: ObservableObject {
                 period: period
             )
             try store.add(account, secret: secret)
-            reload()
-            route = .list
-        } catch {
-            errorMessage = describe(error)
-        }
-    }
-
-    /// Saves edited metadata, and optionally a replacement secret.
-    func update(_ account: Account, newSecret rawSecret: String?) {
-        do {
-            if let rawSecret, !rawSecret.trimmingCharacters(in: .whitespaces).isEmpty {
-                let secret = try Base32.decode(rawSecret)
-                try store.updateSecret(for: account.id, secret: secret)
-            }
-            try store.update(account)
-            codeCache[account.id] = nil
             reload()
             route = .list
         } catch {

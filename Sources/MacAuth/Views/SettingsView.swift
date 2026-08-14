@@ -29,10 +29,10 @@ struct SettingsView: View {
     /// would otherwise each look like an edit and save the profile straight back.
     @State private var isLoaded = false
 
-    /// The account being edited, and whether the manual add form is up. Both are
-    /// presented as sheets over the pane and mirrored into `AppState.route`, which
-    /// is what AccountFormView's own Cancel and Save buttons reset.
-    @State private var editingAccount: Account?
+    /// The account whose details are open, and whether the manual add form is up. Both are
+    /// presented as sheets over the pane and mirrored into `AppState.route`, which is what
+    /// those views' own Cancel and Done buttons reset.
+    @State private var detailedAccount: Account?
     @State private var isAddingAccount = false
     @State private var accountPendingDeletion: Account?
 
@@ -100,16 +100,16 @@ struct SettingsView: View {
             // signal that its sheet here is finished with.
             .onChange(of: state.route) { _, route in
                 if route == .list {
-                    editingAccount = nil
+                    detailedAccount = nil
                     isAddingAccount = false
                 }
             }
-            .sheet(item: $editingAccount) { account in
-                AccountFormView(mode: .edit(account))
+            .sheet(item: $detailedAccount) { account in
+                AccountDetailsView(account: account)
                     .frame(width: 320)
             }
             .sheet(isPresented: $isAddingAccount) {
-                AccountFormView(mode: .add)
+                AccountFormView()
                     .frame(width: 320)
             }
             .sheet(item: $editingConnection) { connection in
@@ -264,7 +264,6 @@ struct SettingsView: View {
 
             Menu {
                 Button("Edit...") { editingConnection = item }
-                Button("Duplicate") { duplicate(item) }
                 Divider()
                 Button("Delete...", role: .destructive) { connectionPendingDeletion = item }
             } label: {
@@ -280,16 +279,6 @@ struct SettingsView: View {
 
     private func addConnection() {
         newConnection = .newConnection()
-    }
-
-    private func duplicate(_ item: VPNProfile) {
-        var copy = item
-        // A copy is a different connection: new identity, and its own Keychain item rather than
-        // a second name for the original's password.
-        copy.id = UUID()
-        copy.credentialAccount = "vpn-password-\(copy.id.uuidString)"
-        store.upsert(copy)
-        vpn.reloadProfiles()
     }
 
     private func save(connection: VPNProfile) {
@@ -555,7 +544,7 @@ struct SettingsView: View {
 
             Menu {
                 Button("Copy Code") { state.copy(account) }
-                Button("Edit...") { edit(account) }
+                Button("Details...") { showDetails(account) }
                 Divider()
                 Button("Delete...", role: .destructive) {
                     accountPendingDeletion = account
@@ -582,9 +571,9 @@ struct SettingsView: View {
         }
     }
 
-    private func edit(_ account: Account) {
-        state.route = .edit(account)
-        editingAccount = account
+    private func showDetails(_ account: Account) {
+        state.route = .details(account)
+        detailedAccount = account
     }
 
     // MARK: - State

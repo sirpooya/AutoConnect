@@ -93,7 +93,7 @@ struct VPNSection: View {
     private func titleLines(showsChevron: Bool) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             HStack(spacing: 5) {
-                Text(vpn.profile.displayName)
+                Text(title)
                     .font(.system(size: 11, weight: .semibold))
 
                 if showsChevron {
@@ -107,8 +107,7 @@ struct VPNSection: View {
                     .foregroundStyle(.tertiary)
             }
 
-            // The gateway being dialled, shown the way AnyConnect shows it, with the group
-            // beside it since the name no longer says which one it is.
+            // The gateway being dialled, address and port, beneath whoever is signing in.
             Text(subtitle)
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
@@ -118,14 +117,20 @@ struct VPNSection: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    /// Who is signing in. The two lines together are the whole connection: an account and the
+    /// gateway it authenticates against. Titling both with the address said one thing twice.
+    private var title: String {
+        let user = vpn.profile.username.trimmingCharacters(in: .whitespaces)
+        return user.isEmpty ? vpn.profile.displayName : user
+    }
+
     private var subtitle: String {
         let host = vpn.profile.host
         guard !host.isEmpty else { return "No gateway configured" }
 
-        // The title is the host, so the line beneath it carries the group and the port, the
-        // two things the title drops.
-        let group = vpn.profile.tunnelGroup
-        return group.isEmpty ? host : "\(host) - \(group)"
+        // Not the tunnel group: it is fixed per saved connection, the editor already shows it,
+        // and repeating it here says nothing that changes.
+        return host
     }
 
     // MARK: - Connected

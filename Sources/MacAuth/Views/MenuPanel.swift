@@ -13,9 +13,9 @@ struct MenuPanel: View {
             case .list:
                 AccountListView()
             case .add:
-                AccountFormView(mode: .add)
-            case .edit(let account):
-                AccountFormView(mode: .edit(account))
+                AccountFormView()
+            case .details(let account):
+                AccountDetailsView(account: account)
             case .confirmDelete(let account):
                 DeleteConfirmationView(account: account)
             }

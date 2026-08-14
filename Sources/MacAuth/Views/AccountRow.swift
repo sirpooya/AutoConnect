@@ -18,12 +18,9 @@ struct AccountRow: View {
         state.secondsRemaining(for: account)
     }
 
-    /// The ring goes amber in the last third and red in the last five seconds.
-    private var ringColor: Color {
-        if secondsLeft <= 5 { return .red }
-        if Double(secondsLeft) <= Double(account.period) / 3 { return .orange }
-        return .accentColor
-    }
+    /// Always neutral. The shrinking wedge already says how much time is left, so colouring it
+    /// would only add noise.
+    private var ringColor: Color { .secondary }
 
     var body: some View {
         Button(action: { state.copy(account) }) {
@@ -44,7 +41,7 @@ struct AccountRow: View {
                     }
 
                     Text(state.formattedCode(for: account))
-                        .font(.system(size: 24, weight: .medium, design: .rounded))
+                        .font(.system(size: 19, weight: .medium, design: .rounded))
                         .monospacedDigit()
                         .foregroundStyle(wasJustCopied ? Color.green : Color.primary)
                         .contentTransition(.numericText())
@@ -85,7 +82,7 @@ struct AccountRow: View {
         .contextMenu {
             Button("Copy Code") { state.copy(account) }
             Divider()
-            Button("Edit...") { state.route = .edit(account) }
+            Button("Details...") { state.route = .details(account) }
             Button("Delete...") { state.route = .confirmDelete(account) }
         }
         .help("Click to copy \(account.displayTitle) code")

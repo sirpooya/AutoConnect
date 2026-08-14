@@ -1,23 +1,12 @@
 import MacAuthCore
 import SwiftUI
 
-/// Add or edit an account by hand. In edit mode the secret field is left blank and only
-/// replaces the stored secret if the user types something, so metadata can be fixed without
-/// having the original secret to hand.
+/// Add an account by hand, for a service that offers a secret rather than a QR code.
+///
+/// There is no edit counterpart: an existing account is read-only (see AccountDetailsView),
+/// because every field here changes what code comes out.
 struct AccountFormView: View {
-    enum Mode: Equatable {
-        case add
-        case edit(Account)
-
-        var isEditing: Bool {
-            if case .edit = self { return true }
-            return false
-        }
-    }
-
     @EnvironmentObject private var state: AppState
-
-    let mode: Mode
 
     @State private var issuer = ""
     @State private var label = ""
@@ -31,33 +20,25 @@ struct AccountFormView: View {
         let hasName = !issuer.trimmingCharacters(in: .whitespaces).isEmpty
             || !label.trimmingCharacters(in: .whitespaces).isEmpty
 
-        switch mode {
-        case .add:
-            return hasName && !secret.trimmingCharacters(in: .whitespaces).isEmpty
-        case .edit:
-            return hasName
-        }
+        return hasName && !secret.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(mode.isEditing ? "Edit Account" : "Add Account")
+            Text("Add Account")
                 .font(.system(size: 12, weight: .semibold))
 
             field("Issuer", text: $issuer, prompt: "DigikalaMFA")
             field("Account", text: $label, prompt: "you@example.com")
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(mode.isEditing ? "New Secret (optional)" : "Secret")
+                Text("Secret")
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(.secondary)
 
-                SecureField(
-                    mode.isEditing ? "Leave blank to keep the current secret" : "Base32 secret",
-                    text: $secret
-                )
-                .textFieldStyle(.roundedBorder)
-                .font(.system(size: 11, design: .monospaced))
+                SecureField("Base32 secret", text: $secret)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 11, design: .monospaced))
             }
 
             DisclosureGroup(isExpanded: $showAdvanced) {
@@ -103,7 +84,7 @@ struct AccountFormView: View {
 
                 Spacer()
 
-                Button(mode.isEditing ? "Save" : "Add") { save() }
+                Button("Add") { save() }
                     .keyboardShortcut(.defaultAction)
                     .disabled(!canSave)
             }
@@ -111,7 +92,6 @@ struct AccountFormView: View {
             .padding(.top, 2)
         }
         .padding(14)
-        .onAppear(perform: loadExistingValues)
     }
 
     private func field(_ title: String, text: Binding<String>, prompt: String) -> some View {
@@ -126,36 +106,14 @@ struct AccountFormView: View {
         }
     }
 
-    private func loadExistingValues() {
-        guard case .edit(let account) = mode else { return }
-        issuer = account.issuer
-        label = account.label
-        algorithm = account.algorithm
-        digits = account.digits
-        period = account.period
-        showAdvanced = account.usesNonDefaultSettings
-    }
-
     private func save() {
-        switch mode {
-        case .add:
-            state.addManual(
-                issuer: issuer,
-                label: label,
-                secret: secret,
-                algorithm: algorithm,
-                digits: digits,
-                period: period
-            )
-
-        case .edit(let existing):
-            var updated = existing
-            updated.issuer = issuer.trimmingCharacters(in: .whitespaces)
-            updated.label = label.trimmingCharacters(in: .whitespaces)
-            updated.algorithm = algorithm
-            updated.digits = digits
-            updated.period = max(1, period)
-            state.update(updated, newSecret: secret)
-        }
+        state.addManual(
+            issuer: issuer,
+            label: label,
+            secret: secret,
+            algorithm: algorithm,
+            digits: digits,
+            period: period
+        )
     }
 }
