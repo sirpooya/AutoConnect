@@ -150,7 +150,7 @@ struct ConnectionEditorView: View {
                             .fixedSize()
                         } else {
                             Text(profile.tunnelGroup)
-                                .font(.system(size: 11, weight: .medium))
+                                .font(.system(size: 11))
                         }
 
                         Spacer(minLength: 0)
@@ -175,7 +175,11 @@ struct ConnectionEditorView: View {
                             profile.certificateSHA1 = nil
                             discoveredGroups = []
                         }
-                        .controlSize(.mini)
+                        // Unpinning drops the only thing that proves this is the right gateway,
+                        // so it reads as the destructive act it is rather than a tidy-up.
+                        .buttonStyle(.plain)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.red)
                     }
                 }
             }
