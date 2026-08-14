@@ -151,6 +151,70 @@ final class OpenConnectRunnerTests: XCTestCase {
         XCTAssertTrue(arguments.last?.contains("macauth") == true)
     }
 
+    // MARK: - Losing the tunnel
+
+    /// Lines captured from a real session that died when the laptop lid closed. Before these were
+    /// parsed, the UI kept claiming "Connected" for the whole five minutes openconnect spent
+    /// failing to reconnect, which is the worst possible thing for a status display to do.
+    func testParsesDeadPeerDetection() {
+        XCTAssertEqual(
+            Event.parse(line: "DTLS Dead Peer Detection detected dead peer!"),
+            .peerDead
+        )
+        XCTAssertEqual(
+            Event.parse(line: "CSTP Dead Peer Detection detected dead peer!"),
+            .peerDead
+        )
+    }
+
+    func testParsesFailedReconnectAttemptWithReason() {
+        XCTAssertEqual(
+            Event.parse(
+                line: "Failed to reconnect to host mfa-vpn.dkservices.ir: Can't assign requested address"
+            ),
+            .reconnectAttemptFailed("Can't assign requested address")
+        )
+        XCTAssertEqual(
+            Event.parse(line: "Failed to reconnect to host mfa-vpn.dkservices.ir: Invalid argument"),
+            .reconnectAttemptFailed("Invalid argument")
+        )
+    }
+
+    /// Both giving-up lines must be distinguished from the per-attempt failures above, or the app
+    /// would keep waiting for a process that has already exited.
+    func testParsesGivingUp() {
+        XCTAssertEqual(Event.parse(line: "Reconnect failed"), .reconnectFailed)
+        XCTAssertEqual(Event.parse(line: "CSTP reconnect failed; exiting"), .reconnectFailed)
+    }
+
+    /// The routing noise a failed teardown produces must not be mistaken for state.
+    func testIgnoresRoutingTeardownNoise() {
+        let noise = [
+            "route: writing to routing socket: File exists",
+            "add host 93.113.226.130: gateway 10.250.232.188: File exists",
+            "sleep 10s, remaining timeout 300s",
+            "delete net default: gateway 10.250.232.188",
+            "route: writing to routing socket: Network is unreachable",
+            "add net default: gateway 172.20.10.1: Network is unreachable",
+            "delete net 80.75.7.41",
+            "route: bad address: ",
+            "route: writing to routing socket: not in table",
+        ]
+
+        for line in noise {
+            XCTAssertNil(Event.parse(line: line), "should ignore: \(line)")
+        }
+    }
+
+    /// The retry window is capped well below openconnect's 300s default: after sleep every attempt
+    /// fails anyway, and a fresh login is what actually recovers.
+    func testCapsOpenConnectInternalRetryWindow() {
+        let arguments = OpenConnectRunner.arguments(profile: .digikalaMFA, serverCertHash: "H")
+
+        let index = try? XCTUnwrap(arguments.firstIndex(of: "--reconnect-timeout"))
+        XCTAssertEqual(arguments[(index ?? 0) + 1], "30")
+    }
+
     func testMissingBinaryIsReportedWithInstallAdvice() {
         XCTAssertThrowsError(
             try OpenConnectRunner.verifyBinary(at: "/nonexistent/openconnect")

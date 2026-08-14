@@ -21,6 +21,15 @@ final class StatusItemController: NSObject, NSApplicationDelegate {
 
     private var cancellables = Set<AnyCancellable>()
 
+    /// Keeps the app alive when its last window closes.
+    ///
+    /// A menu bar app's windows are incidental: closing Settings or the playground must leave the
+    /// status item running. SwiftUI's app lifecycle otherwise terminates on the last window, which
+    /// makes closing Settings look exactly like a crash.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
+    }
+
     /// Refuses AppKit's offer to open an "untitled" window at launch.
     ///
     /// Launching an app with no document and no visible window makes AppKit ask for one, and with

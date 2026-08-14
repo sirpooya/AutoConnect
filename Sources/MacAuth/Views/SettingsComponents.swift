@@ -128,8 +128,9 @@ enum SettingsMetrics {
     static let rowHPadding: CGFloat = 12
     static let rowHeight: CGFloat = 36
     static let windowWidth: CGFloat = 460
-    /// Tall enough that switching tabs never resizes the window.
-    static let bodyHeight: CGFloat = 300
+    /// The tab body is a fixed height, so switching tabs never resizes the window
+    /// and the window's size stays a constant the Settings scene can measure once.
+    static let bodyHeight: CGFloat = 380
     static let fieldWidth: CGFloat = 250
 }
 

@@ -82,10 +82,8 @@ struct AccountListView: View {
 
             Divider()
 
-            // No rule under the header: it titles the list below it, so a line between the two
-            // would only cut the group in half.
-            header
-
+            // No section title: the codes are self-evidently codes, and the panel is small
+            // enough that a heading would cost more room than it explains.
             if state.accounts.isEmpty {
                 emptyState
             } else {
@@ -110,32 +108,21 @@ struct AccountListView: View {
         }
     }
 
-    private var header: some View {
-        HStack(spacing: 6) {
-            // Names the section, not the app: the panel already has a VPN block above, and
-            // repeating the app's name in its own window says nothing.
-            Text("Authenticator")
-                .font(.system(size: 12, weight: .semibold))
-
-            Spacer()
-
-            Menu {
-                ForEach(AddMethod.allCases) { method in
-                    // Manual entry is the odd one out: it takes a form rather than reading a
-                    // code from somewhere, so it sits below a separator.
-                    if method == .manual { Divider() }
-                    Button(method.menuTitle) { method.run(state) }
-                }
-            } label: {
-                Label("Add", systemImage: "plus")
-                    .labelStyle(.iconOnly)
+    private var addMenu: some View {
+        Menu {
+            ForEach(AddMethod.allCases) { method in
+                // Manual entry is the odd one out: it takes a form rather than reading a
+                // code from somewhere, so it sits below a separator.
+                if method == .manual { Divider() }
+                Button(method.menuTitle) { method.run(state) }
             }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
-            .help("Add an account")
+        } label: {
+            Label("Add", systemImage: "plus")
+                .labelStyle(.iconOnly)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("Add an account")
     }
 
     private var emptyState: some View {
@@ -158,9 +145,9 @@ struct AccountListView: View {
 
     private var footer: some View {
         HStack(spacing: 12) {
-            Text("\(state.accounts.count) account\(state.accounts.count == 1 ? "" : "s")")
-                .font(.system(size: 10))
-                .foregroundStyle(.secondary)
+            // Adding lives down here with the other actions rather than in a title bar of its
+            // own, which lets the list start at the top of the panel.
+            addMenu
 
             Spacer()
 

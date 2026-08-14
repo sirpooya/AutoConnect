@@ -47,6 +47,24 @@ struct VPNSection: View {
             if case .failed(let message) = vpn.phase {
                 errorRow(message)
             }
+
+            // While openconnect retries by itself, say so and say why. The address shown above is
+            // the one it is trying to keep, not one that is currently carrying traffic.
+            if case .reconnecting = vpn.phase {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.orange)
+
+                    Text(vpn.reconnectReason ?? "The tunnel stopped responding.")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+
+                    Spacer(minLength: 0)
+                }
+                .padding(.top, 2)
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)

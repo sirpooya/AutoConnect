@@ -11,16 +11,24 @@ public final class OpenConnectRunner {
         case disconnected
         case connecting
         case connected(Tunnel)
+        /// The tunnel exists but is not carrying traffic, and openconnect is retrying by itself.
+        /// Distinct from `connected` so the UI never claims a working connection that is not.
+        case reconnecting(Tunnel, reason: String?)
         case failed(String)
 
         public var isBusy: Bool {
-            if case .connecting = self { return true }
-            return false
+            switch self {
+            case .connecting, .reconnecting: return true
+            default: return false
+            }
         }
 
         public var tunnel: Tunnel? {
-            if case .connected(let tunnel) = self { return tunnel }
-            return nil
+            switch self {
+            case .connected(let tunnel): return tunnel
+            case .reconnecting(let tunnel, _): return tunnel
+            default: return nil
+            }
         }
     }
 
@@ -103,6 +111,13 @@ public final class OpenConnectRunner {
         case disconnected
         /// The gateway endpoint reached, as host:port.
         case gatewayEndpoint(String)
+        /// Dead peer detection fired: the tunnel is up on paper but carrying nothing. openconnect
+        /// starts retrying on its own from here.
+        case peerDead
+        /// One of openconnect's own reconnect attempts failed. Carries its reason.
+        case reconnectAttemptFailed(String)
+        /// openconnect exhausted its retry window and is giving up.
+        case reconnectFailed
         /// Negotiated protocol version and bulk cipher, from a ciphersuite line.
         case ciphersuite(transport: String, cipher: String)
         /// The tunnel device openconnect configured, so stats read the right interface.
@@ -182,6 +197,24 @@ public final class OpenConnectRunner {
                 return nil
             }
 
+            // "DTLS Dead Peer Detection detected dead peer!" and the CSTP equivalent. The tunnel
+            // is nominally up but carrying nothing, which is what a closed laptop lid produces.
+            if trimmed.contains("Dead Peer Detection detected dead peer") {
+                return .peerDead
+            }
+
+            // "Reconnect failed" / "CSTP reconnect failed; exiting". Checked before the
+            // per-attempt line, since both contain "reconnect failed".
+            if trimmed.hasPrefix("Reconnect failed") || trimmed.contains("reconnect failed;") {
+                return .reconnectFailed
+            }
+
+            // "Failed to reconnect to host mfa-vpn...: Can't assign requested address"
+            if trimmed.hasPrefix("Failed to reconnect to host") {
+                let reason = trimmed.components(separatedBy: ": ").last ?? trimmed
+                return .reconnectAttemptFailed(reason)
+            }
+
             if trimmed.contains("Server certificate verify failed") {
                 return .certificateRejected
             }
@@ -231,6 +264,12 @@ public final class OpenConnectRunner {
             "--cookie-on-stdin",
             "--servercert", serverCertHash,
             "--pid-file", pidFilePath,
+            // openconnect's own retry window. Its default of 300s is too long: after sleep the
+            // physical interface has gone, so every attempt fails with "Can't assign requested
+            // address" and the user waits five minutes watching it fail. Capping it at 30s lets a
+            // brief blip be recovered cheaply by openconnect (which keeps the existing session),
+            // while a real outage escalates quickly to a fresh login, which is what actually works.
+            "--reconnect-timeout", "30",
         ]
 
         if let script = profile.vpncScriptPath {
@@ -375,6 +414,20 @@ public final class OpenConnectRunner {
         case .connected:
             if tunnel.connectedAt == nil { tunnel.connectedAt = Date() }
             state = .connected(tunnel)
+
+        case .peerDead:
+            // Keep the tunnel details so the UI can still show what it was, but stop calling it
+            // connected: from here nothing is getting through.
+            state = .reconnecting(tunnel, reason: nil)
+
+        case .reconnectAttemptFailed(let reason):
+            state = .reconnecting(tunnel, reason: reason)
+
+        case .reconnectFailed:
+            state = .failed(
+                "The tunnel dropped and could not be re-established. This usually follows sleep "
+                    + "or a network change; connecting again starts a fresh session."
+            )
 
         case .certificateRejected:
             state = .failed("The gateway certificate did not match the pinned fingerprint.")

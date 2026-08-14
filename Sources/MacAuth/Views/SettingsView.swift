@@ -47,12 +47,16 @@ struct SettingsView: View {
                     behaviourTab
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .frame(height: SettingsMetrics.bodyHeight, alignment: .top)
 
             saveBar
         }
+        // A DEFINITE size, not min/max. The Settings scene sizes its window from
+        // the hosting controller's preferredContentSize, and an open-ended frame
+        // around a ScrollView makes that measurement re-enter the layout pass:
+        // SwiftUI invalidates while AppKit is updating constraints, which AppKit
+        // reports as an uncaught exception and the app dies silently.
         .frame(width: SettingsMetrics.windowWidth)
-        .frame(minHeight: SettingsMetrics.bodyHeight)
         .onAppear(perform: load)
         .onDisappear { WindowActivation.release() }
     }

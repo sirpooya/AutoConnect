@@ -1,3 +1,5 @@
+import AppKit
+import AppKit
 import Foundation
 import MacAuthCore
 import Network
@@ -19,11 +21,14 @@ final class VPNController: ObservableObject {
         case exchangingToken
         case startingTunnel
         case connected(OpenConnectRunner.Tunnel)
+        /// The tunnel is not carrying traffic and is being re-established.
+        case reconnecting(OpenConnectRunner.Tunnel, reason: String?)
         case failed(String)
 
         var isWorking: Bool {
             switch self {
-            case .contactingGateway, .awaitingLogin, .exchangingToken, .startingTunnel:
+            case .contactingGateway, .awaitingLogin, .exchangingToken, .startingTunnel,
+                 .reconnecting:
                 return true
             default:
                 return false
@@ -38,6 +43,7 @@ final class VPNController: ObservableObject {
             case .exchangingToken: return "Authenticating..."
             case .startingTunnel: return "Starting tunnel..."
             case .connected: return "Connected"
+            case .reconnecting: return "Reconnecting..."
             case .failed: return "Failed"
             }
         }
@@ -87,6 +93,7 @@ final class VPNController: ObservableObject {
     private let policy = ReconnectPolicy()
     private var renewalTask: Task<Void, Never>?
     private var pathMonitor: NWPathMonitor?
+    private var wakeObserver: NSObjectProtocol?
     private var consecutiveFailures = 0
     /// True once the user has connected at least once this launch, so a network change can restore
     /// a tunnel they asked for without ever starting one they did not.
@@ -120,7 +127,16 @@ final class VPNController: ObservableObject {
     // MARK: - Derived display values
 
     var tunnel: OpenConnectRunner.Tunnel? {
-        if case .connected(let tunnel) = phase { return tunnel }
+        switch phase {
+        case .connected(let tunnel): return tunnel
+        case .reconnecting(let tunnel, _): return tunnel
+        default: return nil
+        }
+    }
+
+    /// Why the tunnel is being re-established, when openconnect said.
+    var reconnectReason: String? {
+        if case .reconnecting(_, let reason) = phase { return reason }
         return nil
     }
 
@@ -169,6 +185,7 @@ final class VPNController: ObservableObject {
 
         userHasConnected = true
         startNetworkMonitorIfNeeded()
+        startSleepWakeObservers()
 
         connectTask = Task { [weak self] in
             // The sign-in window takes focus, which would otherwise dismiss the transient panel
@@ -307,6 +324,12 @@ final class VPNController: ObservableObject {
             startClock()
             if autoReconnect { scheduleRenewal() }
 
+        case .reconnecting(let tunnel, let reason):
+            // openconnect is retrying on its own. Show it honestly and leave it to try; our own
+            // policy takes over only if it gives up.
+            phase = .reconnecting(tunnel, reason: reason)
+            setStatsPolling(false)
+
         case .failed(let message):
             phase = .failed(message)
             stopClock()
@@ -372,6 +395,62 @@ final class VPNController: ObservableObject {
     private func cancelRenewal() {
         renewalTask?.cancel()
         renewalTask = nil
+    }
+
+    /// Watches for sleep and wake.
+    ///
+    /// This is the case the logs from a closed laptop lid show: openconnect's dead-peer detection
+    /// fires, its own retries all fail with "Can't assign requested address" because the physical
+    /// interface went away, and after its retry window it exits. A path change alone does not
+    /// always arrive in time, so wake is handled explicitly.
+    private func startSleepWakeObservers() {
+        guard !isPreview, wakeObserver == nil else { return }
+
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.handleWake()
+            }
+        }
+    }
+
+    /// After waking, a tunnel that looks connected may be carrying nothing. Verify the interface
+    /// is really there before trusting the state, and recover if it is not.
+    private func handleWake() {
+        guard autoReconnect, userHasConnected else { return }
+
+        // Give the network a moment to come back before judging it.
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(3))
+
+            let interface = tunnel?.interface
+                ?? Self.interfaceOwning(address: tunnel?.assignedIP)
+
+            // No interface means openconnect is gone or its device was torn down.
+            guard let interface, Self.interfaceExists(interface) else {
+                scheduleRetryAfterFailure()
+                return
+            }
+
+            // The device survived, so let openconnect's own detection run; it will report a dead
+            // peer if nothing is getting through, which lands us in .reconnecting.
+            statsReader.reset()
+        }
+    }
+
+    private static func interfaceExists(_ name: String) -> Bool {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/sbin/ifconfig")
+        process.arguments = [name]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+
+        guard (try? process.run()) != nil else { return false }
+        process.waitUntilExit()
+        return process.terminationStatus == 0
     }
 
     /// Watches for the network coming back, so a laptop waking on a different Wi-Fi restores the

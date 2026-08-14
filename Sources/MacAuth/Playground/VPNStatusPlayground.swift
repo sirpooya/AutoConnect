@@ -115,6 +115,7 @@ enum PreviewPhase: Int, CaseIterable, Identifiable {
     case exchangingToken
     case startingTunnel
     case connected
+    case reconnecting
     case failed
 
     var id: Int { rawValue }
@@ -127,6 +128,7 @@ enum PreviewPhase: Int, CaseIterable, Identifiable {
         case .exchangingToken: "Exchanging"
         case .startingTunnel: "Starting"
         case .connected: "Connected"
+        case .reconnecting: "Reconnecting"
         case .failed: "Failed"
         }
     }
@@ -231,6 +233,21 @@ struct VPNStatusStage: View {
             return .preview(phase: .startingTunnel, referenceDate: reference)
         case .failed:
             return .preview(phase: .failed(params.errorText), referenceDate: reference)
+
+        case .reconnecting:
+            // The tunnel details survive so the row can show what it is trying to keep, with an
+            // honest reason underneath. This message is one openconnect really emits after sleep.
+            let tunnel = OpenConnectRunner.Tunnel(
+                assignedIP: params.assignedIP.isEmpty ? nil : params.assignedIP,
+                usingDTLS: params.usingDTLS,
+                sessionExpiry: reference.addingTimeInterval(params.hoursRemaining * 3600),
+                connectedAt: reference.addingTimeInterval(-params.uptimeHours * 3600)
+            )
+            return .preview(
+                phase: .reconnecting(tunnel, reason: "Can't assign requested address"),
+                referenceDate: reference
+            )
+
         case .connected:
             let rate = pow(10, params.rateExponent)
             let transferred = pow(10, params.transferredExponent)
