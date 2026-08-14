@@ -121,8 +121,7 @@ final class StatusItemController: NSObject, NSApplicationDelegate {
         }
 
         #if DEBUG
-        // Lets the playground be opened straight from a launch, without hunting for the footer
-        // button inside a popover that accessibility cannot see:
+        // The only way in, now that the footer button is gone:
         //   build/AutoConnect.app/Contents/MacOS/AutoConnect --playground
         if CommandLine.arguments.contains("--playground") {
             PlaygroundWindow.shared.show()

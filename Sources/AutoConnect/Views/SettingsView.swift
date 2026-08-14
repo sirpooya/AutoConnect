@@ -326,7 +326,7 @@ struct SettingsView: View {
             .padding(.top, 10)
 
         SettingsCard {
-            SettingsRow(title: "Notify on VPN status changes") {
+            SettingsRow(title: "Notify on status change") {
                 SettingsSwitch(isOn: $notifier.isEnabled)
             }
 

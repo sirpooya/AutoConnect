@@ -153,13 +153,10 @@ struct AccountListView: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
 
-            #if DEBUG
-            Button("Playground") { PlaygroundWindow.shared.show() }
-                .buttonStyle(.plain)
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-            #endif
-
+            // The playground has no button here any more. It is still a debug build away:
+            // `AutoConnect.app/Contents/MacOS/AutoConnect --playground`, which is how it was
+            // opened in practice anyway, since a popover in an accessory app is invisible to
+            // accessibility and the button could never be clicked by scripting.
             Button("Quit") { NSApplication.shared.terminate(nil) }
                 .buttonStyle(.plain)
                 .font(.system(size: 11))
