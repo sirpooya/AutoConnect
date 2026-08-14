@@ -101,7 +101,9 @@ Settings is an `NSWindow` this app owns (`SettingsWindow`), not a SwiftUI `Setti
 as the only presentable scene, macOS opened that by itself at launch. Size the window
 explicitly rather than from `preferredContentSize`, or AppKit re-measures the SwiftUI content
 mid-layout and the app dies with "more Update Constraints in Window passes than there are
-views in the window".
+views in the window". `show(tab:)` chooses where a freshly opened pane starts, which is how the
+panel's Set Up button lands on Connections; a window already on screen keeps the tab the user
+left it on rather than jumping under them.
 
 `MenuBarExtra` was replaced by `NSStatusItem` + `NSPopover`: `MenuBarExtra` gives no control over
 where its window lands, while a popover anchored to the status button is always centred on the
@@ -166,6 +168,14 @@ worth keeping unless the user says otherwise:
   group is not shown at all: it is fixed per connection and the editor already has it.
 - Every way to add an account is declared once, in `AddMethod`, so the menu and the empty state
   cannot drift apart or offer something the other does not.
+- **With no connection to dial, the VPN row offers Set Up, not a connect control.** Until
+  `profile.isComplete`, the switch (or Connect button) is replaced by a Set Up button that opens
+  Settings on the Connections tab. A disabled switch would say only that it cannot be used; this
+  says what is missing and goes to the page that fixes it. The title reads "No connection" when
+  nothing is saved, and **there is no status line at all in that state**: every wording of it
+  either repeated the title or repeated the button, and "Not connected" invites waiting for a
+  connection nothing will start. `VPNController.connect()` refuses an incomplete profile with a
+  message saying so, since a keyboard shortcut can still reach it.
 
 ## TOTP Spec (must match RFC 6238 exactly)
 - Default: **SHA1, 6 digits, 30-second period** (Google Authenticator defaults).
@@ -357,3 +367,8 @@ Four more rules, each one paid for:
 - A knob that no longer drives anything is worse than no knob: it invites tuning a value the app
   has stopped reading. When a feature goes (the dot's pulsing halo, for instance), its knobs go with
   it, and a value that has settled gets baked into the view as a constant.
+- **A knob that cannot apply is removed from the sidebar, not dimmed.** State's Connection picker
+  (`PreviewConnection`: Configured or None) covers the empty state, and None takes the Phase
+  picker and its fake tunnel fields away with it, the way Switch size only appears while the
+  switch is the control in use. There is no half-configured choice: two states are the design
+  question, and a third only made the picker something to read.

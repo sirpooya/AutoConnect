@@ -114,10 +114,17 @@ struct VPNSection: View {
             //
             // One size throughout, matching the account rows below. Weight and colour carry the
             // hierarchy; a different size per line made the block look assembled from spare parts.
-            StatusLine(
-                text: statusText,
-                isShimmering: params.shimmerAlways || vpn.phase.isWorking
-            )
+            //
+            // Nothing configured means no status: every wording of it either repeats the title or
+            // repeats the Set Up button beside it, and "Not connected" invites waiting for a
+            // connection nothing will ever start.
+            if isConfigured {
+                StatusLine(
+                    text: vpn.phase.label,
+                    isShimmering: params.shimmerAlways || vpn.phase.isWorking,
+                    isFinal: interruptsSequence
+                )
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -125,26 +132,32 @@ struct VPNSection: View {
     /// The gateway this connection dials. Not the username: that is the account row below, and
     /// showing it here printed the same address twice in one small panel.
     ///
-    /// With nothing saved there is no gateway to name. "New connection" is the editor's word for a
-    /// row being filled in, and at the top of the panel it read as if one were already underway.
+    /// With nothing saved there is no gateway to name, so the row names what it is instead.
+    /// "New connection" is the editor's word for a row being filled in, and at the top of the
+    /// panel it read as if one were already underway.
     private var title: String {
         vpn.profiles.isEmpty ? "No connection" : vpn.profile.displayName
     }
 
-    /// The status line, which says what is missing when there is nothing to connect to.
-    ///
-    /// "Not connected" is true of an unconfigured app, but it invites waiting for a connection
-    /// that nothing will ever start. Only the resting phase is worded over: once a connect is
-    /// under way the phase is the news.
-    private var statusText: String {
-        guard vpn.phase == .idle else { return vpn.phase.label }
-        if vpn.profiles.isEmpty { return "Add one in Settings" }
-        if !vpn.profile.isComplete { return "Setup not finished" }
-        return vpn.phase.label
-    }
 
     /// Whether this connection has everything a connect needs: an address, a group and a pin.
     private var isConfigured: Bool { vpn.profile.isComplete }
+
+    /// Whether this status cuts the sequence short rather than continuing it, and so skips the
+    /// pacer's queue.
+    ///
+    /// Only three do: a disconnect, which the user just clicked and must see answered; a failure,
+    /// which nobody sees if it waits behind three progress steps; and a drop into reconnecting,
+    /// which is now true of a tunnel that was up. **`connected` is not one of them.** It used to
+    /// be, as "anything that is not working", and that made the dwell knob look broken: the end of
+    /// a connect arrived while the steps were still queued and flushed every one of them, so the
+    /// line jumped from "Not connected" straight to "Connected" whatever the dwell was set to.
+    private var interruptsSequence: Bool {
+        switch vpn.phase {
+        case .idle, .failed, .reconnecting: true
+        default: false
+        }
+    }
 
     // MARK: - Connected
 

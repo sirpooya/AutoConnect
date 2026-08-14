@@ -360,8 +360,7 @@ struct SettingsView: View {
         } else {
             SettingsFootnote(
                 text: "A banner when the tunnel comes up, goes down, or gets into trouble. "
-                    + "The steps of a connect are not announced, and the same state twice "
-                    + "running only ever says so once."
+                    + "Never for the steps in between."
             )
         }
     }

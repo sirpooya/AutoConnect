@@ -38,6 +38,11 @@ final class VPNStatusParams {
     /// How long a new status takes to push the old one up and out.
     var statusSlideDuration: Double = 0.3
 
+    /// The least time a status stays on screen. The phases do not wait for the animation, and a
+    /// gateway that answers quickly would otherwise flash a status past before it can be read or
+    /// the shimmer can travel.
+    var statusMinimumDwell: Double = 1.0
+
     /// Which menu bar glyph set the status item draws. See `MenuBarIconSet`.
     var menuBarIconSet: Int = MenuBarIconSet.keyholeArc.rawValue
 
@@ -68,6 +73,10 @@ final class VPNStatusParams {
     var countdownMarginRight: Double = 0
 
     // MARK: Fake state (stage-only)
+
+    /// Stage-only. Whether the mock has a connection to dial at all. A fresh install has none,
+    /// which is the one state the phase picker cannot reach: every phase presupposes a gateway.
+    var connectionIndex: Int = PreviewConnection.configured.rawValue
 
     /// Stage-only. Which phase the mock row is parked in.
     var phaseIndex: Int = PreviewPhase.connected.rawValue
@@ -107,6 +116,12 @@ final class VPNStatusParams {
         if MenuBarIconSet(rawValue: menuBarIconSet) == nil {
             menuBarIconSet = MenuBarIconSet.keyholeArc.rawValue
         }
+
+        // Same rule for the connection picker, which the stage would otherwise leave holding a
+        // selection it cannot show.
+        if PreviewConnection(rawValue: connectionIndex) == nil {
+            connectionIndex = PreviewConnection.configured.rawValue
+        }
     }
 
     func reset() {
@@ -128,10 +143,12 @@ final class VPNStatusParams {
         shimmerIntensity = snapshot.shimmerIntensity
         shimmerAlways = snapshot.shimmerAlways
         statusSlideDuration = snapshot.statusSlideDuration
+        statusMinimumDwell = snapshot.statusMinimumDwell
         usesSwitch = snapshot.usesSwitch
         switchSizeIndex = snapshot.switchSizeIndex
         countdownSize = snapshot.countdownSize
         countdownMarginRight = snapshot.countdownMarginRight
+        connectionIndex = snapshot.connectionIndex
         phaseIndex = snapshot.phaseIndex
         assignedIP = snapshot.assignedIP
         hoursRemaining = snapshot.hoursRemaining
@@ -148,8 +165,10 @@ final class VPNStatusParams {
         [
             dotSize, Double(menuBarIconSet), usesSwitch ? 1 : 0, Double(switchSizeIndex),
             shimmerPeriod, shimmerIntensity, shimmerAlways ? 1 : 0, statusSlideDuration,
+            statusMinimumDwell,
             countdownSize, countdownMarginRight,
-            Double(phaseIndex), hoursRemaining, usingDTLS ? 1 : 0, accountCount,
+            Double(connectionIndex), Double(phaseIndex),
+            hoursRemaining, usingDTLS ? 1 : 0, accountCount,
             uptimeHours, rateExponent, transferredExponent,
             Double(assignedIP.hashValue & 0xffff), Double(errorText.hashValue & 0xffff),
         ]
@@ -167,6 +186,7 @@ final class VPNStatusParams {
         static let statusShimmerIntensity: Double = \(String(format: "%.2f", shimmerIntensity))
         static let statusShimmerAlways = \(shimmerAlways)
         static let statusSlideDuration: TimeInterval = \(String(format: "%.2f", statusSlideDuration))
+        static let statusMinimumDwell: TimeInterval = \(String(format: "%.2f", statusMinimumDwell))
 
         // VPN status row
         static let vpnDotSize: CGFloat = \(Int(dotSize))
@@ -208,6 +228,26 @@ enum SwitchSize: Int, CaseIterable, Identifiable {
     }
 }
 
+/// Whether the stage has a connection at all. Not a phase: a fresh install has nothing saved,
+/// and every phase presupposes a gateway to be in a phase with.
+enum PreviewConnection: Int, CaseIterable, Identifiable {
+    /// A complete connection: address, group and pinned certificate.
+    case configured
+    /// Nothing saved at all, which is what the panel answers with Set Up.
+    case missing
+
+    var id: Int { rawValue }
+
+    var title: String {
+        switch self {
+        case .configured: "Configured"
+        case .missing: "None"
+        }
+    }
+
+    var isConfigured: Bool { self == .configured }
+}
+
 /// The phases the stage can park in, in the order a connect visits them.
 enum PreviewPhase: Int, CaseIterable, Identifiable {
     case idle
@@ -245,10 +285,12 @@ struct VPNStatusSnapshot: Codable {
     var shimmerIntensity: Double
     var shimmerAlways: Bool
     var statusSlideDuration: Double
+    var statusMinimumDwell: Double
     var usesSwitch: Bool
     var switchSizeIndex: Int
     var countdownSize: Double
     var countdownMarginRight: Double
+    var connectionIndex: Int
     var phaseIndex: Int
     var assignedIP: String
     var hoursRemaining: Double
@@ -269,10 +311,12 @@ struct VPNStatusSnapshot: Codable {
         shimmerIntensity = params.shimmerIntensity
         shimmerAlways = params.shimmerAlways
         statusSlideDuration = params.statusSlideDuration
+        statusMinimumDwell = params.statusMinimumDwell
         usesSwitch = params.usesSwitch
         switchSizeIndex = params.switchSizeIndex
         countdownSize = params.countdownSize
         countdownMarginRight = params.countdownMarginRight
+        connectionIndex = params.connectionIndex
         phaseIndex = params.phaseIndex
         assignedIP = params.assignedIP
         hoursRemaining = params.hoursRemaining
@@ -302,10 +346,12 @@ struct VPNStatusSnapshot: Codable {
         shimmerIntensity = value(.shimmerIntensity, 0.5)
         shimmerAlways = value(.shimmerAlways, true)
         statusSlideDuration = value(.statusSlideDuration, 0.3)
+        statusMinimumDwell = value(.statusMinimumDwell, 1.0)
         usesSwitch = value(.usesSwitch, false)
         switchSizeIndex = value(.switchSizeIndex, SwitchSize.mini.rawValue)
         countdownSize = value(.countdownSize, 18)
         countdownMarginRight = value(.countdownMarginRight, 0)
+        connectionIndex = value(.connectionIndex, PreviewConnection.configured.rawValue)
         phaseIndex = value(.phaseIndex, PreviewPhase.connected.rawValue)
         assignedIP = value(.assignedIP, "10.250.232.188")
         hoursRemaining = value(.hoursRemaining, 11.9)
@@ -347,9 +393,10 @@ final class PhaseScripter {
         .contactingGateway, .awaitingLogin, .exchangingToken, .startingTunnel, .connected,
     ]
 
-    /// How long each intermediate phase is held. Long enough to read the label, short enough that
-    /// the whole walk is quicker than reaching for the phase picker.
-    private static let step = Duration.milliseconds(700)
+    /// How long each intermediate phase is held. One second, matching the status line's own
+    /// minimum dwell: any shorter and the walk would queue up behind the pacer instead of driving
+    /// it, and the shimmer would not finish a pass on each status.
+    private static let step = Duration.seconds(1)
 
     private var task: Task<Void, Never>?
 
@@ -394,8 +441,14 @@ struct VPNStatusStage: View {
     }
 
     private func buildMockController() -> VPNController {
+        let connection = PreviewConnection(rawValue: params.connectionIndex) ?? .configured
         let phase = PreviewPhase(rawValue: params.phaseIndex) ?? .connected
         let reference = Date(timeIntervalSince1970: 1_776_000_000)
+
+        // Without a connection there is no phase to be in, so the picker is not read at all.
+        guard connection.isConfigured else {
+            return emptyController(referenceDate: reference)
+        }
 
         switch phase {
         case .idle:
@@ -455,6 +508,21 @@ struct VPNStatusStage: View {
             controller.setPreviewHistory(Self.fakeHistory(peak: rate))
             return controller
         }
+    }
+
+    /// What the panel shows before there is anything to dial: a fresh install, with no connection
+    /// saved and none selected.
+    ///
+    /// The list is emptied as well as the profile. The title reads from the list, and a controller
+    /// holding a profile it does not list is a state the app cannot reach.
+    private func emptyController(referenceDate: Date) -> VPNController {
+        let controller = VPNController.preview(
+            phase: .idle,
+            profile: .empty,
+            referenceDate: referenceDate
+        )
+        controller.profiles = []
+        return controller
     }
 
     /// A bursty traffic trace, so the chart is judged against the shape real traffic makes rather
@@ -594,6 +662,11 @@ struct VPNStatusPlaygroundView: View {
 
     @State private var copied = false
 
+    /// Whether the stage has a connection to be in a phase with.
+    private var hasConnection: Bool {
+        PreviewConnection(rawValue: params.connectionIndex)?.isConfigured ?? true
+    }
+
     var body: some View {
         HSplitView {
             VPNStatusStage(params: params)
@@ -634,6 +707,7 @@ struct VPNStatusPlaygroundView: View {
                     slider("Shimmer intensity", $params.shimmerIntensity, 0...1, "", step: 0.05)
                     toggle("Shimmer in every state", $params.shimmerAlways)
                     slider("Status slide", $params.statusSlideDuration, 0.1...0.8, "s", step: 0.05)
+                    slider("Status minimum dwell", $params.statusMinimumDwell, 0...5, "s", step: 0.05)
 
                     toggle("Switch instead of Connect button", $params.usesSwitch)
 
@@ -652,19 +726,30 @@ struct VPNStatusPlaygroundView: View {
             accordion("State") {
                 section {
                     picker(
-                        "Phase",
-                        $params.phaseIndex,
-                        PreviewPhase.allCases.map { ($0.rawValue, $0.title) }
+                        "Connection",
+                        $params.connectionIndex,
+                        PreviewConnection.allCases.map { ($0.rawValue, $0.title) }
                     )
 
-                    if params.phaseIndex == PreviewPhase.connected.rawValue {
-                        textField("Assigned IP", $params.assignedIP)
-                        slider("Session left", $params.hoursRemaining, 0...12, "h")
-                        toggle("DTLS", $params.usingDTLS)
-                    }
+                    // With nothing saved there is no phase to pick: the panel offers Set Up and
+                    // nothing else. The knobs go rather than sit there dimmed, the same way the
+                    // switch size only appears while the switch is the control in use.
+                    if hasConnection {
+                        picker(
+                            "Phase",
+                            $params.phaseIndex,
+                            PreviewPhase.allCases.map { ($0.rawValue, $0.title) }
+                        )
 
-                    if params.phaseIndex == PreviewPhase.failed.rawValue {
-                        textField("Error", $params.errorText)
+                        if params.phaseIndex == PreviewPhase.connected.rawValue {
+                            textField("Assigned IP", $params.assignedIP)
+                            slider("Session left", $params.hoursRemaining, 0...12, "h")
+                            toggle("DTLS", $params.usingDTLS)
+                        }
+
+                        if params.phaseIndex == PreviewPhase.failed.rawValue {
+                            textField("Error", $params.errorText)
+                        }
                     }
                 }
             }
