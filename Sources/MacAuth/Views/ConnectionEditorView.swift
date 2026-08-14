@@ -19,11 +19,21 @@ struct ConnectionEditorView: View {
     @FocusState private var addressFocused: Bool
 
     private let isNew: Bool
+    private let credentials: [Credential]
+    private let accounts: [Account]
     private let onSave: (VPNProfile) -> Void
 
-    init(profile: VPNProfile, isNew: Bool, onSave: @escaping (VPNProfile) -> Void) {
+    init(
+        profile: VPNProfile,
+        isNew: Bool,
+        credentials: [Credential] = [],
+        accounts: [Account] = [],
+        onSave: @escaping (VPNProfile) -> Void
+    ) {
         _profile = State(initialValue: profile)
         self.isNew = isNew
+        self.credentials = credentials
+        self.accounts = accounts
         self.onSave = onSave
     }
 
@@ -57,6 +67,30 @@ struct ConnectionEditorView: View {
             }
 
             gatewayFindings
+
+            // A connection is a gateway plus who signs in and what supplies the code, so both
+            // are chosen here rather than being implied by whatever Settings had selected.
+            if !credentials.isEmpty || !accounts.isEmpty {
+                Divider()
+
+                if !credentials.isEmpty {
+                    picker("Sign in as", selection: $profile.credentialID) {
+                        Text("Nobody yet").tag(UUID?.none)
+                        ForEach(credentials) { credential in
+                            Text(credential.displayName).tag(UUID?.some(credential.id))
+                        }
+                    }
+                }
+
+                if !accounts.isEmpty {
+                    picker("One-time code", selection: $profile.otpAccountID) {
+                        Text("Type it manually").tag(UUID?.none)
+                        ForEach(accounts) { account in
+                            Text(account.displayHeading).tag(UUID?.some(account.id))
+                        }
+                    }
+                }
+            }
 
             HStack {
                 Button("Cancel") { dismiss() }
@@ -164,6 +198,24 @@ struct ConnectionEditorView: View {
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func picker<Content: View>(
+        _ title: String,
+        selection: Binding<UUID?>,
+        @ViewBuilder options: () -> Content
+    ) -> some View {
+        HStack(spacing: 8) {
+            Text(title)
+                .font(.system(size: 11))
+                .frame(width: 92, alignment: .leading)
+
+            Picker("", selection: selection, content: options)
+                .labelsHidden()
+                .controlSize(.small)
 
             Spacer(minLength: 0)
         }

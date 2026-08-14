@@ -7,23 +7,9 @@ import Foundation
 /// the IdP's OTP field.
 public struct VPNProfile: Codable, Equatable, Identifiable, Sendable {
 
-    /// Where the IdP password comes from.
-    public enum PasswordSource: String, Codable, CaseIterable, Sendable {
-        /// Nothing stored. The login window opens with the password field empty.
-        case ask
-        /// This app's own Keychain item, typed once in Settings.
-        case stored
-        /// An item a browser already saved in the login Keychain, reused rather than copied.
-        case loginKeychain
-
-        public var title: String {
-            switch self {
-            case .ask: "Ask me each time"
-            case .stored: "Save it here"
-            case .loginKeychain: "Login Keychain"
-            }
-        }
-    }
+    /// Where the IdP password comes from. Lives on `Credential` now; this alias keeps the
+    /// legacy fields below decodable without a second copy of the enum.
+    public typealias PasswordSource = Credential.PasswordSource
 
     /// Stable identity, so a connection can be renamed or re-pointed without losing its
     /// password or its place in the list.
@@ -35,7 +21,13 @@ public struct VPNProfile: Codable, Equatable, Identifiable, Sendable {
     public var host: String
     /// Tunnel group alias, as shown in AnyConnect's GROUP dropdown.
     public var tunnelGroup: String
+    /// The sign-in identity this connection uses, from the credentials list. Nil means none is
+    /// chosen yet, and the login window will open with nothing filled in.
+    public var credentialID: UUID?
     /// Username or email typed into the IdP page.
+    ///
+    /// Superseded by `credentialID`: it is kept so a profile written by an older build can be
+    /// migrated into a standalone credential, and so nothing silently loses a username.
     public var username: String
     /// SHA1 fingerprint of the gateway certificate, uppercase hex without separators.
     /// Required because the gateway certificate has no publicly trusted signer.
@@ -62,6 +54,7 @@ public struct VPNProfile: Codable, Equatable, Identifiable, Sendable {
         name: String = "",
         host: String,
         tunnelGroup: String,
+        credentialID: UUID? = nil,
         username: String = "",
         certificateSHA1: String? = nil,
         credentialAccount: String = "vpn-password",
@@ -76,6 +69,7 @@ public struct VPNProfile: Codable, Equatable, Identifiable, Sendable {
         self.name = name
         self.host = host
         self.tunnelGroup = tunnelGroup
+        self.credentialID = credentialID
         self.username = username
         self.certificateSHA1 = certificateSHA1
         self.credentialAccount = credentialAccount
@@ -106,6 +100,7 @@ public struct VPNProfile: Codable, Equatable, Identifiable, Sendable {
         name = value(.name, "")
         host = value(.host, fallback.host)
         tunnelGroup = value(.tunnelGroup, fallback.tunnelGroup)
+        credentialID = try? container.decodeIfPresent(UUID.self, forKey: .credentialID)
         username = value(.username, fallback.username)
         certificateSHA1 = try? container.decodeIfPresent(String.self, forKey: .certificateSHA1)
         credentialAccount = value(.credentialAccount, fallback.credentialAccount)

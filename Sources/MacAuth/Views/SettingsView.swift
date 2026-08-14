@@ -21,21 +21,13 @@ struct SettingsView: View {
 
     @State private var tab: Tab = .general
 
-    @State private var host = ""
-    @State private var tunnelGroup = ""
-    @State private var username = ""
-    @State private var password = ""
-    @State private var passwordIsStored = false
     @State private var otpAccountID: UUID?
-    @State private var certificateSHA1 = ""
     @State private var openconnectPath = ""
     @State private var status: String?
     @State private var launchAtLogin = false
     /// Guards the write-through: `load` assigns every field, and those assignments
     /// would otherwise each look like an edit and save the profile straight back.
     @State private var isLoaded = false
-
-    @FocusState private var passwordFocused: Bool
 
     /// The account being edited, and whether the manual add form is up. Both are
     /// presented as sheets over the pane and mirrored into `AppState.route`, which
@@ -44,16 +36,17 @@ struct SettingsView: View {
     @State private var isAddingAccount = false
     @State private var accountPendingDeletion: Account?
 
-    @State private var passwordSource: VPNProfile.PasswordSource = .stored
-    @State private var passwordKeychainServer: String?
-    /// Login-Keychain items matching the username. Metadata only, so listing them prompts for
-    /// nothing; the password itself is read at connect time.
-    @State private var keychainItems: [LoginKeychain.Item] = []
 
     /// Connection being edited or created, each presented as its own sheet.
     @State private var editingConnection: VPNProfile?
     @State private var newConnection: VPNProfile?
     @State private var connectionPendingDeletion: VPNProfile?
+
+    /// The saved sign-in identities, and whichever is being added, edited or deleted.
+    @State private var credentials: [Credential] = []
+    @State private var editingCredential: Credential?
+    @State private var newCredential: Credential?
+    @State private var credentialPendingDeletion: Credential?
 
     enum Tab: Hashable {
         case general, gateway, signIn, authenticator
@@ -96,21 +89,9 @@ struct SettingsView: View {
     private func writeThrough<Content: View>(_ content: Content) -> some View {
         content
             .onAppear(perform: load)
-            .onChange(of: username) { _, _ in
-                persist()
-                refreshKeychainItems()
-            }
-            .onChange(of: passwordSource) { _, _ in persist() }
-            .onChange(of: passwordKeychainServer) { _, _ in persist() }
             .onChange(of: openconnectPath) { _, _ in persist() }
             .onChange(of: otpAccountID) { _, _ in persist() }
-            .onChange(of: passwordFocused) { _, focused in
-                if !focused { savePassword() }
-            }
-            .onDisappear {
-                savePassword()
-                WindowActivation.release()
-            }
+            .onDisappear { WindowActivation.release() }
     }
 
     private func sheets<Content: View>(_ content: Content) -> some View {
@@ -132,10 +113,47 @@ struct SettingsView: View {
                     .frame(width: 320)
             }
             .sheet(item: $editingConnection) { connection in
-                ConnectionEditorView(profile: connection, isNew: false) { save(connection: $0) }
+                ConnectionEditorView(
+                    profile: connection,
+                    isNew: false,
+                    credentials: credentials,
+                    accounts: state.accounts
+                ) { save(connection: $0) }
             }
             .sheet(item: $newConnection) { connection in
-                ConnectionEditorView(profile: connection, isNew: true) { save(connection: $0) }
+                ConnectionEditorView(
+                    profile: connection,
+                    isNew: true,
+                    credentials: credentials,
+                    accounts: state.accounts
+                ) { save(connection: $0) }
+            }
+            .sheet(item: $editingCredential) { credential in
+                CredentialEditorView(
+                    credential: credential,
+                    isNew: false,
+                    store: store,
+                    idpHost: vpn.profile.idpHost
+                ) { save(credential: $0) }
+            }
+            .sheet(item: $newCredential) { credential in
+                CredentialEditorView(
+                    credential: credential,
+                    isNew: true,
+                    store: store,
+                    idpHost: vpn.profile.idpHost
+                ) { save(credential: $0) }
+            }
+            .confirmationDialog(
+                "Delete this credential?",
+                isPresented: presenting($credentialPendingDeletion),
+                presenting: credentialPendingDeletion
+            ) { credential in
+                Button("Delete", role: .destructive) { delete(credential: credential) }
+                Button("Cancel", role: .cancel) {}
+            } message: { credential in
+                Text("\(credential.displayName)\n\nIts stored password is removed from the "
+                     + "Keychain, and any connection using it is left without one.")
             }
             .confirmationDialog(
                 "Delete this connection?",
@@ -289,109 +307,118 @@ struct SettingsView: View {
     private var signInTab: some View {
         SettingsTabBody {
             SettingsSectionHeader(text: "Credentials")
-            SettingsCard {
-                SettingsFieldRow(
-                    title: "Username",
-                    placeholder: "you@example.com",
-                    text: $username
-                )
-                SettingsDivider()
-                SettingsRow(title: "Password from") {
-                    Picker("", selection: $passwordSource) {
-                        ForEach(VPNProfile.PasswordSource.allCases, id: \.self) { source in
-                            Text(source.title).tag(source)
-                        }
-                    }
-                    .labelsHidden()
-                    .controlSize(.small)
-                    .frame(maxWidth: SettingsMetrics.fieldWidth)
+
+            if credentials.isEmpty {
+                SettingsCard {
+                    SettingsRow(title: "No credentials yet") { EmptyView() }
                 }
-
-                switch passwordSource {
-                case .stored:
-                    SettingsDivider()
-                    SettingsRow(title: "Password") {
-                        HStack(spacing: 6) {
-                            SecureField(
-                                passwordIsStored ? "Stored in Keychain" : "Not set",
-                                text: $password
-                            )
-                            .textFieldStyle(.plain)
-                            .multilineTextAlignment(.trailing)
-                            .font(.system(size: 13))
-                            .focused($passwordFocused)
-                            .onSubmit { savePassword() }
-
-                            if passwordIsStored {
-                                Button("Remove") { removePassword() }
-                                    .controlSize(.small)
-                            }
-                        }
-                        .frame(maxWidth: SettingsMetrics.fieldWidth)
-                    }
-
-                case .loginKeychain:
-                    SettingsDivider()
-                    SettingsRow(title: "Keychain item") {
-                        if keychainItems.isEmpty {
-                            Text(username.isEmpty ? "Enter a username first" : "No match")
-                                .font(.system(size: 13))
-                                .foregroundStyle(.tertiary)
-                        } else {
-                            Picker("", selection: $passwordKeychainServer) {
-                                ForEach(keychainItems) { item in
-                                    Text(item.server).tag(String?.some(item.server))
-                                }
-                            }
-                            .labelsHidden()
-                            .controlSize(.small)
-                            .frame(maxWidth: SettingsMetrics.fieldWidth)
-                        }
-                    }
-
-                case .ask:
-                    EmptyView()
-                }
-            }
-
-            if passwordSource == .loginKeychain {
-                SettingsFootnote(text: keychainItems.isEmpty
-                    ? "Looks for a website password saved under this username. Safari and iCloud "
-                        + "Keychain entries are visible here; Chrome and Firefox keep theirs in "
-                        + "their own stores, which this cannot read."
-                    : "Read at connect time, so macOS asks permission once. Nothing is copied "
-                        + "into this app's Keychain.")
-            }
-
-            SettingsSectionHeader(text: "One-time code")
-                .padding(.top, 10)
-            SettingsCard {
-                SettingsRow(title: "OTP from") {
-                    Picker("", selection: $otpAccountID) {
-                        Text("Type it manually").tag(UUID?.none)
-                        ForEach(state.accounts) { account in
-                            Text(accountLabel(account)).tag(UUID?.some(account.id))
-                        }
-                    }
-                    .labelsHidden()
-                    .controlSize(.small)
-                    .frame(maxWidth: SettingsMetrics.fieldWidth)
-                }
-            }
-
-            if state.accounts.isEmpty {
                 SettingsFootnote(
-                    text: "Add an account in the menu to use its code automatically."
+                    text: "A credential is a username and where its password comes from. "
+                        + "Connections pick one, so an account used by two gateways is entered "
+                        + "once."
+                )
+            } else {
+                SettingsCard {
+                    ForEach(Array(credentials.enumerated()), id: \.element.id) { index, item in
+                        if index > 0 { SettingsDivider() }
+                        credentialRow(item)
+                    }
+                }
+                SettingsFootnote(
+                    text: "Ticked is the one the selected connection signs in with. Change it "
+                        + "for another connection by editing that connection."
                 )
             }
+
+            HStack {
+                Button("Add Credential...") { newCredential = Credential() }
+                    .controlSize(.small)
+                Spacer()
+            }
+            .padding(.horizontal, SettingsMetrics.rowHPadding)
+            .padding(.top, 2)
 
             SettingsFootnote(
-                text: status ?? "The password and the OTP secret both live in this Mac's "
-                    + "Keychain. Storing them together means this Mac alone satisfies both "
-                    + "factors."
+                text: "The password and the OTP secret both live in this Mac's Keychain. "
+                    + "Storing them together means this Mac alone satisfies both factors."
             )
             .padding(.top, 4)
         }
+    }
+
+    private func credentialRow(_ item: Credential) -> some View {
+        let isInUse = item.id == vpn.profile.credentialID
+
+        return HStack(spacing: 6) {
+            // Clicking the row assigns this credential to the selected connection, which is the
+            // only "use" a credential has.
+            Button {
+                assign(credential: item)
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: isInUse ? "largecircle.fill.circle" : "circle")
+                        .font(.system(size: 12))
+                        .foregroundStyle(isInUse ? Color.accentColor : Color.secondary)
+
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(item.displayName)
+                            .font(.system(size: 13))
+                        Text(item.displaySubtitle)
+                            .font(.system(size: 10))
+                            .foregroundStyle(.tertiary)
+                    }
+
+                    Spacer(minLength: 10)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(vpn.profiles.isEmpty)
+
+            Menu {
+                Button("Edit...") { editingCredential = item }
+                Divider()
+                Button("Delete...", role: .destructive) { credentialPendingDeletion = item }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+        }
+        .padding(.horizontal, SettingsMetrics.rowHPadding)
+        .frame(minHeight: 42)
+    }
+
+    /// Points the selected connection at this credential.
+    private func assign(credential: Credential) {
+        guard !vpn.profiles.isEmpty else { return }
+
+        var profile = vpn.profile
+        profile.credentialID = credential.id
+        // The username lives on the credential now, but keeping the copy in step means a
+        // profile read by anything older still names the right person.
+        profile.username = credential.username
+        store.upsert(profile)
+        vpn.profile = profile
+        vpn.reloadProfiles()
+    }
+
+    private func save(credential: Credential) {
+        store.upsert(credential)
+        credentials = store.loadCredentials()
+
+        // A first credential is what the selected connection will want; later ones are only
+        // assigned when asked for.
+        if credentials.count == 1 || vpn.profile.credentialID == credential.id {
+            assign(credential: credential)
+        }
+    }
+
+    private func delete(credential: Credential) {
+        store.delete(credentialID: credential.id)
+        credentials = store.loadCredentials()
+        vpn.reloadProfiles()
     }
 
     private var generalTab: some View {
@@ -508,7 +535,7 @@ struct SettingsView: View {
                 if !account.displaySubtitle.isEmpty {
                     Text(account.displayTitle)
                         .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.tertiary)
                 }
             }
 
@@ -575,33 +602,11 @@ struct SettingsView: View {
 
     private func load() {
         let profile = vpn.profile
-        username = profile.username
         openconnectPath = profile.openconnectPath
         otpAccountID = profile.otpAccountID
-        passwordIsStored = store.hasPassword(account: profile.credentialAccount)
-        passwordSource = profile.passwordSource
-        passwordKeychainServer = profile.passwordKeychainServer
+        credentials = store.loadCredentials()
         launchAtLogin = LaunchAtLogin.isEnabled
         isLoaded = true
-        refreshKeychainItems()
-    }
-
-    /// Re-runs the login-Keychain lookup for the current username. Metadata only: no prompt.
-    private func refreshKeychainItems() {
-        keychainItems = LoginKeychain.rank(
-            LoginKeychain.items(account: username),
-            preferring: vpn.profile.idpHost
-        )
-
-        // Keep a chosen item only while it still exists; otherwise take the best match, so the
-        // picker never shows a server this Mac no longer has a password for.
-        if let chosen = passwordKeychainServer,
-           !keychainItems.contains(where: { $0.server == chosen }) {
-            passwordKeychainServer = nil
-        }
-        if passwordKeychainServer == nil {
-            passwordKeychainServer = keychainItems.first?.server
-        }
     }
 
     /// Writes the edited fields through to the profile. Called on every edit, so it
@@ -615,33 +620,12 @@ struct SettingsView: View {
         var profile = vpn.profile
         // Trim only on the way out. Trimming the bound state instead would stop the
         // field accepting a space you are about to type over.
-        profile.username = username.trimmingCharacters(in: .whitespaces)
         profile.openconnectPath = openconnectPath.trimmingCharacters(in: .whitespaces)
         profile.otpAccountID = otpAccountID
-        profile.passwordSource = passwordSource
-        profile.passwordKeychainServer = passwordSource == .loginKeychain
-            ? passwordKeychainServer
-            : nil
 
         store.upsert(profile)
         vpn.profile = profile
         vpn.reloadProfiles()
-    }
-
-    /// The password commits on blur or Return rather than on every keystroke: each
-    /// write is a Keychain round trip, and a half-typed password is not worth one.
-    private func savePassword() {
-        guard !password.isEmpty else { return }
-
-        do {
-            try store.savePassword(password, account: vpn.profile.credentialAccount)
-            // Drop the plaintext as soon as the Keychain has it.
-            password = ""
-            passwordIsStored = true
-            flash("Password saved to the Keychain")
-        } catch {
-            status = "Could not save the password: \(error)"
-        }
     }
 
     private func flash(_ message: String) {
@@ -652,15 +636,6 @@ struct SettingsView: View {
         }
     }
 
-    private func removePassword() {
-        do {
-            try store.deletePassword(account: vpn.profile.credentialAccount)
-            passwordIsStored = false
-            flash("Password removed")
-        } catch {
-            status = "Could not remove the password: \(error)"
-        }
-    }
 }
 
 // MARK: - Top tab bar

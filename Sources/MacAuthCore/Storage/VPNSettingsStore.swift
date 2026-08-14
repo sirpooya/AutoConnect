@@ -9,6 +9,7 @@ public struct VPNSettingsStore {
 
     private let defaultsKey: String
     private let listKey: String
+    private let credentialsKey: String
     private let selectionKey: String
     private let keychainService: String
     private let defaults: UserDefaults
@@ -20,6 +21,7 @@ public struct VPNSettingsStore {
     ) {
         self.defaultsKey = defaultsKey
         self.listKey = defaultsKey + "s"
+        self.credentialsKey = defaultsKey + ".credentials"
         self.selectionKey = defaultsKey + ".selected"
         self.keychainService = keychainService
         self.defaults = defaults
@@ -88,6 +90,96 @@ public struct VPNSettingsStore {
         if selectedProfileID == profileID {
             selectedProfileID = loadProfiles().first?.id
         }
+    }
+
+    // MARK: - Credentials
+
+    /// Every saved sign-in identity.
+    ///
+    /// Built once from the connections themselves when a build that kept the username inside
+    /// each connection is upgraded: one credential per distinct username, reusing that
+    /// connection's Keychain account so the password it already holds is still found.
+    public func loadCredentials() -> [Credential] {
+        if let data = defaults.data(forKey: credentialsKey),
+           let credentials = try? JSONDecoder().decode([Credential].self, from: data) {
+            return credentials
+        }
+
+        let migrated = migrateInlineCredentials()
+        save(credentials: migrated)
+        return migrated
+    }
+
+    public func save(credentials: [Credential]) {
+        guard let data = try? JSONEncoder().encode(credentials) else { return }
+        defaults.set(data, forKey: credentialsKey)
+    }
+
+    public func upsert(_ credential: Credential) {
+        var credentials = loadCredentials()
+        if let index = credentials.firstIndex(where: { $0.id == credential.id }) {
+            credentials[index] = credential
+        } else {
+            credentials.append(credential)
+        }
+        save(credentials: credentials)
+    }
+
+    /// Removes a credential, its stored password, and any reference to it from a connection.
+    public func delete(credentialID: UUID) {
+        let credentials = loadCredentials()
+        guard let removed = credentials.first(where: { $0.id == credentialID }) else { return }
+
+        try? deletePassword(account: removed.keychainAccount)
+        save(credentials: credentials.filter { $0.id != credentialID })
+
+        // A connection pointing at a credential that no longer exists would fail at connect
+        // time with nothing to explain it, so the reference is cleared here.
+        let profiles = loadProfiles().map { profile -> VPNProfile in
+            guard profile.credentialID == credentialID else { return profile }
+            var updated = profile
+            updated.credentialID = nil
+            return updated
+        }
+        save(profiles: profiles)
+    }
+
+    public func credential(id: UUID?) -> Credential? {
+        guard let id else { return nil }
+        return loadCredentials().first { $0.id == id }
+    }
+
+    /// Turns the username and password settings that used to live inside each connection into
+    /// standalone credentials, and points the connections at them.
+    private func migrateInlineCredentials() -> [Credential] {
+        var credentials: [Credential] = []
+        var byUsername: [String: UUID] = [:]
+
+        let updated = loadProfiles().map { profile -> VPNProfile in
+            let username = profile.username.trimmingCharacters(in: .whitespaces)
+            guard !username.isEmpty, profile.credentialID == nil else { return profile }
+
+            var profile = profile
+            if let existing = byUsername[username] {
+                profile.credentialID = existing
+                return profile
+            }
+
+            let credential = Credential(
+                username: username,
+                passwordSource: profile.passwordSource,
+                passwordKeychainServer: profile.passwordKeychainServer,
+                // Reuse the old item name: the password is already in the Keychain under it.
+                keychainAccount: profile.credentialAccount
+            )
+            credentials.append(credential)
+            byUsername[username] = credential.id
+            profile.credentialID = credential.id
+            return profile
+        }
+
+        if !credentials.isEmpty { save(profiles: updated) }
+        return credentials
     }
 
     // MARK: - Profile

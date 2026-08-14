@@ -130,6 +130,97 @@ final class VPNSettingsStoreTests: XCTestCase {
         XCTAssertEqual(profile.displayName, "vpn.example.com")
     }
 
+    // MARK: - Credentials
+
+    func testCredentialsAreAddedEditedAndRemoved() {
+        var work = Credential(name: "Work", username: "me@example.com")
+        store.upsert(work)
+        XCTAssertEqual(store.loadCredentials().map(\.displayName), ["Work"])
+
+        work.username = "me2@example.com"
+        store.upsert(work)
+        XCTAssertEqual(store.loadCredentials().count, 1)
+        XCTAssertEqual(store.loadCredentials().first?.username, "me2@example.com")
+
+        store.delete(credentialID: work.id)
+        XCTAssertTrue(store.loadCredentials().isEmpty)
+    }
+
+    /// Deleting a credential must not leave a connection pointing at one that is gone, or the
+    /// connect would fail with nothing on screen to explain why.
+    func testDeletingACredentialClearsTheConnectionsUsingIt() {
+        let credential = Credential(username: "me@example.com")
+        store.upsert(credential)
+
+        var profile = VPNProfile.newConnection(name: "Work")
+        profile.host = "vpn.example.com"
+        profile.credentialID = credential.id
+        store.upsert(profile)
+
+        store.delete(credentialID: credential.id)
+
+        XCTAssertNil(store.loadProfiles().first?.credentialID)
+    }
+
+    func testEachCredentialGetsItsOwnKeychainAccount() {
+        let first = Credential()
+        let second = Credential()
+
+        XCTAssertNotEqual(first.keychainAccount, second.keychainAccount)
+        XCTAssertTrue(first.keychainAccount.contains(first.id.uuidString))
+    }
+
+    /// The username and password settings used to live inside each connection. They become
+    /// standalone credentials, keeping the old Keychain account name so the saved password is
+    /// still found rather than silently lost.
+    func testInlineCredentialsMigrateOutOfTheConnections() {
+        var old = VPNProfile.example
+        old.username = "me@example.com"
+        old.passwordSource = .loginKeychain
+        old.passwordKeychainServer = "sso.example.com"
+        store.save(profiles: [old])
+
+        let credentials = store.loadCredentials()
+
+        XCTAssertEqual(credentials.count, 1)
+        XCTAssertEqual(credentials.first?.username, "me@example.com")
+        XCTAssertEqual(credentials.first?.passwordSource, .loginKeychain)
+        XCTAssertEqual(credentials.first?.passwordKeychainServer, "sso.example.com")
+        XCTAssertEqual(credentials.first?.keychainAccount, old.credentialAccount)
+
+        // And the connection now points at it.
+        XCTAssertEqual(store.loadProfiles().first?.credentialID, credentials.first?.id)
+    }
+
+    /// Two connections sharing a username share the one credential, rather than making a
+    /// duplicate whose password would have to be typed again.
+    func testTwoConnectionsWithOneUsernameShareACredential() {
+        var work = VPNProfile.newConnection(name: "Work")
+        work.host = "a.example.com"
+        work.username = "me@example.com"
+
+        var lab = VPNProfile.newConnection(name: "Lab")
+        lab.host = "b.example.com"
+        lab.username = "me@example.com"
+
+        store.save(profiles: [work, lab])
+
+        XCTAssertEqual(store.loadCredentials().count, 1)
+        let ids = store.loadProfiles().map(\.credentialID)
+        XCTAssertEqual(ids.first, ids.last)
+        XCTAssertNotNil(ids.first ?? nil)
+    }
+
+    func testCredentialNameFallsBackToTheUsername() {
+        var credential = Credential(username: "me@example.com")
+        XCTAssertEqual(credential.displayName, "me@example.com")
+        XCTAssertEqual(credential.displaySubtitle, "Save it here")
+
+        credential.name = "Work"
+        XCTAssertEqual(credential.displayName, "Work")
+        XCTAssertEqual(credential.displaySubtitle, "me@example.com")
+    }
+
     // MARK: - Naming
 
     func testDisplayNameFallsBackToTheHostWithoutItsPort() {
