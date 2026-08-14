@@ -31,12 +31,19 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
                 .environmentObject(state)
                 .environmentObject(vpn)
         )
-        // Let SwiftUI size the window, so sections can grow without a guessed height.
-        hosting.sizingOptions = [.preferredContentSize]
+        // The pane is a fixed size (tabs, each scrolling inside a constant frame), so the window
+        // gets that size directly. Sizing it from `preferredContentSize` instead makes AppKit
+        // re-measure the SwiftUI content during its own constraint pass, and with a ScrollView in
+        // the tree that never settles: the window aborts with "more Update Constraints in Window
+        // passes than there are views in the window".
+        hosting.sizingOptions = []
 
         let window = NSWindow(contentViewController: hosting)
         window.title = "MacAuth Settings"
         window.styleMask = [.titled, .closable]
+        window.setContentSize(
+            NSSize(width: SettingsMetrics.windowWidth, height: SettingsMetrics.windowHeight)
+        )
         window.isReleasedWhenClosed = false
         window.delegate = self
         window.center()

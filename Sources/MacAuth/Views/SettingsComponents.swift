@@ -131,6 +131,9 @@ enum SettingsMetrics {
     /// The tab body is a fixed height, so switching tabs never resizes the window
     /// and the window's size stays a constant the Settings scene can measure once.
     static let bodyHeight: CGFloat = 380
+    /// Tab bar + body + save bar. The window is sized from this, not from the
+    /// SwiftUI content, so AppKit never measures the ScrollView mid-layout.
+    static let windowHeight: CGFloat = 500
     static let fieldWidth: CGFloat = 250
 }
 

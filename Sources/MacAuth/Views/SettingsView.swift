@@ -8,7 +8,11 @@ import SwiftUI
 /// works for any Cisco SAML gateway.
 ///
 /// All of the edited fields live in this shell rather than in the tab views, so
-/// switching tabs never discards a half-typed value and one Save commits the lot.
+/// switching tabs never discards a half-typed value. There is no Save button:
+/// every field writes through as you edit it, the way a macOS settings pane is
+/// expected to behave. The password is the one exception, since a half-typed
+/// password is not worth storing: it commits when the field loses focus or you
+/// press Return.
 struct SettingsView: View {
     @EnvironmentObject private var state: AppState
     @EnvironmentObject private var vpn: VPNController
@@ -27,6 +31,11 @@ struct SettingsView: View {
     @State private var openconnectPath = ""
     @State private var status: String?
     @State private var launchAtLogin = false
+    /// Guards the write-through: `load` assigns every field, and those assignments
+    /// would otherwise each look like an edit and save the profile straight back.
+    @State private var isLoaded = false
+
+    @FocusState private var passwordFocused: Bool
 
     enum Tab: Hashable {
         case gateway, signIn, behaviour
@@ -47,18 +56,27 @@ struct SettingsView: View {
                     behaviourTab
                 }
             }
-            .frame(height: SettingsMetrics.bodyHeight, alignment: .top)
-
-            saveBar
+            .frame(minHeight: SettingsMetrics.bodyHeight, maxHeight: .infinity, alignment: .top)
         }
-        // A DEFINITE size, not min/max. The Settings scene sizes its window from
-        // the hosting controller's preferredContentSize, and an open-ended frame
-        // around a ScrollView makes that measurement re-enter the layout pass:
-        // SwiftUI invalidates while AppKit is updating constraints, which AppKit
-        // reports as an uncaught exception and the app dies silently.
-        .frame(width: SettingsMetrics.windowWidth)
+        // The window owns the size (see SettingsWindow); the content just fills it.
+        .frame(
+            minWidth: SettingsMetrics.windowWidth,
+            minHeight: SettingsMetrics.windowHeight
+        )
         .onAppear(perform: load)
-        .onDisappear { WindowActivation.release() }
+        .onChange(of: host) { _, _ in persist() }
+        .onChange(of: tunnelGroup) { _, _ in persist() }
+        .onChange(of: username) { _, _ in persist() }
+        .onChange(of: certificateSHA1) { _, _ in persist() }
+        .onChange(of: openconnectPath) { _, _ in persist() }
+        .onChange(of: otpAccountID) { _, _ in persist() }
+        .onChange(of: passwordFocused) { _, focused in
+            if !focused { savePassword() }
+        }
+        .onDisappear {
+            savePassword()
+            WindowActivation.release()
+        }
     }
 
     // MARK: - Tabs
@@ -117,6 +135,8 @@ struct SettingsView: View {
                         .textFieldStyle(.plain)
                         .multilineTextAlignment(.trailing)
                         .font(.system(size: 13))
+                        .focused($passwordFocused)
+                        .onSubmit { savePassword() }
 
                         if passwordIsStored {
                             Button("Remove") { removePassword() }
@@ -150,8 +170,9 @@ struct SettingsView: View {
             }
 
             SettingsFootnote(
-                text: "The password and the OTP secret both live in this Mac's Keychain. "
-                    + "Storing them together means this Mac alone satisfies both factors."
+                text: status ?? "The password and the OTP secret both live in this Mac's "
+                    + "Keychain. Storing them together means this Mac alone satisfies both "
+                    + "factors."
             )
             .padding(.top, 4)
         }
