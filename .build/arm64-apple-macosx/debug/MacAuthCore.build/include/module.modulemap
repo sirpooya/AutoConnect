@@ -1,3 +1,0 @@
-module MacAuthCore {
-    header "/Users/pooya/Documents/GitHub/osx-auth-qr/.build/arm64-apple-macosx/debug/MacAuthCore.build/include/MacAuthCore-Swift.h"
-}

@@ -1,0 +1,13 @@
+# SwiftPM build products
+.build/
+.swiftpm/
+
+# The assembled .app bundle from Scripts/make-app.sh
+build/
+
+# Xcode
+*.xcuserstate
+xcuserdata/
+DerivedData/
+
+.DS_Store
