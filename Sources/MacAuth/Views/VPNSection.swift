@@ -17,23 +17,7 @@ struct VPNSection: View {
             HStack(spacing: 8) {
                 statusDot
 
-                VStack(alignment: .leading, spacing: 1) {
-                    HStack(spacing: 5) {
-                        Text(vpn.profile.tunnelGroup)
-                            .font(.system(size: 11, weight: .semibold))
-
-                        Text(vpn.phase.label)
-                            .font(.system(size: 9))
-                            .foregroundStyle(.tertiary)
-                    }
-
-                    // The gateway being dialled, shown the way AnyConnect shows it.
-                    Text(vpn.profile.host)
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
+                connectionTitle
 
                 Spacer(minLength: 4)
 
@@ -68,6 +52,83 @@ struct VPNSection: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+    }
+
+    // MARK: - Which connection
+
+    /// The active connection, and a way to switch when there is more than one.
+    ///
+    /// The name is what the user called the combination of gateway, credentials and OTP
+    /// account, so it is the honest label for what Connect is about to do.
+    @ViewBuilder
+    private var connectionTitle: some View {
+        if vpn.profiles.count > 1 {
+            Menu {
+                ForEach(vpn.profiles) { item in
+                    Button {
+                        vpn.select(profileID: item.id)
+                    } label: {
+                        // A tick marks the active one, the way a macOS menu shows a choice.
+                        Label(
+                            item.displayName,
+                            systemImage: item.id == vpn.profile.id ? "checkmark" : ""
+                        )
+                    }
+                }
+            } label: {
+                titleLines(showsChevron: true)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .disabled(vpn.isConnected)
+            .help(vpn.isConnected
+                  ? "Disconnect before switching connection."
+                  : "Switch connection")
+        } else {
+            titleLines(showsChevron: false)
+        }
+    }
+
+    private func titleLines(showsChevron: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            HStack(spacing: 5) {
+                Text(vpn.profile.displayName)
+                    .font(.system(size: 11, weight: .semibold))
+
+                if showsChevron {
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 7, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                }
+
+                Text(vpn.phase.label)
+                    .font(.system(size: 9))
+                    .foregroundStyle(.tertiary)
+            }
+
+            // The gateway being dialled, shown the way AnyConnect shows it, with the group
+            // beside it since the name no longer says which one it is.
+            Text(subtitle)
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var subtitle: String {
+        let host = vpn.profile.host
+        guard !host.isEmpty else { return "No gateway configured" }
+
+        let group = vpn.profile.tunnelGroup
+        // An unnamed connection is titled by its host, so repeating the host here would say the
+        // same thing twice. Named ones show both, since the name says neither.
+        if vpn.profile.name.trimmingCharacters(in: .whitespaces).isEmpty {
+            return group.isEmpty ? host : group
+        }
+        return group.isEmpty ? host : "\(host) - \(group)"
     }
 
     // MARK: - Connected

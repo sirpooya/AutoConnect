@@ -8,26 +8,98 @@ import Security
 public struct VPNSettingsStore {
 
     private let defaultsKey: String
+    private let listKey: String
+    private let selectionKey: String
     private let keychainService: String
+    private let defaults: UserDefaults
 
     public init(
         defaultsKey: String = "macauth.vpnProfile",
-        keychainService: String = "com.pooya.MacAuth.vpn"
+        keychainService: String = "com.pooya.MacAuth.vpn",
+        defaults: UserDefaults = .standard
     ) {
         self.defaultsKey = defaultsKey
+        self.listKey = defaultsKey + "s"
+        self.selectionKey = defaultsKey + ".selected"
         self.keychainService = keychainService
+        self.defaults = defaults
+    }
+
+    // MARK: - Connections
+
+    /// Every configured connection, oldest first.
+    ///
+    /// A single profile saved by an earlier build is migrated into a one-element list on first
+    /// read, keeping its identity and therefore its Keychain item.
+    public func loadProfiles() -> [VPNProfile] {
+        if let data = defaults.data(forKey: listKey),
+           let profiles = try? JSONDecoder().decode([VPNProfile].self, from: data) {
+            return profiles
+        }
+
+        guard let migrated = loadProfile() else { return [] }
+        save(profiles: [migrated])
+        return [migrated]
+    }
+
+    public func save(profiles: [VPNProfile]) {
+        guard let data = try? JSONEncoder().encode(profiles) else { return }
+        defaults.set(data, forKey: listKey)
+
+        // Keep the single-profile key in step with the selected connection, so anything still
+        // reading it sees the connection in use rather than a stale one.
+        if let selected = profiles.first(where: { $0.id == selectedProfileID }) ?? profiles.first {
+            save(profile: selected)
+        }
+    }
+
+    /// Which connection the menu bar acts on. Nil until one is chosen.
+    public var selectedProfileID: UUID? {
+        get { defaults.string(forKey: selectionKey).flatMap(UUID.init(uuidString:)) }
+        nonmutating set { defaults.set(newValue?.uuidString, forKey: selectionKey) }
+    }
+
+    /// The selected connection, falling back to the first one so the app is never pointed at
+    /// nothing while connections exist.
+    public func selectedProfile() -> VPNProfile? {
+        let profiles = loadProfiles()
+        return profiles.first { $0.id == selectedProfileID } ?? profiles.first
+    }
+
+    /// Inserts or replaces one connection, leaving the others alone.
+    public func upsert(_ profile: VPNProfile) {
+        var profiles = loadProfiles()
+        if let index = profiles.firstIndex(where: { $0.id == profile.id }) {
+            profiles[index] = profile
+        } else {
+            profiles.append(profile)
+        }
+        save(profiles: profiles)
+    }
+
+    /// Removes a connection and the password stored for it.
+    public func delete(profileID: UUID) {
+        let profiles = loadProfiles()
+        guard let removed = profiles.first(where: { $0.id == profileID }) else { return }
+
+        try? deletePassword(account: removed.credentialAccount)
+        save(profiles: profiles.filter { $0.id != profileID })
+
+        if selectedProfileID == profileID {
+            selectedProfileID = loadProfiles().first?.id
+        }
     }
 
     // MARK: - Profile
 
     public func loadProfile() -> VPNProfile? {
-        guard let data = UserDefaults.standard.data(forKey: defaultsKey) else { return nil }
+        guard let data = defaults.data(forKey: defaultsKey) else { return nil }
         return try? JSONDecoder().decode(VPNProfile.self, from: data)
     }
 
     public func save(profile: VPNProfile) {
         guard let data = try? JSONEncoder().encode(profile) else { return }
-        UserDefaults.standard.set(data, forKey: defaultsKey)
+        defaults.set(data, forKey: defaultsKey)
     }
 
     // MARK: - Password

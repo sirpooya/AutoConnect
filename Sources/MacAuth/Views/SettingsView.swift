@@ -50,16 +50,23 @@ struct SettingsView: View {
     /// nothing; the password itself is read at connect time.
     @State private var keychainItems: [LoginKeychain.Item] = []
 
-    /// Filled by Detect. Empty until the gateway has been asked what it offers.
-    @State private var discoveredGroups: [ConfigAuth.TunnelGroupOption] = []
-    @State private var isProbing = false
-    @State private var probeStatus: String?
+    /// Connection being edited or created, each presented as its own sheet.
+    @State private var editingConnection: VPNProfile?
+    @State private var newConnection: VPNProfile?
+    @State private var connectionPendingDeletion: VPNProfile?
 
     enum Tab: Hashable {
         case general, gateway, signIn, authenticator
     }
 
     var body: some View {
+        // Split into three pieces on purpose. As one chain, the modifier stack got long enough
+        // that the type checker gave up on it ("unable to type-check this expression in
+        // reasonable time"), and the fix is fewer modifiers per expression, not simpler UI.
+        sheets(writeThrough(shell))
+    }
+
+    private var shell: some View {
         VStack(spacing: 0) {
             TabBar(selection: $tab)
             Divider().overlay(Color.primary.opacity(0.03))
@@ -83,175 +90,201 @@ struct SettingsView: View {
             minWidth: SettingsMetrics.windowWidth,
             minHeight: SettingsMetrics.windowHeight
         )
-        .onAppear(perform: load)
-        .onChange(of: host) { _, _ in persist() }
-        .onChange(of: tunnelGroup) { _, _ in persist() }
-        .onChange(of: username) { _, _ in
-            persist()
-            refreshKeychainItems()
-        }
-        .onChange(of: passwordSource) { _, _ in persist() }
-        .onChange(of: passwordKeychainServer) { _, _ in persist() }
-        .onChange(of: certificateSHA1) { _, _ in persist() }
-        .onChange(of: openconnectPath) { _, _ in persist() }
-        .onChange(of: otpAccountID) { _, _ in persist() }
-        .onChange(of: passwordFocused) { _, focused in
-            if !focused { savePassword() }
-        }
-        .onDisappear {
-            savePassword()
-            WindowActivation.release()
-        }
-        // AccountFormView ends by routing the panel back to its list. That is also
-        // the signal that its sheet here is finished with.
-        .onChange(of: state.route) { _, route in
-            if route == .list {
-                editingAccount = nil
-                isAddingAccount = false
+    }
+
+    /// Every field writes through as it is edited; the password waits for blur or Return.
+    private func writeThrough<Content: View>(_ content: Content) -> some View {
+        content
+            .onAppear(perform: load)
+            .onChange(of: username) { _, _ in
+                persist()
+                refreshKeychainItems()
             }
-        }
-        .sheet(item: $editingAccount) { account in
-            AccountFormView(mode: .edit(account))
-                .frame(width: 320)
-        }
-        .sheet(isPresented: $isAddingAccount) {
-            AccountFormView(mode: .add)
-                .frame(width: 320)
-        }
-        .confirmationDialog(
-            "Delete this account?",
-            isPresented: Binding(
-                get: { accountPendingDeletion != nil },
-                set: { if !$0 { accountPendingDeletion = nil } }
-            ),
-            presenting: accountPendingDeletion
-        ) { account in
-            Button("Delete", role: .destructive) { state.delete(account) }
-            Button("Cancel", role: .cancel) {}
-        } message: { account in
-            Text("\(accountLabel(account))\n\nIts secret is removed from the Keychain and "
-                 + "cannot be recovered. You would need to re-enrol this account.")
-        }
+            .onChange(of: passwordSource) { _, _ in persist() }
+            .onChange(of: passwordKeychainServer) { _, _ in persist() }
+            .onChange(of: openconnectPath) { _, _ in persist() }
+            .onChange(of: otpAccountID) { _, _ in persist() }
+            .onChange(of: passwordFocused) { _, focused in
+                if !focused { savePassword() }
+            }
+            .onDisappear {
+                savePassword()
+                WindowActivation.release()
+            }
+    }
+
+    private func sheets<Content: View>(_ content: Content) -> some View {
+        content
+            // AccountFormView ends by routing the panel back to its list. That is also the
+            // signal that its sheet here is finished with.
+            .onChange(of: state.route) { _, route in
+                if route == .list {
+                    editingAccount = nil
+                    isAddingAccount = false
+                }
+            }
+            .sheet(item: $editingAccount) { account in
+                AccountFormView(mode: .edit(account))
+                    .frame(width: 320)
+            }
+            .sheet(isPresented: $isAddingAccount) {
+                AccountFormView(mode: .add)
+                    .frame(width: 320)
+            }
+            .sheet(item: $editingConnection) { connection in
+                ConnectionEditorView(profile: connection, isNew: false) { save(connection: $0) }
+            }
+            .sheet(item: $newConnection) { connection in
+                ConnectionEditorView(profile: connection, isNew: true) { save(connection: $0) }
+            }
+            .confirmationDialog(
+                "Delete this connection?",
+                isPresented: presenting($connectionPendingDeletion),
+                presenting: connectionPendingDeletion
+            ) { connection in
+                Button("Delete", role: .destructive) { delete(connection: connection) }
+                Button("Cancel", role: .cancel) {}
+            } message: { connection in
+                Text("\(connection.displayName)\n\nIts saved password is removed from the "
+                     + "Keychain too. Authenticator accounts are not touched.")
+            }
+            .confirmationDialog(
+                "Delete this account?",
+                isPresented: presenting($accountPendingDeletion),
+                presenting: accountPendingDeletion
+            ) { account in
+                Button("Delete", role: .destructive) { state.delete(account) }
+                Button("Cancel", role: .cancel) {}
+            } message: { account in
+                Text("\(accountLabel(account))\n\nIts secret is removed from the Keychain and "
+                     + "cannot be recovered. You would need to re-enrol this account.")
+            }
+    }
+
+    /// Turns "is something pending?" into the Bool binding confirmationDialog wants.
+    private func presenting<T>(_ item: Binding<T?>) -> Binding<Bool> {
+        Binding(get: { item.wrappedValue != nil }, set: { if !$0 { item.wrappedValue = nil } })
+    }
+
+    private func delete(connection: VPNProfile) {
+        store.delete(profileID: connection.id)
+        vpn.reloadProfiles()
+        load()
     }
 
     // MARK: - Tabs
 
     private var gatewayTab: some View {
         SettingsTabBody {
-            SettingsSectionHeader(text: "Gateway")
-            SettingsCard {
-                SettingsFieldRow(
-                    title: "Address",
-                    placeholder: "vpn.example.com:443",
-                    text: $host
-                )
-                SettingsDivider()
-                SettingsRow(title: "Group") {
-                    if discoveredGroups.isEmpty {
-                        Text(tunnelGroup.isEmpty ? "Not detected yet" : tunnelGroup)
-                            .font(.system(size: 13))
-                            .foregroundStyle(tunnelGroup.isEmpty ? .tertiary : .secondary)
-                    } else {
-                        Picker("", selection: $tunnelGroup) {
-                            ForEach(discoveredGroups) { group in
-                                Text(group.label).tag(group.value)
-                            }
-                        }
-                        .labelsHidden()
-                        .controlSize(.small)
-                        .frame(maxWidth: SettingsMetrics.fieldWidth)
-                    }
-                }
-                SettingsDivider()
-                SettingsRow(title: "Certificate") {
-                    HStack(spacing: 8) {
-                        Text(certificateSHA1.isEmpty ? "Not pinned yet" : shortFingerprint)
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(certificateSHA1.isEmpty ? .tertiary : .secondary)
-                            .help(certificateSHA1)
+            SettingsSectionHeader(text: "Connections")
 
-                        if !certificateSHA1.isEmpty {
-                            Button("Forget") {
-                                certificateSHA1 = ""
-                                discoveredGroups = []
-                            }
-                            .controlSize(.small)
-                        }
+            if vpn.profiles.isEmpty {
+                SettingsCard {
+                    SettingsRow(title: "No connections yet") { EmptyView() }
+                }
+                SettingsFootnote(
+                    text: "Add one with the gateway address your company gave you. Everything "
+                        + "else about it is read from the gateway."
+                )
+            } else {
+                SettingsCard {
+                    ForEach(Array(vpn.profiles.enumerated()), id: \.element.id) { index, item in
+                        if index > 0 { SettingsDivider() }
+                        connectionRow(item)
                     }
                 }
+                SettingsFootnote(
+                    text: "The selected connection is the one the menu bar connects, and the one "
+                        + "the Sign-in tab sets credentials for."
+                )
             }
 
-            HStack(spacing: 8) {
-                Button(isProbing ? "Checking..." : "Detect") { detectGateway() }
+            HStack {
+                Button("Add Connection...") { addConnection() }
                     .controlSize(.small)
-                    .disabled(isProbing || host.trimmingCharacters(in: .whitespaces).isEmpty)
-
-                if isProbing { ProgressView().controlSize(.small) }
                 Spacer()
             }
             .padding(.horizontal, SettingsMetrics.rowHPadding)
             .padding(.top, 2)
-
-            SettingsFootnote(
-                text: probeStatus ?? "Type the address, then Detect. The gateway is asked which "
-                    + "tunnel groups it offers, and its certificate fingerprint is recorded and "
-                    + "pinned from then on. The first check has to trust whatever answers, so "
-                    + "compare the fingerprint if you have it from elsewhere."
-            )
         }
     }
 
-    /// First and last eight characters, which is enough to compare by eye. The full value is in
-    /// the tooltip; the row is not wide enough for forty monospaced characters plus a button.
-    private var shortFingerprint: String {
-        let value = certificateSHA1.uppercased()
-        guard value.count > 20 else { return value }
-        return "\(value.prefix(8))...\(value.suffix(8))"
-    }
+    private func connectionRow(_ item: VPNProfile) -> some View {
+        let isSelected = item.id == vpn.profile.id
 
-    private func detectGateway() {
-        let address = host.trimmingCharacters(in: .whitespaces)
-        guard !address.isEmpty else { return }
+        return HStack(spacing: 8) {
+            // The whole left side selects, so switching connection is one click on the row
+            // rather than a hunt for a radio button.
+            Button {
+                vpn.select(profileID: item.id)
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
+                        .font(.system(size: 12))
+                        .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
 
-        isProbing = true
-        probeStatus = nil
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(item.displayName)
+                            .font(.system(size: 13))
+                        Text(item.host.isEmpty ? "No address" : item.host)
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                    }
 
-        Task {
-            var probeProfile = VPNProfile.empty
-            probeProfile.host = address
-            probeProfile.certificateSHA1 = certificateSHA1.isEmpty ? nil : certificateSHA1
-
-            // Learn the fingerprint only while there is none to check against. Once pinned, a
-            // detect behaves like every other request and refuses a certificate that changed.
-            let client = GatewayClient(
-                profile: probeProfile,
-                trustPolicy: certificateSHA1.isEmpty ? .learnFingerprint : .pinned
-            )
-
-            do {
-                let probe = try await client.probe()
-                discoveredGroups = probe.groups
-
-                // Keep the current group if the gateway still offers it, otherwise take its
-                // own preselection.
-                if !probe.groups.contains(where: { $0.value == tunnelGroup }) {
-                    tunnelGroup = probe.defaultGroup ?? ""
+                    Spacer(minLength: 10)
                 }
-                if certificateSHA1.isEmpty, let learned = client.observedCertificateSHA1 {
-                    certificateSHA1 = learned
-                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
 
-                let names = probe.groups.map(\.label).joined(separator: ", ")
-                probeStatus = probe.groups.count == 1
-                    ? "Found one group: \(names)."
-                    : "Found \(probe.groups.count) groups: \(names)."
-            } catch {
-                probeStatus = "\(error)"
+            if !item.isComplete {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.orange)
+                    .help("Not ready to connect: run Detect to fill in the group and certificate.")
             }
 
-            isProbing = false
+            Menu {
+                Button("Edit...") { editingConnection = item }
+                Button("Duplicate") { duplicate(item) }
+                Divider()
+                Button("Delete...", role: .destructive) { connectionPendingDeletion = item }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
         }
+        .padding(.horizontal, SettingsMetrics.rowHPadding)
+        .frame(minHeight: 42)
     }
+
+    private func addConnection() {
+        newConnection = .newConnection()
+    }
+
+    private func duplicate(_ item: VPNProfile) {
+        var copy = item
+        // A copy is a different connection: new identity, and its own Keychain item rather than
+        // a second name for the original's password.
+        copy.id = UUID()
+        copy.name = "\(item.displayName) copy"
+        copy.credentialAccount = "vpn-password-\(copy.id.uuidString)"
+        store.upsert(copy)
+        vpn.reloadProfiles()
+    }
+
+    private func save(connection: VPNProfile) {
+        store.upsert(connection)
+        vpn.reloadProfiles()
+
+        // A first connection becomes the active one; otherwise the selection is left alone.
+        if vpn.profiles.count == 1 { vpn.select(profileID: connection.id) }
+        if connection.id == vpn.profile.id { vpn.profile = connection }
+        load()
+    }
+
 
     private var signInTab: some View {
         SettingsTabBody {
@@ -525,10 +558,7 @@ struct SettingsView: View {
 
     private func load() {
         let profile = vpn.profile
-        host = profile.host
-        tunnelGroup = profile.tunnelGroup
         username = profile.username
-        certificateSHA1 = profile.certificateSHA1 ?? ""
         openconnectPath = profile.openconnectPath
         otpAccountID = profile.otpAccountID
         passwordIsStored = store.hasPassword(account: profile.credentialAccount)
@@ -562,13 +592,13 @@ struct SettingsView: View {
     private func persist() {
         guard isLoaded else { return }
 
+        // Only the fields these tabs own. The gateway, group and pin belong to the connection
+        // editor, and reading them from `vpn.profile` here is what keeps an edit made there
+        // from being written back over.
         var profile = vpn.profile
         // Trim only on the way out. Trimming the bound state instead would stop the
         // field accepting a space you are about to type over.
-        profile.host = host.trimmingCharacters(in: .whitespaces)
-        profile.tunnelGroup = tunnelGroup.trimmingCharacters(in: .whitespaces)
         profile.username = username.trimmingCharacters(in: .whitespaces)
-        profile.certificateSHA1 = certificateSHA1.isEmpty ? nil : certificateSHA1
         profile.openconnectPath = openconnectPath.trimmingCharacters(in: .whitespaces)
         profile.otpAccountID = otpAccountID
         profile.passwordSource = passwordSource
@@ -576,8 +606,9 @@ struct SettingsView: View {
             ? passwordKeychainServer
             : nil
 
-        store.save(profile: profile)
+        store.upsert(profile)
         vpn.profile = profile
+        vpn.reloadProfiles()
     }
 
     /// The password commits on blur or Return rather than on every keystroke: each

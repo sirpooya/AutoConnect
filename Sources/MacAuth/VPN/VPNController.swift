@@ -50,7 +50,10 @@ final class VPNController: ObservableObject {
     }
 
     @Published private(set) var phase: Phase = .idle
+    /// The connection the menu bar acts on. Assigning it switches which gateway Connect dials.
     @Published var profile: VPNProfile
+    /// Every configured connection, so the panel and Settings can list and switch between them.
+    @Published var profiles: [VPNProfile] = []
 
     /// Ticks while connected so the expiry countdown stays live.
     @Published private(set) var now = Date()
@@ -99,10 +102,45 @@ final class VPNController: ObservableObject {
     /// a tunnel they asked for without ever starting one they did not.
     private var userHasConnected = false
 
-    /// Loads the saved profile, or starts empty. Nothing about any particular gateway is
-    /// compiled in: Settings takes an address and asks that gateway for the rest.
+    /// Loads the saved connections and selects one, or starts empty. Nothing about any
+    /// particular gateway is compiled in: Settings takes an address and asks it for the rest.
     init(profile: VPNProfile? = nil) {
-        self.profile = profile ?? VPNSettingsStore().loadProfile() ?? .empty
+        let store = VPNSettingsStore()
+
+        if let profile {
+            // An explicit profile means a preview or a test: do not touch what is on disk.
+            self.profile = profile
+            self.profiles = [profile]
+        } else {
+            self.profiles = store.loadProfiles()
+            self.profile = store.selectedProfile() ?? .empty
+        }
+    }
+
+    // MARK: - Connections
+
+    /// Makes one connection the active one, both here and on disk.
+    func select(profileID: UUID) {
+        guard let chosen = profiles.first(where: { $0.id == profileID }) else { return }
+
+        let store = VPNSettingsStore()
+        store.selectedProfileID = profileID
+        store.save(profile: chosen)
+        profile = chosen
+    }
+
+    /// Re-reads the connection list, after Settings has added, edited or removed one.
+    func reloadProfiles() {
+        let store = VPNSettingsStore()
+        profiles = store.loadProfiles()
+
+        // Keep pointing at the same connection when it still exists, so an edit elsewhere does
+        // not silently move the menu bar onto a different gateway.
+        if let current = profiles.first(where: { $0.id == profile.id }) {
+            profile = current
+        } else {
+            profile = store.selectedProfile() ?? .empty
+        }
     }
 
     /// Builds a controller parked in a fixed phase, for the playground and for previews.
