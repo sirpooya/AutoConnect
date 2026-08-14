@@ -159,6 +159,8 @@ struct SettingsView: View {
 
     private var connectionsTab: some View {
         SettingsTabBody {
+            SettingsSectionHeader(text: "Connections")
+
             if vpn.profiles.isEmpty {
                 SettingsCard {
                     SettingsRow(title: "No connections yet") { EmptyView() }
@@ -198,18 +200,28 @@ struct SettingsView: View {
         let showsSelection = vpn.profiles.count > 1
 
         return HStack(spacing: 8) {
-            // The whole left side selects, so switching connection is one click on the row
-            // rather than a hunt for a radio button.
+            // The radio is its own target, so choosing which connection the menu bar uses
+            // stays separate from opening the one you clicked.
+            if showsSelection {
+                Button {
+                    vpn.select(profileID: item.id)
+                } label: {
+                    Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
+                        .font(.system(size: 12))
+                        .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(isSelected ? "The connection the menu bar uses"
+                                 : "Use this connection in the menu bar")
+            }
+
+            // Clicking the row edits it, the way a list of settings objects usually behaves.
+            // Edit... stays in the menu beside Delete... so the pair is still discoverable.
             Button {
-                vpn.select(profileID: item.id)
+                editingConnection = item
             } label: {
                 HStack(spacing: 8) {
-                    if showsSelection {
-                        Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
-                            .font(.system(size: 12))
-                            .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
-                    }
-
                     // The title is already the address, so a second line would repeat it with
                     // a port on the end.
                     Text(item.displayName)
@@ -220,8 +232,6 @@ struct SettingsView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            // Not .disabled, which would dim the name. A lone row just is not clickable.
-            .allowsHitTesting(showsSelection)
 
             if !item.isComplete {
                 Image(systemName: "exclamationmark.triangle.fill")

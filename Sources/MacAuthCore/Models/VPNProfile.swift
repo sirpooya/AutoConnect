@@ -29,6 +29,13 @@ public struct VPNProfile: Codable, Equatable, Identifiable, Sendable {
     /// SHA1 fingerprint of the gateway certificate, uppercase hex without separators.
     /// Required because the gateway certificate has no publicly trusted signer.
     public var certificateSHA1: String?
+    /// What that certificate said about itself when it was pinned: who it names, who issued it,
+    /// when it expires, and when this app first accepted it.
+    ///
+    /// Description only. `certificateSHA1` remains the pin every request is judged against, so
+    /// this can be absent (a profile pinned by an older build) or stale without weakening
+    /// anything. `pinnedCertificate` is the accessor that checks the two still agree.
+    public var certificate: PinnedCertificate?
     /// Keychain account name holding the IdP password, when this app stores it itself.
     public var credentialAccount: String
     /// Where the password comes from.
@@ -53,6 +60,7 @@ public struct VPNProfile: Codable, Equatable, Identifiable, Sendable {
         credentialID: UUID? = nil,
         username: String = "",
         certificateSHA1: String? = nil,
+        certificate: PinnedCertificate? = nil,
         credentialAccount: String = "vpn-password",
         passwordSource: PasswordSource = .stored,
         passwordKeychainServer: String? = nil,
@@ -67,6 +75,7 @@ public struct VPNProfile: Codable, Equatable, Identifiable, Sendable {
         self.credentialID = credentialID
         self.username = username
         self.certificateSHA1 = certificateSHA1
+        self.certificate = certificate
         self.credentialAccount = credentialAccount
         self.passwordSource = passwordSource
         self.passwordKeychainServer = passwordKeychainServer
@@ -97,6 +106,7 @@ public struct VPNProfile: Codable, Equatable, Identifiable, Sendable {
         credentialID = try? container.decodeIfPresent(UUID.self, forKey: .credentialID)
         username = value(.username, fallback.username)
         certificateSHA1 = try? container.decodeIfPresent(String.self, forKey: .certificateSHA1)
+        certificate = try? container.decodeIfPresent(PinnedCertificate.self, forKey: .certificate)
         credentialAccount = value(.credentialAccount, fallback.credentialAccount)
         passwordSource = value(.passwordSource, fallback.passwordSource)
         passwordKeychainServer = try? container.decodeIfPresent(
@@ -127,6 +137,17 @@ public struct VPNProfile: Codable, Equatable, Identifiable, Sendable {
             .replacingOccurrences(of: " ", with: "")
             .uppercased()
         return stripped.isEmpty ? nil : stripped
+    }
+
+    /// The pinned certificate's details, but only while they still describe the pin.
+    ///
+    /// The fingerprint is what every request is judged against, and it can be replaced on its own
+    /// (a re-detect, or a profile edited by hand). Details that no longer hash to the pinned
+    /// value would describe a certificate this connection would refuse, so they are withheld
+    /// rather than shown as if they were current.
+    public var pinnedCertificate: PinnedCertificate? {
+        guard let certificate, certificate.sha1 == normalizedCertificateSHA1 else { return nil }
+        return certificate
     }
 
     /// What to call this connection in a list or at the top of the menu.

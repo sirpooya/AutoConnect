@@ -60,6 +60,11 @@ public final class GatewayClient: NSObject {
     /// Fingerprint of the certificate actually presented, recorded during the handshake.
     public private(set) var observedCertificateSHA1: String?
 
+    /// Everything the presented certificate says about itself, read during the same handshake.
+    /// Kept alongside the fingerprint so a pin can be shown as a certificate rather than as a
+    /// row of hex.
+    public private(set) var observedCertificate: PinnedCertificate?
+
     public init(
         profile: VPNProfile,
         trustPolicy: TrustPolicy = .pinned,
@@ -187,8 +192,10 @@ extension GatewayClient: URLSessionDelegate {
             return completionHandler(.cancelAuthenticationChallenge, nil)
         }
 
-        let fingerprint = Self.sha1Fingerprint(of: leaf)
+        let observed = PinnedCertificate.read(leaf)
+        let fingerprint = observed.sha1
         observedCertificateSHA1 = fingerprint
+        observedCertificate = observed
 
         // First contact: take the fingerprint on trust so it can be pinned from here on. The
         // caller asked for this explicitly and is expected to show the user what was learned.

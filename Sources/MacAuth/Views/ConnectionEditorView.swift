@@ -99,17 +99,27 @@ struct ConnectionEditorView: View {
                         }
                 } else {
                     Picker("", selection: $profile.username) {
-                        Text("Not set").tag("")
+                        // Grey, like the placeholder in every other field here, so an unset
+                        // username does not read as loudly as a chosen one.
+                        Text("Not set").foregroundStyle(.secondary).tag("")
                         ForEach(usernameChoices, id: \.self) { choice in
                             Text(choice).tag(choice)
                         }
                     }
                     .labelsHidden()
                     .font(.system(size: 11))
+                    // Small, to stand the same height as the bordered fields above and below it.
+                    // At regular size it was the tallest control in the sheet, which gave the
+                    // emptiest value the strongest voice.
+                    .controlSize(.small)
+                    // A menu picker sizes to its widest choice and will not stretch, so the
+                    // width cannot match the fields. Pin it to the same left edge instead, which
+                    // is what makes the three of them read as one column.
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .onChange(of: profile.username) { _, _ in
-                            refreshKeychainItems()
-                            syncOTPAccount()
-                        }
+                        refreshKeychainItems()
+                        syncOTPAccount()
+                    }
                 }
             }
 
@@ -263,68 +273,9 @@ struct ConnectionEditorView: View {
             note("Detect asks the gateway which tunnel groups it offers and pins the certificate "
                  + "it presents. Nothing else needs typing.")
         } else {
-            HStack(alignment: .top, spacing: 10) {
-                SystemCertificateIcon(size: 38)
-
-                VStack(alignment: .leading, spacing: 3) {
-                    if !profile.tunnelGroup.isEmpty || discoveredGroups.count > 1 {
-                        HStack(spacing: 6) {
-                            Text("Group")
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
-
-                            if discoveredGroups.count > 1 {
-                                Picker("", selection: $profile.tunnelGroup) {
-                                    ForEach(discoveredGroups) { group in
-                                        Text(group.label).tag(group.value)
-                                    }
-                                }
-                                .labelsHidden()
-                                .controlSize(.mini)
-                                .fixedSize()
-                            } else {
-                                Text(profile.tunnelGroup)
-                                    .font(.system(size: 11))
-                            }
-                        }
-                    }
-
-                    if fingerprint.isEmpty {
-                        Text("No certificate pinned")
-                            .font(.system(size: 10))
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Text(shortFingerprint)
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
-                            .help(fingerprint)
-
-                        HStack(spacing: 3) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 9))
-                                .foregroundStyle(.green)
-
-                            Text("Pinned. The gateway must present this certificate.")
-                                .font(.system(size: 10))
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-
-                Spacer(minLength: 0)
-
-                if !fingerprint.isEmpty {
-                    // Unpinning drops the only thing that proves this is the right gateway, so
-                    // it reads as the destructive act it is rather than a tidy-up.
-                    Button("Forget") {
-                        profile.certificateSHA1 = nil
-                        discoveredGroups = []
-                    }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.red)
-                }
+            VStack(alignment: .leading, spacing: 8) {
+                certificateHeader
+                certificateDetails
             }
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -333,6 +284,151 @@ struct ConnectionEditorView: View {
                     .fill(Color.settingsCardFill)
             )
         }
+    }
+
+    /// Who the certificate claims to be, and who vouched for it. A self-signed certificate
+    /// naming the gateway is the expected case here, and saying so is the point: it is why a pin
+    /// is doing the work a public CA would normally do.
+    private var certificateHeader: some View {
+        HStack(alignment: .top, spacing: 10) {
+            SystemCertificateIcon(size: 38)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(certificateTitle)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(fingerprint.isEmpty ? .secondary : .primary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+
+                if let issuer = pinned?.issuer {
+                    Text(issuer == pinned?.commonName
+                         ? "Self-signed, so only the pin vouches for it"
+                         : "Issued by \(issuer)")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            Spacer(minLength: 0)
+
+            if !fingerprint.isEmpty {
+                // Unpinning drops the only thing that proves this is the right gateway, so
+                // it reads as the destructive act it is rather than a tidy-up.
+                Button("Forget") {
+                    profile.certificateSHA1 = nil
+                    profile.certificate = nil
+                    discoveredGroups = []
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 10))
+                .foregroundStyle(.red)
+            }
+        }
+    }
+
+    /// The facts worth keeping, as a label column and a value column, which is the shape
+    /// Keychain Access uses for the same certificate.
+    ///
+    /// Expiry earns its place: when the gateway renews, the pin stops matching and the failure
+    /// looks like an attack unless the date said the renewal was coming. Both digests are here
+    /// because SHA-1 is the one enforced today and SHA-256 is the one worth comparing by eye.
+    @ViewBuilder
+    private var certificateDetails: some View {
+        Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 10, verticalSpacing: 5) {
+            if !profile.tunnelGroup.isEmpty || discoveredGroups.count > 1 {
+                GridRow {
+                    detailLabel("Group")
+
+                    if discoveredGroups.count > 1 {
+                        Picker("", selection: $profile.tunnelGroup) {
+                            ForEach(discoveredGroups) { group in
+                                Text(group.label).tag(group.value)
+                            }
+                        }
+                        .labelsHidden()
+                        .controlSize(.mini)
+                        .fixedSize()
+                        .gridColumnAlignment(.leading)
+                    } else {
+                        detailValue(profile.tunnelGroup)
+                    }
+                }
+            }
+
+            if fingerprint.isEmpty {
+                GridRow {
+                    detailLabel("Certificate")
+                    detailValue("Not pinned yet")
+                }
+            } else {
+                if let pinned {
+                    if let expiry = expiryDescription {
+                        GridRow {
+                            detailLabel("Expires")
+                            detailValue(expiry.text, tint: expiry.tint)
+                        }
+                    }
+
+                    // Only when it adds something the title has not already said: a second name,
+                    // or the fact that none of them is the gateway being dialled.
+                    if let names = subjectNames {
+                        GridRow {
+                            detailLabel("Names")
+                            detailValue(names.text, tint: names.tint)
+                        }
+                    }
+
+                    GridRow {
+                        detailLabel("SHA-256")
+                        fingerprintValue(pinned.sha256)
+                    }
+                }
+
+                GridRow {
+                    detailLabel("SHA-1")
+                    fingerprintValue(fingerprint.uppercased())
+                }
+
+                GridRow {
+                    detailLabel("Pinned")
+                    // A first-contact pin proves only that nothing has changed since that day,
+                    // so the day is the claim, stated rather than implied.
+                    detailValue(pinned.map { dayFormatted($0.pinnedAt) }
+                                ?? "Before this app recorded certificate details")
+                }
+            }
+        }
+    }
+
+    private func detailLabel(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 10))
+            .foregroundStyle(.tertiary)
+            .gridColumnAlignment(.trailing)
+    }
+
+    private func detailValue(_ text: String, tint: Color? = nil) -> some View {
+        Text(text)
+            .font(.system(size: 10))
+            .foregroundStyle(tint ?? .secondary)
+            .fixedSize(horizontal: false, vertical: true)
+            // Claims the rest of the card. Without it the column takes only its ideal width and
+            // a fingerprint wraps inside a narrow gutter with the card half empty beside it.
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .gridColumnAlignment(.leading)
+    }
+
+    /// Grouped in fours and wrapped rather than elided: a fingerprint you cannot select in full
+    /// is a fingerprint you cannot check against Keychain Access, which is its only use.
+    private func fingerprintValue(_ value: String) -> some View {
+        Text(PinnedCertificate.groupedHex(value))
+            .font(.system(size: 10, design: .monospaced))
+            .foregroundStyle(.secondary)
+            .textSelection(.enabled)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .gridColumnAlignment(.leading)
     }
 
     private func note(_ text: String) -> some View {
@@ -380,12 +476,61 @@ struct ConnectionEditorView: View {
     private var address: String { profile.host.trimmingCharacters(in: .whitespaces) }
     private var fingerprint: String { profile.certificateSHA1 ?? "" }
 
-    /// First and last eight characters: enough to compare by eye, with the full value in the
-    /// tooltip and selectable for a real comparison.
-    private var shortFingerprint: String {
-        let value = fingerprint.uppercased()
-        guard value.count > 20 else { return value }
-        return "\(value.prefix(8))...\(value.suffix(8))"
+    /// Details only while they still describe the pinned fingerprint. A profile pinned by an
+    /// older build has none, and shows its hash alone rather than a guess.
+    private var pinned: PinnedCertificate? { profile.pinnedCertificate }
+
+    private var certificateTitle: String {
+        if fingerprint.isEmpty { return "No certificate pinned" }
+        return pinned?.commonName ?? profile.displayName
+    }
+
+    /// The expiry line, tinted by how close it is. Inside the last month it turns amber, because
+    /// that is when the renewal that will break the pin is worth expecting.
+    ///
+    /// The countdown is spelled out only while it means something. A ten-year certificate
+    /// reading "in 3,427 days" is a number nobody converts back into a date, and it crowds out
+    /// the date itself, which is the part worth remembering.
+    private var expiryDescription: (text: String, tint: Color)? {
+        guard let pinned, let notAfter = pinned.notAfter else { return nil }
+        let day = dayFormatted(notAfter)
+
+        switch pinned.expiry() {
+        case .expired(let daysAgo):
+            return ("\(day), \(daysAgo) \(plural(daysAgo)) ago. Detect again to pin the new one.", .red)
+        case .soon(let daysLeft):
+            return ("\(day), in \(daysLeft) \(plural(daysLeft)). The pin stops matching then.", .orange)
+        case .valid(let daysLeft) where daysLeft <= 90:
+            return ("\(day), in \(daysLeft) \(plural(daysLeft))", .secondary)
+        case .valid, .unknown:
+            return (day, .secondary)
+        }
+    }
+
+    private func plural(_ days: Int) -> String { days == 1 ? "day" : "days" }
+
+    /// The names the certificate was issued for, when that is not already obvious from the title.
+    ///
+    /// A certificate naming only itself needs no row. A second name is worth listing, and a
+    /// certificate that names no form of this gateway is worth saying out loud: it is one reused
+    /// from somewhere else, which the pin will happily accept because a pin only knows sameness.
+    private var subjectNames: (text: String, tint: Color)? {
+        guard let pinned else { return nil }
+        let names = pinned.subjectAltNames
+
+        if !pinned.covers(host: profile.host) {
+            let listed = names.isEmpty ? (pinned.commonName ?? "nothing") : names.joined(separator: ", ")
+            return ("\(listed). Not \(profile.displayName), so this certificate names another host.", .orange)
+        }
+
+        guard names.count > 1 || (names.first.map { $0 != pinned.commonName } ?? false) else {
+            return nil
+        }
+        return (names.joined(separator: ", "), .secondary)
+    }
+
+    private func dayFormatted(_ date: Date) -> String {
+        date.formatted(date: .abbreviated, time: .omitted)
     }
 
     private var trimmed: VPNProfile {
@@ -445,6 +590,18 @@ struct ConnectionEditorView: View {
                 if probeProfile.normalizedCertificateSHA1 == nil,
                    let learned = client.observedCertificateSHA1 {
                     probeProfile.certificateSHA1 = learned
+                }
+                // Recorded even when the pin was already known, so a connection pinned by a build
+                // that stored nothing but the hash gains its certificate's details on the next
+                // Detect. The pin itself is untouched: this only describes it.
+                if var observed = client.observedCertificate,
+                   observed.sha1 == probeProfile.normalizedCertificateSHA1 {
+                    // Re-detecting the same certificate must not restate when it was trusted.
+                    // The date's whole worth is that it says how long nothing has changed.
+                    if let existing = probeProfile.certificate, existing.sha1 == observed.sha1 {
+                        observed.pinnedAt = existing.pinnedAt
+                    }
+                    probeProfile.certificate = observed
                 }
                 profile = probeProfile
             } catch {
