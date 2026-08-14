@@ -382,41 +382,30 @@ struct SettingsView: View {
 
     private func accountRow(_ account: Account) -> some View {
         HStack(spacing: 6) {
-            // Clicking the row opens the details sheet, matching the connection rows. Copy Code
-            // stays in the menu: in a management list, reading about the account is the likelier
-            // intent, and the panel is where a code is there to be taken.
+            // Clicking the row opens the details sheet, matching the connection rows.
+            //
+            // No live code, no countdown and no Copy Code: this tab is where accounts are added
+            // and deleted, and the menu bar panel is where a code is there to be taken. A second
+            // place to read one meant two tickers for the same secret and a row that changed
+            // under the cursor while you were aiming at Delete.
             Button {
                 showDetails(account)
             } label: {
                 HStack(spacing: 6) {
-                    // The account name alone. The issuer is in the details sheet; on a row that
-                    // already carries a code and a countdown it was one more thing to read past.
+                    // The account name alone. The issuer is in the details sheet, and with two
+                    // accounts from the same issuer it is the name that tells them apart.
                     Text(account.displaySubtitle.isEmpty
                          ? account.displayTitle
                          : account.displaySubtitle)
                         .font(.system(size: 13))
 
                     Spacer(minLength: 10)
-
-                    Text(state.formattedCode(for: account))
-                        .font(.system(size: 13, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-
-                    // The same depleting wedge the menu panel uses, rather than a second way of
-                    // saying the same thing.
-                    CountdownPie(
-                        fraction: state.remainingFraction(for: account),
-                        color: .secondary,
-                        secondsLeft: state.secondsRemaining(for: account)
-                    )
                 }
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
             Menu {
-                Button("Copy Code") { state.copy(account) }
                 Button("Details...") { showDetails(account) }
                 Divider()
                 Button("Delete...", role: .destructive) {

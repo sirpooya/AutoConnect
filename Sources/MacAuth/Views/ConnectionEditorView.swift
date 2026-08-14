@@ -188,7 +188,7 @@ struct ConnectionEditorView: View {
                 // What actually happens to you, in the order you meet it. The longer version
                 // explained the mechanism; this one warns about the prompt, which is the only
                 // part that interrupts a connect.
-                note("macOS asks permission on the first connect. Nothing is copied into this app.")
+                note("macOS asks permission on first connect. Nothing is copied here.")
 
                 Button("Type it instead") { profile.passwordSource = .stored }
                     .buttonStyle(.link)
@@ -213,7 +213,10 @@ struct ConnectionEditorView: View {
 
             if let match = keychainItems.first {
                 HStack(spacing: 4) {
-                    note("This Mac already has a saved login for \(match.server).")
+                    // Named as the app you can open to check it, which "This Mac" did not say.
+                    // Strictly the item lives in the login keychain and Keychain Access only
+                    // displays it, but that is where you would go looking.
+                    note("Keychain Access has a saved login for \(match.server).")
 
                     Button("Use it") {
                         profile.passwordSource = .loginKeychain
