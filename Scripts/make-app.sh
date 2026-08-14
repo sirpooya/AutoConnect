@@ -47,6 +47,28 @@ else
     echo "Missing ${RESOURCE_BUNDLE}; the menu bar icon will fall back to an SF Symbol" >&2
 fi
 
+# The app icon is an Icon Composer document. actool turns it into both an Assets.car, which is
+# what macOS 26 reads to draw the layered Liquid Glass icon, and a plain AppIcon.icns for
+# everything older. Missing keys just mean the generic app icon, so a failure here is not fatal.
+#
+# Both paths passed to actool are absolute on purpose: it resolves relative paths against its own
+# working directory, not the shell's, and fails claiming the output directory does not exist.
+ICON_SOURCE="${PWD}/Icons/AppIcon.icon"
+ICON_KEYS=""
+if [[ -d "${ICON_SOURCE}" ]] && xcrun -f actool >/dev/null 2>&1; then
+    echo "==> Compiling app icon"
+    xcrun actool "${ICON_SOURCE}" \
+        --compile "${PWD}/${APP_DIR}/Contents/Resources" \
+        --app-icon AppIcon \
+        --output-partial-info-plist "$(mktemp -t macauth-icon-plist)" \
+        --platform macosx \
+        --minimum-deployment-target 14.0 \
+        --errors --warnings > /dev/null
+    ICON_KEYS=$'    <key>CFBundleIconFile</key>\n    <string>AppIcon</string>\n    <key>CFBundleIconName</key>\n    <string>AppIcon</string>'
+else
+    echo "No ${ICON_SOURCE} or no actool; the app will use the generic icon" >&2
+fi
+
 cat > "${APP_DIR}/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -68,6 +90,7 @@ cat > "${APP_DIR}/Contents/Info.plist" <<PLIST
     <string>${BUILD_NUMBER}</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
+${ICON_KEYS}
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
     <!-- Menu bar only: no Dock icon, no main window. -->

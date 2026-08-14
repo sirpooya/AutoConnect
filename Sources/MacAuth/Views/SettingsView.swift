@@ -496,36 +496,53 @@ struct SettingsView: View {
     }
 
     private func accountRow(_ account: Account) -> some View {
-        SettingsRow(title: accountLabel(account)) {
-            HStack(spacing: 10) {
-                Text(state.formattedCode(for: account))
-                    .font(.system(size: 13, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
+        HStack(spacing: 6) {
+            // Account first, issuer beneath it. One line of "Issuer: account" fits the cramped
+            // menu panel, but here there is room to put the name you actually scan for on top.
+            VStack(alignment: .leading, spacing: 1) {
+                Text(account.displaySubtitle.isEmpty
+                     ? account.displayTitle
+                     : account.displaySubtitle)
+                    .font(.system(size: 13))
 
-                Text("\(state.secondsRemaining(for: account))s")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
-                    .monospacedDigit()
-                    // A fixed width so the row does not twitch as the count drops
-                    // from two digits to one.
-                    .frame(width: 22, alignment: .trailing)
-
-                Menu {
-                    Button("Copy Code") { state.copy(account) }
-                    Button("Edit...") { edit(account) }
-                    Divider()
-                    Button("Delete...", role: .destructive) {
-                        accountPendingDeletion = account
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
+                if !account.displaySubtitle.isEmpty {
+                    Text(account.displayTitle)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
                 }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .fixedSize()
             }
+
+            Spacer(minLength: 10)
+
+            Text(state.formattedCode(for: account))
+                .font(.system(size: 13, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+
+            Text("\(state.secondsRemaining(for: account))s")
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
+                .monospacedDigit()
+                // A fixed width so the row does not twitch as the count drops from two
+                // digits to one.
+                .frame(width: 22, alignment: .trailing)
+
+            Menu {
+                Button("Copy Code") { state.copy(account) }
+                Button("Edit...") { edit(account) }
+                Divider()
+                Button("Delete...", role: .destructive) {
+                    accountPendingDeletion = account
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
         }
+        .padding(.horizontal, SettingsMetrics.rowHPadding)
+        .frame(minHeight: 42)
     }
 
     private func add(_ method: AddMethod) {
