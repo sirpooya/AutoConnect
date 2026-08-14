@@ -21,6 +21,10 @@ final class TunnelStatsTests: XCTestCase {
         XCTAssertEqual(parsed.bytesIn, 1_148_180_614)
         XCTAssertEqual(parsed.bytesOut, 813_138_424)
         XCTAssertEqual(parsed.mtu, 1300)
+        // AnyConnect labels these "Frames". They come from the columns either side of the byte
+        // counts, so reading them wrong yields a plausible-but-wrong number rather than a failure.
+        XCTAssertEqual(parsed.packetsIn, 1_739_606)
+        XCTAssertEqual(parsed.packetsOut, 900_391)
     }
 
     func testIgnoresOtherInterfaces() {
@@ -121,7 +125,11 @@ final class OpenConnectDetailParsingTests: XCTestCase {
     func testParsesCiphersuiteWhenCapitalised() {
         XCTAssertEqual(
             Event.parse(line: "Ciphersuite (TLS1.3)-(ECDHE-SECP256R1)-(AES-128-GCM)"),
-            .ciphersuite(transport: "TLS1.3", cipher: "AES-128-GCM")
+            .ciphersuite(
+                transport: "TLS1.3",
+                cipher: "AES-128-GCM",
+                suite: "ECDHE-SECP256R1_AES-128-GCM"
+            )
         )
     }
 

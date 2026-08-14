@@ -79,8 +79,12 @@ struct SettingsFieldRow: View {
             }
             .textFieldStyle(.plain)
             .multilineTextAlignment(.trailing)
-            .font(monospaced ? .system(size: 11, design: .monospaced) : .system(size: 13))
-            .frame(maxWidth: SettingsMetrics.fieldWidth)
+            // Monospaced values (a 40-character SHA1, a binary path) are longer than
+            // any label, so they get a smaller face and the wider column.
+            .font(monospaced ? .system(size: 10, design: .monospaced) : .system(size: 13))
+            .frame(maxWidth: monospaced
+                ? SettingsMetrics.monospacedFieldWidth
+                : SettingsMetrics.fieldWidth)
         }
     }
 }
@@ -131,10 +135,11 @@ enum SettingsMetrics {
     /// The tab body is a fixed height, so switching tabs never resizes the window
     /// and the window's size stays a constant the Settings scene can measure once.
     static let bodyHeight: CGFloat = 380
-    /// Tab bar + body + save bar. The window is sized from this, not from the
-    /// SwiftUI content, so AppKit never measures the ScrollView mid-layout.
-    static let windowHeight: CGFloat = 500
+    /// Tab bar + body. The window is sized from this, not from the SwiftUI content,
+    /// so AppKit never measures the ScrollView mid-layout.
+    static let windowHeight: CGFloat = 450
     static let fieldWidth: CGFloat = 250
+    static let monospacedFieldWidth: CGFloat = 290
 }
 
 extension Color {

@@ -11,6 +11,9 @@ public struct TunnelStats: Equatable, Sendable {
     public var bytesIn: UInt64
     /// Cumulative bytes sent.
     public var bytesOut: UInt64
+    /// Packet counts, which AnyConnect labels "Frames".
+    public var packetsIn: UInt64
+    public var packetsOut: UInt64
     /// Bytes per second, averaged over the gap between the last two samples.
     public var rateIn: Double
     public var rateOut: Double
@@ -19,12 +22,16 @@ public struct TunnelStats: Equatable, Sendable {
     public init(
         bytesIn: UInt64 = 0,
         bytesOut: UInt64 = 0,
+        packetsIn: UInt64 = 0,
+        packetsOut: UInt64 = 0,
         rateIn: Double = 0,
         rateOut: Double = 0,
         mtu: Int? = nil
     ) {
         self.bytesIn = bytesIn
         self.bytesOut = bytesOut
+        self.packetsIn = packetsIn
+        self.packetsOut = packetsOut
         self.rateIn = rateIn
         self.rateOut = rateOut
         self.mtu = mtu
@@ -40,7 +47,15 @@ public struct TunnelStats: Equatable, Sendable {
     ///
     ///     Name  Mtu  Network    Ipkts    Ierrs  Ibytes      Opkts   Oerrs  Obytes     Coll
     ///     utun6 1300 <Link#25>  1739606  0      1148180614  900391  0      813138424  0
-    public static func parse(netstatOutput: String, interface: String) -> (bytesIn: UInt64, bytesOut: UInt64, mtu: Int?)? {
+    public struct Counters: Equatable {
+        public var bytesIn: UInt64
+        public var bytesOut: UInt64
+        public var packetsIn: UInt64
+        public var packetsOut: UInt64
+        public var mtu: Int?
+    }
+
+    public static func parse(netstatOutput: String, interface: String) -> Counters? {
         for line in netstatOutput.split(separator: "\n") {
             let fields = line.split(whereSeparator: \.isWhitespace).map(String.init)
 
@@ -51,11 +66,21 @@ public struct TunnelStats: Equatable, Sendable {
                 continue
             }
 
-            guard let bytesIn = UInt64(fields[5]), let bytesOut = UInt64(fields[8]) else {
+            guard let packetsIn = UInt64(fields[3]),
+                  let bytesIn = UInt64(fields[5]),
+                  let packetsOut = UInt64(fields[6]),
+                  let bytesOut = UInt64(fields[8])
+            else {
                 continue
             }
 
-            return (bytesIn, bytesOut, Int(fields[1]))
+            return Counters(
+                bytesIn: bytesIn,
+                bytesOut: bytesOut,
+                packetsIn: packetsIn,
+                packetsOut: packetsOut,
+                mtu: Int(fields[1])
+            )
         }
 
         return nil
@@ -115,6 +140,8 @@ public final class TunnelStatsReader {
         var stats = TunnelStats(
             bytesIn: parsed.bytesIn,
             bytesOut: parsed.bytesOut,
+            packetsIn: parsed.packetsIn,
+            packetsOut: parsed.packetsOut,
             mtu: parsed.mtu
         )
 

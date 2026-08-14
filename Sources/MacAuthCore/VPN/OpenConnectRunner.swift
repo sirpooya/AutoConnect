@@ -54,6 +54,34 @@ public final class OpenConnectRunner {
         /// Interface name, so stats can be sampled from the right device.
         public var interface: String?
 
+        /// Full negotiated ciphersuite, as openconnect reports it. `cipher` above is just the bulk
+        /// cipher, which is what fits on one line; this is the whole thing for the details block.
+        public var ciphersuite: String?
+
+        /// Routes openconnect added through the tunnel.
+        public var securedRouteCount = 0
+        /// Routes openconnect was told to keep off the tunnel.
+        public var excludedRouteCount = 0
+        /// True once the default route points into the tunnel, meaning all traffic is carried.
+        public var carriesDefaultRoute = false
+
+        /// How traffic is split, in the vocabulary AnyConnect uses for the same thing.
+        public var tunnelMode: String? {
+            if carriesDefaultRoute {
+                return excludedRouteCount > 0 ? "Split Exclude" : "Full tunnel"
+            }
+            guard securedRouteCount > 0 else { return nil }
+            return "Split Include"
+        }
+
+        /// Route counts as one line, for example "12 secured, 1 excluded".
+        public var routeSummary: String? {
+            guard securedRouteCount > 0 || excludedRouteCount > 0 else { return nil }
+            var parts = ["\(securedRouteCount) secured"]
+            if excludedRouteCount > 0 { parts.append("\(excludedRouteCount) excluded") }
+            return parts.joined(separator: ", ")
+        }
+
         public init(
             assignedIP: String? = nil,
             usingDTLS: Bool = false,
@@ -118,10 +146,14 @@ public final class OpenConnectRunner {
         case reconnectAttemptFailed(String)
         /// openconnect exhausted its retry window and is giving up.
         case reconnectFailed
-        /// Negotiated protocol version and bulk cipher, from a ciphersuite line.
-        case ciphersuite(transport: String, cipher: String)
+        /// Negotiated protocol version, bulk cipher, and the full suite string.
+        case ciphersuite(transport: String, cipher: String, suite: String = "")
         /// The tunnel device openconnect configured, so stats read the right interface.
         case interface(String)
+        /// A route was added through the tunnel. True when it is the default route.
+        case routeAdded(isDefault: Bool)
+        /// A route was deliberately kept off the tunnel.
+        case routeExcluded
 
         /// openconnect prints expiry as RFC 1123 with a numeric zone, for example
         /// `Fri, 14 Aug 2026 10:30:25 +0330`.
@@ -174,8 +206,24 @@ public final class OpenConnectRunner {
                 } ?? ""
 
                 if !transport.isEmpty {
-                    return .ciphersuite(transport: transport, cipher: cipher)
+                    // Everything after the protocol version, joined the way AnyConnect prints it,
+                    // so the details block can show the whole negotiated suite.
+                    let suite = parts.dropFirst().joined(separator: "_")
+                    return .ciphersuite(transport: transport, cipher: cipher, suite: suite)
                 }
+            }
+
+            // "add net 10.250.232.0: gateway 10.250.232.188" and "add net default: gateway ...".
+            // A failed re-add ("...: File exists") is not a new route, so it must not be counted.
+            if trimmed.hasPrefix("add net "), !trimmed.hasSuffix("File exists"),
+               !trimmed.contains("Network is unreachable")
+            {
+                return .routeAdded(isDefault: trimmed.hasPrefix("add net default"))
+            }
+
+            // "ignoring non-forwardable exclude route 0.0.0.0/32"
+            if trimmed.contains("exclude route") {
+                return .routeExcluded
             }
 
             // "Configured tun device 'utun6'" or openconnect's "Using tun device utun6"
@@ -402,9 +450,19 @@ public final class OpenConnectRunner {
             tunnel.gatewayEndpoint = endpoint
             if case .connected = state { state = .connected(tunnel) }
 
-        case .ciphersuite(let transport, let cipher):
+        case .ciphersuite(let transport, let cipher, let suite):
             tunnel.transport = transport
             if !cipher.isEmpty { tunnel.cipher = cipher }
+            if !suite.isEmpty { tunnel.ciphersuite = suite }
+            if case .connected = state { state = .connected(tunnel) }
+
+        case .routeAdded(let isDefault):
+            tunnel.securedRouteCount += 1
+            if isDefault { tunnel.carriesDefaultRoute = true }
+            if case .connected = state { state = .connected(tunnel) }
+
+        case .routeExcluded:
+            tunnel.excludedRouteCount += 1
             if case .connected = state { state = .connected(tunnel) }
 
         case .interface(let name):

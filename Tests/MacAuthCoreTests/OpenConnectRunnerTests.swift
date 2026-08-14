@@ -69,8 +69,6 @@ final class OpenConnectRunnerTests: XCTestCase {
             "POST https://MFA-VPN.DKservices.ir:28015/",
             "SSL negotiation with mfa-vpn.dkservices.ir",
             "Got CONNECT response: HTTP/1.1 200 OK",
-            "add net 10.250.232.0: gateway 10.250.232.188",
-            "ignoring non-forwardable exclude route 0.0.0.0/32",
             " is not a recognized network service.",
             "** Error: The parameters were not valid.",
             "",
@@ -204,6 +202,52 @@ final class OpenConnectRunnerTests: XCTestCase {
         for line in noise {
             XCTAssertNil(Event.parse(line: line), "should ignore: \(line)")
         }
+    }
+
+    // MARK: - Tunnel mode
+
+    /// Route lines are how the tunnel's shape is discovered: AnyConnect calls the result
+    /// "Tunnel Mode", and this is the only source openconnect gives for it.
+    func testParsesRouteAdditions() {
+        XCTAssertEqual(
+            Event.parse(line: "add net 10.250.232.0: gateway 10.250.232.188"),
+            .routeAdded(isDefault: false)
+        )
+        XCTAssertEqual(
+            Event.parse(line: "add net default: gateway 10.250.232.188"),
+            .routeAdded(isDefault: true)
+        )
+        XCTAssertEqual(
+            Event.parse(line: "ignoring non-forwardable exclude route 0.0.0.0/32"),
+            .routeExcluded
+        )
+    }
+
+    /// A failed re-add during a reconnect is not a new route. Counting it would inflate the route
+    /// total every time the tunnel flapped.
+    func testFailedRouteAdditionIsNotCounted() {
+        XCTAssertNil(
+            Event.parse(line: "add host 93.113.226.130: gateway 10.250.232.188: File exists")
+        )
+        XCTAssertNil(
+            Event.parse(line: "add net default: gateway 172.20.10.1: Network is unreachable")
+        )
+    }
+
+    /// The vocabulary matches AnyConnect's, so the two can be compared side by side.
+    func testTunnelModeDescribesTheSplit() {
+        var tunnel = OpenConnectRunner.Tunnel()
+        XCTAssertNil(tunnel.tunnelMode, "no routes yet means nothing to claim")
+
+        tunnel.securedRouteCount = 5
+        XCTAssertEqual(tunnel.tunnelMode, "Split Include")
+
+        tunnel.carriesDefaultRoute = true
+        XCTAssertEqual(tunnel.tunnelMode, "Full tunnel")
+
+        tunnel.excludedRouteCount = 1
+        XCTAssertEqual(tunnel.tunnelMode, "Split Exclude")
+        XCTAssertEqual(tunnel.routeSummary, "5 secured, 1 excluded")
     }
 
     /// The retry window is capped well below openconnect's 300s default: after sleep every attempt

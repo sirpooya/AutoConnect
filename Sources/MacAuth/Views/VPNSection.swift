@@ -120,6 +120,11 @@ struct VPNSection: View {
                     "Transferred",
                     "\(stats.formattedIn) down  \(stats.formattedOut) up"
                 )
+                // AnyConnect calls these "Frames".
+                statRow(
+                    "Packets",
+                    "\(stats.packetsIn.formatted()) in  \(stats.packetsOut.formatted()) out"
+                )
             }
 
             if let uptime = vpn.uptime {
@@ -128,8 +133,17 @@ struct VPNSection: View {
             if let endpoint = vpn.tunnel?.gatewayEndpoint {
                 statRow("Gateway", endpoint)
             }
-            if let transport = vpn.transportSummary {
-                statRow("Transport", transport)
+            if let mode = vpn.tunnel?.tunnelMode {
+                statRow("Tunnel mode", mode)
+            }
+            if let routes = vpn.tunnel?.routeSummary {
+                statRow("Routes", routes)
+            }
+            if let transport = vpn.tunnel?.transport {
+                statRow("Protocol", transport)
+            }
+            if let suite = vpn.tunnel?.ciphersuite ?? vpn.tunnel?.cipher {
+                statRow("Cipher", suite)
             }
             if let interface = vpn.tunnel?.interface {
                 statRow("Interface", interface)

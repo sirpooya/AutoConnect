@@ -228,25 +228,11 @@ struct SettingsView: View {
                 SettingsFootnote(text: "Not found. Install with: brew install openconnect")
                     .foregroundStyle(.orange)
             }
-        }
-    }
 
-    // MARK: - Save bar
-
-    private var saveBar: some View {
-        HStack {
-            if let status {
-                Text(status)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            if let status, tab == .behaviour {
+                SettingsFootnote(text: status)
             }
-            Spacer()
-            Button("Save") { save() }
-                .keyboardShortcut(.defaultAction)
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
-        .background(.bar)
     }
 
     // MARK: - State
@@ -271,10 +257,17 @@ struct SettingsView: View {
         otpAccountID = profile.otpAccountID
         passwordIsStored = store.hasPassword(account: profile.credentialAccount)
         launchAtLogin = LaunchAtLogin.isEnabled
+        isLoaded = true
     }
 
-    private func save() {
+    /// Writes the edited fields through to the profile. Called on every edit, so it
+    /// stays cheap: UserDefaults and an in-memory profile, no Keychain work.
+    private func persist() {
+        guard isLoaded else { return }
+
         var profile = vpn.profile
+        // Trim only on the way out. Trimming the bound state instead would stop the
+        // field accepting a space you are about to type over.
         profile.host = host.trimmingCharacters(in: .whitespaces)
         profile.tunnelGroup = tunnelGroup.trimmingCharacters(in: .whitespaces)
         profile.username = username.trimmingCharacters(in: .whitespaces)
@@ -282,25 +275,31 @@ struct SettingsView: View {
         profile.openconnectPath = openconnectPath.trimmingCharacters(in: .whitespaces)
         profile.otpAccountID = otpAccountID
 
-        if !password.isEmpty {
-            do {
-                try store.savePassword(password, account: profile.credentialAccount)
-                // Drop the plaintext as soon as the Keychain has it.
-                password = ""
-                passwordIsStored = true
-            } catch {
-                status = "Could not save the password: \(error)"
-                return
-            }
-        }
-
         store.save(profile: profile)
         vpn.profile = profile
-        status = "Saved"
+    }
 
+    /// The password commits on blur or Return rather than on every keystroke: each
+    /// write is a Keychain round trip, and a half-typed password is not worth one.
+    private func savePassword() {
+        guard !password.isEmpty else { return }
+
+        do {
+            try store.savePassword(password, account: vpn.profile.credentialAccount)
+            // Drop the plaintext as soon as the Keychain has it.
+            password = ""
+            passwordIsStored = true
+            flash("Password saved to the Keychain")
+        } catch {
+            status = "Could not save the password: \(error)"
+        }
+    }
+
+    private func flash(_ message: String) {
+        status = message
         Task {
-            try? await Task.sleep(for: .seconds(2))
-            status = nil
+            try? await Task.sleep(for: .seconds(3))
+            if status == message { status = nil }
         }
     }
 
@@ -308,7 +307,7 @@ struct SettingsView: View {
         do {
             try store.deletePassword(account: vpn.profile.credentialAccount)
             passwordIsStored = false
-            status = "Password removed"
+            flash("Password removed")
         } catch {
             status = "Could not remove the password: \(error)"
         }

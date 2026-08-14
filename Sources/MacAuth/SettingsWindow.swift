@@ -47,7 +47,12 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         window.isReleasedWhenClosed = false
         window.delegate = self
         window.center()
+        // The pane opens to be read, not typed into, so nothing takes the caret.
+        // AppKit picks the first text field otherwise, and the gateway address would
+        // come up selected and one keystroke away from being replaced.
+        window.initialFirstResponder = nil
         window.makeKeyAndOrderFront(nil)
+        window.makeFirstResponder(nil)
 
         self.window = window
     }
