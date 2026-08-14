@@ -42,8 +42,6 @@ struct ConnectionEditorView: View {
             Text(isNew ? "New Connection" : "Edit Connection")
                 .font(.system(size: 13, weight: .semibold))
 
-            field("Name", prompt: "Work", text: $profile.name)
-
             VStack(alignment: .leading, spacing: 3) {
                 Text("Gateway address")
                     .font(.system(size: 10, weight: .medium))
@@ -68,28 +66,29 @@ struct ConnectionEditorView: View {
 
             gatewayFindings
 
-            // A connection is a gateway plus who signs in and what supplies the code, so both
-            // are chosen here rather than being implied by whatever Settings had selected.
-            if !credentials.isEmpty || !accounts.isEmpty {
-                Divider()
+            // A connection is a gateway plus who signs in and what supplies the code. Both are
+            // chosen here, and both are shown even when their lists are empty: hiding them made
+            // it look as though there was nowhere to choose.
+            Divider()
 
-                if !credentials.isEmpty {
-                    picker("Sign in as", selection: $profile.credentialID) {
-                        Text("Nobody yet").tag(UUID?.none)
-                        ForEach(credentials) { credential in
-                            Text(credential.displayName).tag(UUID?.some(credential.id))
-                        }
-                    }
+            picker("Sign in as", selection: $profile.credentialID) {
+                Text(credentials.isEmpty ? "No credentials yet" : "Ask at sign-in")
+                    .tag(UUID?.none)
+                ForEach(credentials) { credential in
+                    Text(credential.displayName).tag(UUID?.some(credential.id))
                 }
+            }
 
-                if !accounts.isEmpty {
-                    picker("One-time code", selection: $profile.otpAccountID) {
-                        Text("Type it manually").tag(UUID?.none)
-                        ForEach(accounts) { account in
-                            Text(account.displayHeading).tag(UUID?.some(account.id))
-                        }
-                    }
+            picker("One-time code", selection: $profile.otpAccountID) {
+                Text(accounts.isEmpty ? "No accounts yet" : "Type it manually")
+                    .tag(UUID?.none)
+                ForEach(accounts) { account in
+                    Text(account.displayHeading).tag(UUID?.some(account.id))
                 }
+            }
+
+            if credentials.isEmpty {
+                note("Add one in the Sign-in tab to have the username and password filled in.")
             }
 
             HStack {
@@ -188,6 +187,13 @@ struct ConnectionEditorView: View {
         }
     }
 
+    private func note(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 10))
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
     private func notice(_ text: String, icon: String, tint: Color) -> some View {
         HStack(alignment: .top, spacing: 6) {
             Image(systemName: icon)
@@ -248,7 +254,6 @@ struct ConnectionEditorView: View {
 
     private var trimmed: VPNProfile {
         var result = profile
-        result.name = profile.name.trimmingCharacters(in: .whitespaces)
         result.host = address
         result.tunnelGroup = profile.tunnelGroup.trimmingCharacters(in: .whitespaces)
         return result

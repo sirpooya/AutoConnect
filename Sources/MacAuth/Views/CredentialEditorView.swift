@@ -56,21 +56,13 @@ struct CredentialEditorView: View {
                     .onChange(of: credential.username) { _, _ in refreshKeychainItems() }
             }
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 6) {
                 Text("Password")
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(.secondary)
 
-                Picker("", selection: $credential.passwordSource) {
-                    ForEach(Credential.PasswordSource.allCases, id: \.self) { source in
-                        Text(source.title).tag(source)
-                    }
-                }
-                .labelsHidden()
-                .pickerStyle(.segmented)
+                passwordDetail
             }
-
-            passwordDetail
 
             HStack {
                 Button("Cancel") { dismiss() }
@@ -95,52 +87,59 @@ struct CredentialEditorView: View {
 
     // MARK: - Password
 
+    /// The Keychain is the answer nearly always, so it is the whole control rather than one
+    /// choice among three. Typing nothing is the same as being asked at sign-in time, which is
+    /// what the hint says instead of costing a third option nobody would pick deliberately.
+    ///
+    /// Reusing a website login the browser already saved is the one real alternative, and it is
+    /// offered only when this Mac actually has such an item for the username.
     @ViewBuilder
     private var passwordDetail: some View {
-        switch credential.passwordSource {
-        case .ask:
-            note("The sign-in window opens with the password blank. Nothing is stored.")
-
-        case .stored:
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) {
-                    SecureField(
-                        passwordIsStored ? "Stored in Keychain" : "Type it once",
-                        text: $password
-                    )
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(size: 11))
-                    .onSubmit { commit() }
-
-                    if passwordIsStored {
-                        Button("Remove") { removeStoredPassword() }
-                            .controlSize(.small)
+        if credential.passwordSource == .loginKeychain, !keychainItems.isEmpty {
+            HStack(spacing: 6) {
+                Picker("", selection: $credential.passwordKeychainServer) {
+                    ForEach(keychainItems) { item in
+                        Text(item.server).tag(String?.some(item.server))
                     }
                 }
+                .labelsHidden()
+                .controlSize(.small)
 
-                note("Kept in this Mac's Keychain, under this credential alone.")
+                Button("Type it instead") { credential.passwordSource = .stored }
+                    .controlSize(.small)
             }
 
-        case .loginKeychain:
-            VStack(alignment: .leading, spacing: 6) {
-                if keychainItems.isEmpty {
-                    note(credential.username.isEmpty
-                         ? "Enter the username first, then its saved website logins appear here."
-                         : "No website password saved under that username. Safari and iCloud "
-                            + "Keychain entries show up here; Chrome and Firefox keep theirs in "
-                            + "their own stores, which this cannot read.")
-                } else {
-                    Picker("", selection: $credential.passwordKeychainServer) {
-                        ForEach(keychainItems) { item in
-                            Text(item.server).tag(String?.some(item.server))
-                        }
-                    }
-                    .labelsHidden()
-                    .controlSize(.small)
+            note("Read from the login Keychain at connect time, so macOS asks permission once. "
+                 + "Nothing is copied into this app's Keychain.")
+        } else {
+            HStack(spacing: 6) {
+                SecureField(
+                    passwordIsStored ? "Stored in Keychain" : "Leave blank to be asked",
+                    text: $password
+                )
+                .textFieldStyle(.roundedBorder)
+                .font(.system(size: 11))
+                .onSubmit { commit() }
 
-                    note("Read at connect time, so macOS asks permission once. Nothing is "
-                         + "copied into this app's Keychain.")
+                if passwordIsStored {
+                    Button("Remove") { removeStoredPassword() }
+                        .controlSize(.small)
                 }
+            }
+
+            if let suggestion = keychainItems.first {
+                HStack(spacing: 4) {
+                    note("This Mac already has a saved login for \(suggestion.server).")
+
+                    Button("Use it") {
+                        credential.passwordSource = .loginKeychain
+                        credential.passwordKeychainServer = suggestion.server
+                    }
+                    .buttonStyle(.link)
+                    .font(.system(size: 10))
+                }
+            } else {
+                note("Kept in this Mac's Keychain, under this credential alone.")
             }
         }
     }
@@ -170,10 +169,20 @@ struct CredentialEditorView: View {
         var result = credential
         result.name = credential.name.trimmingCharacters(in: .whitespaces)
         result.username = credential.username.trimmingCharacters(in: .whitespaces)
+
+        // The editor only ever shows two states, so anything else settles into the one the
+        // fields were actually offering: a login-Keychain source with no item chosen, or an
+        // "ask" carried over from an older build, is really just the Keychain field.
+        if result.passwordSource == .loginKeychain, result.passwordKeychainServer == nil {
+            result.passwordSource = .stored
+        }
+        if result.passwordSource == .ask, !password.isEmpty {
+            result.passwordSource = .stored
+        }
         // A server is only meaningful for the source that uses one.
         if result.passwordSource != .loginKeychain { result.passwordKeychainServer = nil }
 
-        if result.passwordSource == .stored, !password.isEmpty {
+        if result.passwordSource != .loginKeychain, !password.isEmpty {
             try? store.savePassword(password, account: result.keychainAccount)
             // Drop the plaintext as soon as the Keychain has it.
             password = ""

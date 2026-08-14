@@ -287,7 +287,6 @@ struct SettingsView: View {
         // A copy is a different connection: new identity, and its own Keychain item rather than
         // a second name for the original's password.
         copy.id = UUID()
-        copy.name = "\(item.displayName) copy"
         copy.credentialAccount = "vpn-password-\(copy.id.uuidString)"
         store.upsert(copy)
         vpn.reloadProfiles()

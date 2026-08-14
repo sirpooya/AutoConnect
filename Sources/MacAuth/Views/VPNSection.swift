@@ -122,12 +122,9 @@ struct VPNSection: View {
         let host = vpn.profile.host
         guard !host.isEmpty else { return "No gateway configured" }
 
+        // The title is the host, so the line beneath it carries the group and the port, the
+        // two things the title drops.
         let group = vpn.profile.tunnelGroup
-        // An unnamed connection is titled by its host, so repeating the host here would say the
-        // same thing twice. Named ones show both, since the name says neither.
-        if vpn.profile.name.trimmingCharacters(in: .whitespaces).isEmpty {
-            return group.isEmpty ? host : group
-        }
         return group.isEmpty ? host : "\(host) - \(group)"
     }
 

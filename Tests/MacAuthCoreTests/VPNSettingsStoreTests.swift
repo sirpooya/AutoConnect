@@ -29,14 +29,18 @@ final class VPNSettingsStoreTests: XCTestCase {
     }
 
     func testUpsertAddsThenReplacesInPlace() {
-        var work = VPNProfile.newConnection(name: "Work")
+        var work = VPNProfile.newConnection()
         work.host = "vpn.example.com"
         store.upsert(work)
 
-        let lab = VPNProfile.newConnection(name: "Lab")
+        var lab = VPNProfile.newConnection()
+        lab.host = "lab.example.com"
         store.upsert(lab)
 
-        XCTAssertEqual(store.loadProfiles().map(\.displayName), ["Work", "Lab"])
+        XCTAssertEqual(
+            store.loadProfiles().map(\.displayName),
+            ["vpn.example.com", "lab.example.com"]
+        )
 
         work.host = "vpn2.example.com"
         store.upsert(work)
@@ -47,8 +51,8 @@ final class VPNSettingsStoreTests: XCTestCase {
     }
 
     func testSelectionSurvivesAReload() {
-        let work = VPNProfile.newConnection(name: "Work")
-        let lab = VPNProfile.newConnection(name: "Lab")
+        let work = VPNProfile.newConnection()
+        let lab = VPNProfile.newConnection()
         store.upsert(work)
         store.upsert(lab)
 
@@ -60,7 +64,7 @@ final class VPNSettingsStoreTests: XCTestCase {
     /// Nothing selected, or a selection pointing at a connection that was deleted, must still
     /// leave the app pointed at something usable.
     func testSelectionFallsBackToTheFirstConnection() {
-        let work = VPNProfile.newConnection(name: "Work")
+        let work = VPNProfile.newConnection()
         store.upsert(work)
 
         XCTAssertEqual(store.selectedProfile()?.id, work.id)
@@ -70,15 +74,17 @@ final class VPNSettingsStoreTests: XCTestCase {
     }
 
     func testDeleteRemovesAndMovesTheSelection() {
-        let work = VPNProfile.newConnection(name: "Work")
-        let lab = VPNProfile.newConnection(name: "Lab")
+        var work = VPNProfile.newConnection()
+        work.host = "vpn.example.com"
+        var lab = VPNProfile.newConnection()
+        lab.host = "lab.example.com"
         store.upsert(work)
         store.upsert(lab)
         store.selectedProfileID = work.id
 
         store.delete(profileID: work.id)
 
-        XCTAssertEqual(store.loadProfiles().map(\.displayName), ["Lab"])
+        XCTAssertEqual(store.loadProfiles().map(\.displayName), ["lab.example.com"])
         XCTAssertEqual(store.selectedProfileID, lab.id)
     }
 
@@ -97,8 +103,7 @@ final class VPNSettingsStoreTests: XCTestCase {
     /// A profile saved by a build that only had one gets carried into the list, keeping its
     /// identity and therefore its stored password.
     func testASingleSavedProfileBecomesTheFirstConnection() {
-        var old = VPNProfile.example
-        old.name = "Old"
+        let old = VPNProfile.example
         store.save(profile: old)
 
         let migrated = store.loadProfiles()
@@ -126,7 +131,6 @@ final class VPNSettingsStoreTests: XCTestCase {
         XCTAssertEqual(profile.credentialAccount, "vpn-password")
         XCTAssertEqual(profile.passwordSource, .stored)
         XCTAssertNil(profile.certificateSHA1)
-        XCTAssertEqual(profile.name, "")
         XCTAssertEqual(profile.displayName, "vpn.example.com")
     }
 
@@ -152,7 +156,7 @@ final class VPNSettingsStoreTests: XCTestCase {
         let credential = Credential(username: "me@example.com")
         store.upsert(credential)
 
-        var profile = VPNProfile.newConnection(name: "Work")
+        var profile = VPNProfile.newConnection()
         profile.host = "vpn.example.com"
         profile.credentialID = credential.id
         store.upsert(profile)
@@ -195,11 +199,11 @@ final class VPNSettingsStoreTests: XCTestCase {
     /// Two connections sharing a username share the one credential, rather than making a
     /// duplicate whose password would have to be typed again.
     func testTwoConnectionsWithOneUsernameShareACredential() {
-        var work = VPNProfile.newConnection(name: "Work")
+        var work = VPNProfile.newConnection()
         work.host = "a.example.com"
         work.username = "me@example.com"
 
-        var lab = VPNProfile.newConnection(name: "Lab")
+        var lab = VPNProfile.newConnection()
         lab.host = "b.example.com"
         lab.username = "me@example.com"
 
@@ -223,14 +227,13 @@ final class VPNSettingsStoreTests: XCTestCase {
 
     // MARK: - Naming
 
-    func testDisplayNameFallsBackToTheHostWithoutItsPort() {
+    /// A connection has no name of its own: the address is what identifies it, minus the port,
+    /// which is noise in a title.
+    func testDisplayNameIsTheHostWithoutItsPort() {
         var profile = VPNProfile.newConnection()
         profile.host = "mfa-vpn.example.com:28015"
 
         XCTAssertEqual(profile.displayName, "mfa-vpn.example.com")
-
-        profile.name = "  Work  "
-        XCTAssertEqual(profile.displayName, "Work")
     }
 
     func testAnEmptyConnectionSaysSo() {

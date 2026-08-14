@@ -14,9 +14,6 @@ public struct VPNProfile: Codable, Equatable, Identifiable, Sendable {
     /// Stable identity, so a connection can be renamed or re-pointed without losing its
     /// password or its place in the list.
     public var id: UUID
-    /// What the user calls this connection, for example "Work" or "Lab". Empty falls back to
-    /// the host, so an unnamed connection is still recognisable.
-    public var name: String
     /// Gateway host, optionally with a port: `mfa-vpn.example.com:28015`.
     public var host: String
     /// Tunnel group alias, as shown in AnyConnect's GROUP dropdown.
@@ -51,7 +48,6 @@ public struct VPNProfile: Codable, Equatable, Identifiable, Sendable {
 
     public init(
         id: UUID = UUID(),
-        name: String = "",
         host: String,
         tunnelGroup: String,
         credentialID: UUID? = nil,
@@ -66,7 +62,6 @@ public struct VPNProfile: Codable, Equatable, Identifiable, Sendable {
         vpncScriptPath: String? = "/opt/homebrew/etc/vpnc/vpnc-script"
     ) {
         self.id = id
-        self.name = name
         self.host = host
         self.tunnelGroup = tunnelGroup
         self.credentialID = credentialID
@@ -97,7 +92,6 @@ public struct VPNProfile: Codable, Equatable, Identifiable, Sendable {
         // A profile saved before connections had identities gets one now. Its Keychain item is
         // named by `credentialAccount`, which is decoded as saved, so the password survives.
         id = value(.id, UUID())
-        name = value(.name, "")
         host = value(.host, fallback.host)
         tunnelGroup = value(.tunnelGroup, fallback.tunnelGroup)
         credentialID = try? container.decodeIfPresent(UUID.self, forKey: .credentialID)
@@ -136,10 +130,10 @@ public struct VPNProfile: Codable, Equatable, Identifiable, Sendable {
     }
 
     /// What to call this connection in a list or at the top of the menu.
+    ///
+    /// The address is the name: a gateway already has one, and a second label for the same
+    /// thing is one more field to fill in and keep true.
     public var displayName: String {
-        let named = name.trimmingCharacters(in: .whitespaces)
-        if !named.isEmpty { return named }
-
         let address = host.trimmingCharacters(in: .whitespaces)
         if address.isEmpty { return "New connection" }
         // The port is noise in a title; the host is what identifies it.
@@ -163,11 +157,10 @@ public struct VPNProfile: Codable, Equatable, Identifiable, Sendable {
 
     /// A new, unconfigured connection. Its Keychain item is named after its identity, so two
     /// connections never share a password.
-    public static func newConnection(name: String = "") -> VPNProfile {
+    public static func newConnection() -> VPNProfile {
         let id = UUID()
         return VPNProfile(
             id: id,
-            name: name,
             host: "",
             tunnelGroup: "",
             credentialAccount: "vpn-password-\(id.uuidString)"
