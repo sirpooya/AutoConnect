@@ -290,20 +290,58 @@ struct VPNStatusSnapshot: Codable {
 // MARK: - Stage
 
 /// Mock of the menu bar panel at its real 320 pt width, on a desktop-ish backdrop.
+/// Walks the mock through the phases a real connect visits, one after another, so the controls
+/// show the sequence instead of snapping to the end state.
+///
+/// Held outside the stage view because the walk has to survive the rebuilds it causes: every phase
+/// change re-renders the stage, and a task owned by the view would be cancelled by its own effect.
+@MainActor
+@Observable
+final class PhaseScripter {
+    /// The phases a connect visits, in order. `connected` is the last one and does not wait.
+    private static let connectSequence: [PreviewPhase] = [
+        .contactingGateway, .awaitingLogin, .exchangingToken, .startingTunnel, .connected,
+    ]
+
+    /// How long each intermediate phase is held. Long enough to read the label, short enough that
+    /// the whole walk is quicker than reaching for the phase picker.
+    private static let step = Duration.milliseconds(700)
+
+    private var task: Task<Void, Never>?
+
+    func request(connect: Bool, params: VPNStatusParams) {
+        task?.cancel()
+
+        guard connect else {
+            // Disconnecting is immediate, and cancels a walk in progress: that is what the
+            // Cancel button does to a real connect too.
+            params.phaseIndex = PreviewPhase.idle.rawValue
+            return
+        }
+
+        task = Task {
+            for phase in Self.connectSequence {
+                params.phaseIndex = phase.rawValue
+                guard phase != .connected else { return }
+                do { try await Task.sleep(for: Self.step) } catch { return }
+            }
+        }
+    }
+}
+
 struct VPNStatusStage: View {
     var params: VPNStatusParams
+
+    @State private var scripter = PhaseScripter()
 
     /// Rebuilt whenever the fake state changes, so the real `VPNSection` renders it unmodified.
     private var mockController: VPNController {
         let controller = buildMockController()
 
         // Make the controls live. The mock cannot connect, so Connect, Disconnect and the switch
-        // move the stage's own phase instead: the point is to exercise the control and watch the
-        // row and the menu bar glyph follow, which a dead button cannot show.
-        controller.onPreviewConnectRequest = { [params] wantsConnect in
-            params.phaseIndex = wantsConnect
-                ? PreviewPhase.connected.rawValue
-                : PreviewPhase.idle.rawValue
+        // drive the stage's own phase instead, walking the same sequence a real connect visits.
+        controller.onPreviewConnectRequest = { [params, scripter] wantsConnect in
+            scripter.request(connect: wantsConnect, params: params)
         }
         return controller
     }

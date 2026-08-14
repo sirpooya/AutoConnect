@@ -3,14 +3,15 @@ import SwiftUI
 
 /// The available menu bar glyph sets. Every set is a pair: an outline glyph for disconnected and a
 /// filled one for a live tunnel, so the meaning survives whichever set is chosen.
+/// Raw values are explicit and have gaps because the selection is persisted: two sets were removed
+/// after being tried, and renumbering the survivors would silently move a saved choice onto a
+/// different glyph.
 enum MenuBarIconSet: Int, CaseIterable, Identifiable {
-    case keyholeArc
-    case keyholeInCircle
-    case padlock
-    case keyholeDot
-    case earth
-    case globe
-    case lock
+    case keyholeArc = 0
+    case keyholeInCircle = 1
+    case padlock = 2
+    case globe = 5
+    case lock = 6
 
     var id: Int { rawValue }
 
@@ -19,8 +20,6 @@ enum MenuBarIconSet: Int, CaseIterable, Identifiable {
         case .keyholeArc: "Keyhole arc"
         case .keyholeInCircle: "Keyhole in circle"
         case .padlock: "Padlock"
-        case .keyholeDot: "Keyhole dot"
-        case .earth: "Earth"
         case .globe: "Globe"
         case .lock: "Lock"
         }
@@ -32,8 +31,6 @@ enum MenuBarIconSet: Int, CaseIterable, Identifiable {
         case .keyholeArc: ("off", "on")
         case .keyholeInCircle: ("2-off", "2-on")
         case .padlock: ("3-off", "3-on")
-        case .keyholeDot: ("4-off", "4-on")
-        case .earth: ("earth-off", "earth-on")
         case .globe: ("globe-off", "globe-on")
         case .lock: ("lock-off", "lock-on")
         }
