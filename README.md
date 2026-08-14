@@ -1,4 +1,4 @@
-# MacAuth
+# AutoConnect
 
 A native macOS menu-bar TOTP authenticator, built with Apple frameworks only. Secrets live in
 the Keychain, nothing touches the network, and there is no account or sync of any kind.
@@ -11,8 +11,8 @@ directly.
 
 ```bash
 swift test              # 167 tests, including every RFC 6238 Appendix B vector
-./Scripts/make-app.sh   # produces build/MacAuth.app, signed
-open build/MacAuth.app
+./Scripts/make-app.sh   # produces build/AutoConnect.app, signed
+open build/AutoConnect.app
 ```
 
 For a build with the tuning playground and its footer button:
@@ -24,13 +24,13 @@ CONFIG=debug ./Scripts/make-app.sh
 To keep it around:
 
 ```bash
-cp -R build/MacAuth.app /Applications/
+cp -R build/AutoConnect.app /Applications/
 ```
 
 To quit:
 
 ```bash
-osascript -e 'quit app "MacAuth"'
+osascript -e 'quit app "AutoConnect"'
 ```
 
 The app is menu-bar only (`LSUIElement`), so it has no Dock icon and no main window. Look for the
@@ -76,13 +76,13 @@ final five seconds. Accounts using non-default settings (anything other than SHA
 
 ```
 Sources/
-  MacAuthCore/              # pure logic, no UI, all of it unit tested
+  AutoConnectCore/              # pure logic, no UI, all of it unit tested
     Crypto/                 # Base32 (RFC 4648), TOTP (RFC 6238 + 4226)
     Models/                 # Account + otpauth:// parsing, VPNProfile
     Storage/                # AccountStoring, KeychainStore, VPNSettingsStore
     VPN/                    # ConfigAuthXML, GatewayClient, OpenConnectRunner,
                             # ReconnectPolicy, StatusNotification, TunnelStats
-  MacAuth/                  # the app
+  AutoConnect/                  # the app
     StatusItemController.swift   # NSStatusItem + NSPopover
     AppState.swift               # accounts, ticker, code cache, clipboard
     WindowActivation.swift       # counted activation-policy switching
@@ -91,7 +91,7 @@ Sources/
     Notifications/               # VPNStatusNotifier, the delivery half of the banners
     Views/                       # panel, VPN section, chart, rows, forms, settings
     Playground/                  # dev-only tuning window
-Tests/MacAuthCoreTests/     # 167 tests
+Tests/AutoConnectCoreTests/     # 167 tests
 ```
 
 A Swift package rather than an Xcode project, so `swift test` runs the whole suite from the
@@ -106,7 +106,7 @@ One Keychain generic-password item per account:
 
 | Field | Contents |
 |---|---|
-| `kSecAttrService` | `com.pooya.MacAuth.accounts` |
+| `kSecAttrService` | `com.pooya.AutoConnect.accounts` |
 | `kSecAttrAccount` | the account's UUID |
 | `kSecAttrComment` | JSON metadata: issuer, label, algorithm, digits, period, sort index |
 | `kSecValueData` | the raw TOTP secret |
@@ -162,13 +162,13 @@ the same state twice running says so once, and an automatic renewal, which takes
 in order to bring it back, stays quiet unless it fails. A test notification button is there
 because the alternative way to check permission is to connect the VPN and hope.
 
-Notifications need the packaged `build/MacAuth.app`. Under `swift run` there is no bundle
+Notifications need the packaged `build/AutoConnect.app`. Under `swift run` there is no bundle
 identifier, `UNUserNotificationCenter` would trap, and the app says so instead.
 
 ### Two safety properties worth knowing
 
 **Shutdown cannot touch another openconnect.** The tunnel is started with
-`--pid-file /tmp/macauth-openconnect.pid` and stopped by matching that path, so an openconnect you
+`--pid-file /tmp/autoconnect-openconnect.pid` and stopped by matching that path, so an openconnect you
 started yourself in a terminal is never a target. A test asserts the kill pattern contains no bare
 process-name match.
 
@@ -183,7 +183,7 @@ openconnect needs root to create the tunnel device. Either accept a password pro
 install a narrowly scoped sudoers rule:
 
 ```
-pooya ALL=(root) NOPASSWD: /opt/homebrew/bin/openconnect, /usr/bin/pkill -INT -f /tmp/macauth-openconnect.pid
+pooya ALL=(root) NOPASSWD: /opt/homebrew/bin/openconnect, /usr/bin/pkill -INT -f /tmp/autoconnect-openconnect.pid
 ```
 
 Be aware of what that buys: openconnect can run arbitrary scripts via `--script`, so the rule is

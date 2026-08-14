@@ -1,6 +1,6 @@
 import AppKit
 import Foundation
-import MacAuthCore
+import AutoConnectCore
 import Vision
 
 /// Reads `otpauth://` URIs out of QR codes, either by letting the user drag a region of the
@@ -37,7 +37,7 @@ enum QRScanner {
     /// Lets the user drag a region of the screen, then decodes it.
     static func scanScreenRegion() throws -> OTPAuthURI.Parsed {
         let destination = FileManager.default.temporaryDirectory
-            .appendingPathComponent("macauth-scan-\(UUID().uuidString).png")
+            .appendingPathComponent("autoconnect-scan-\(UUID().uuidString).png")
 
         defer { try? FileManager.default.removeItem(at: destination) }
 

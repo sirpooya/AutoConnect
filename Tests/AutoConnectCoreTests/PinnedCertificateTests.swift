@@ -2,7 +2,7 @@ import Foundation
 import Security
 import XCTest
 
-@testable import MacAuthCore
+@testable import AutoConnectCore
 
 /// The parser exists to handle the bytes a real certificate is made of, so the fixture is one:
 /// a self-signed certificate generated with openssl, whose every field is known independently.

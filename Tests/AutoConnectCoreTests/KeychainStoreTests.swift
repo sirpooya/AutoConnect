@@ -1,5 +1,5 @@
 import XCTest
-@testable import MacAuthCore
+@testable import AutoConnectCore
 
 /// Exercises the real macOS Keychain against a throwaway service name, so it never touches
 /// the accounts the shipping app stores.
@@ -8,7 +8,7 @@ final class KeychainStoreTests: XCTestCase {
     private var store: KeychainStore!
 
     override func setUpWithError() throws {
-        store = KeychainStore(service: "com.pooya.MacAuth.tests.\(UUID().uuidString)")
+        store = KeychainStore(service: "com.pooya.AutoConnect.tests.\(UUID().uuidString)")
     }
 
     override func tearDownWithError() throws {

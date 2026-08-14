@@ -46,9 +46,13 @@ public struct KeychainStore {
         var sortIndex: Int
     }
 
+    /// The service every account item is filed under. Changing it hides existing accounts, so
+    /// `LegacyMigration` moves items from the previous name rather than leaving them stranded.
+    public static let defaultService = "com.pooya.AutoConnect.accounts"
+
     public let service: String
 
-    public init(service: String = "com.pooya.MacAuth.accounts") {
+    public init(service: String = KeychainStore.defaultService) {
         self.service = service
     }
 
@@ -137,7 +141,7 @@ public struct KeychainStore {
             kSecValueData as String: secret,
             kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlocked,
         ]
-        attributes[kSecAttrDescription as String] = "MacAuth TOTP secret"
+        attributes[kSecAttrDescription as String] = "AutoConnect TOTP secret"
 
         let status = SecItemAdd(attributes as CFDictionary, nil)
 
@@ -250,7 +254,7 @@ public struct KeychainStore {
     private func keychainLabel(for account: Account) -> String {
         let title = account.issuer.isEmpty ? account.label : account.issuer
         let detail = account.issuer.isEmpty ? "" : " (\(account.label))"
-        return "MacAuth: \(title)\(detail)"
+        return "AutoConnect: \(title)\(detail)"
     }
 
     private func nextSortIndex() throws -> Int {

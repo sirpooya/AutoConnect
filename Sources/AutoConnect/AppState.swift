@@ -1,7 +1,7 @@
 import AppKit
 import Combine
 import Foundation
-import MacAuthCore
+import AutoConnectCore
 
 /// Which screen the menu bar panel is showing.
 enum PanelRoute: Equatable {

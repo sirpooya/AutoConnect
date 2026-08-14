@@ -40,7 +40,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         hosting.sizingOptions = []
 
         let window = NSWindow(contentViewController: hosting)
-        window.title = "MacAuth Settings"
+        window.title = "AutoConnect Settings"
         window.styleMask = [.titled, .closable]
         window.setContentSize(
             NSSize(width: SettingsMetrics.windowWidth, height: SettingsMetrics.windowHeight)

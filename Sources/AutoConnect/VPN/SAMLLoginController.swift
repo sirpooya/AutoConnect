@@ -1,5 +1,5 @@
 import AppKit
-import MacAuthCore
+import AutoConnectCore
 import WebKit
 
 /// Performs the gateway's SAML login in a `WKWebView` this app owns, and returns the token

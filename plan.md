@@ -1,4 +1,4 @@
-# plan.md: MacAuth, TOTP authenticator + Cisco SAML VPN connector
+# plan.md: AutoConnect, TOTP authenticator + Cisco SAML VPN connector
 
 Status: verified end to end on 2026-08-13 with `openconnect-sso`. This plan replaces that
 Python tool with a native Swift menu-bar app.
@@ -107,8 +107,8 @@ with the first:
 ## 6. Architecture
 
 ```
-MacAuth/
-├── MacAuthApp.swift              # @main, MenuBarExtra
+AutoConnect/
+├── AutoConnectApp.swift              # @main, MenuBarExtra
 ├── Models/
 │   ├── Account.swift             # issuer, label, secret ref, algorithm, digits, period
 │   └── VPNProfile.swift          # gateway URL, tunnel group, cert pin, credential refs
@@ -172,7 +172,7 @@ per-account countdown ring. One-click copy with a "Copied" confirmation.
 **A5. Account management.** Add by scanning a QR region of the screen (Vision), add by manual
 entry, edit, and delete with confirmation.
 
-**A6. Bundle + README.** A build script producing a signed `MacAuth.app` with `LSUIElement`.
+**A6. Bundle + README.** A build script producing a signed `AutoConnect.app` with `LSUIElement`.
 Done when codes match the Chrome extension live, for both existing accounts.
 
 ### Stage B: the VPN connector
@@ -206,7 +206,7 @@ Two things that must be true before that run:
 
 1. The sudoers rule is installed, scoped to the pid-file marker:
    ```
-   pooya ALL=(root) NOPASSWD: /opt/homebrew/bin/openconnect, /usr/bin/pkill -INT -f /tmp/macauth-openconnect.pid
+   pooya ALL=(root) NOPASSWD: /opt/homebrew/bin/openconnect, /usr/bin/pkill -INT -f /tmp/autoconnect-openconnect.pid
    ```
    An earlier version of this rule allowed `pkill -f openconnect`, which would have killed the
    user's own terminal session. Never widen it back.
@@ -233,7 +233,7 @@ Two things that must be true before that run:
 
 - **Statistics and a throughput chart.** openconnect has no stats option, so counters come from
   `netstat -ibn`. Sampling spawns a process, so it only runs while the statistics block is visible.
-- **A tuning playground** (`Sources/MacAuth/Playground/`) that drives the real VPN row through all
+- **A tuning playground** (`Sources/AutoConnect/Playground/`) that drives the real VPN row through all
   seven phases with fake data, so UI work needs no gateway.
 - **`WindowActivation`**, a counted activation-policy switch. A menu-bar app must return to
   `.accessory` when its last window closes; left in `.regular`, `NSApp.activate` makes AppKit

@@ -1,4 +1,4 @@
-import MacAuthCore
+import AutoConnectCore
 import SwiftUI
 
 /// What an authenticator account is, with nothing to change.

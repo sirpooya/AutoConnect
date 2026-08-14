@@ -14,9 +14,14 @@ public struct VPNSettingsStore {
     private let keychainService: String
     private let defaults: UserDefaults
 
+    /// See `KeychainStore.defaultService`: renaming these strands what the old name holds, which
+    /// is why `LegacyMigration` exists.
+    public static let defaultKeychainService = "com.pooya.AutoConnect.vpn"
+    public static let defaultDefaultsKey = "autoconnect.vpnProfile"
+
     public init(
-        defaultsKey: String = "macauth.vpnProfile",
-        keychainService: String = "com.pooya.MacAuth.vpn",
+        defaultsKey: String = VPNSettingsStore.defaultDefaultsKey,
+        keychainService: String = VPNSettingsStore.defaultKeychainService,
         defaults: UserDefaults = .standard
     ) {
         self.defaultsKey = defaultsKey
@@ -163,7 +168,7 @@ public struct VPNSettingsStore {
 
         var attributes = query
         attributes[kSecValueData as String] = data
-        attributes[kSecAttrLabel as String] = "MacAuth: VPN password (\(account))"
+        attributes[kSecAttrLabel as String] = "AutoConnect: VPN password (\(account))"
         attributes[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlocked
 
         let status = SecItemAdd(attributes as CFDictionary, nil)

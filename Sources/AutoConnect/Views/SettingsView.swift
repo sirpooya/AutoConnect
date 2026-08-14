@@ -1,4 +1,4 @@
-import MacAuthCore
+import AutoConnectCore
 import SwiftUI
 
 /// Settings for the VPN connection, split into three tabs: where to connect, who

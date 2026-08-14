@@ -20,7 +20,7 @@ final class PlaygroundWindow: NSObject, NSWindowDelegate {
         WindowActivation.claim()
 
         if let window {
-            window.makeKeyAndOrderFront(nil)
+            present(window)
             return
         }
 
@@ -36,8 +36,21 @@ final class PlaygroundWindow: NSObject, NSWindowDelegate {
         window.center()
         window.isReleasedWhenClosed = false
         window.delegate = self
-        window.makeKeyAndOrderFront(nil)
         self.window = window
+        present(window)
+    }
+
+    /// Brings the window up wherever the user actually is.
+    ///
+    /// `makeKeyAndOrderFront` alone is not enough for an accessory app: with a full-screen app in
+    /// front, the window lands on the desktop Space and stays invisible behind it, which looks
+    /// exactly like the playground failing to open. `canJoinAllSpaces` plus a full-screen
+    /// auxiliary role puts it on the current Space instead, and `orderFrontRegardless` does not
+    /// wait for the app to be active.
+    private func present(_ window: NSWindow) {
+        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        window.orderFrontRegardless()
+        window.makeKey()
     }
 
     func windowWillClose(_ notification: Notification) {

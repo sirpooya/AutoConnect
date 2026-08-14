@@ -1,8 +1,8 @@
-import MacAuthCore
+import AutoConnectCore
 import SwiftUI
 
 @main
-struct MacAuthApp: App {
+struct AutoConnectApp: App {
     // The menu bar item and its panel are built in AppKit so the panel can be centred on the
     // icon. See StatusItemController.
     @NSApplicationDelegateAdaptor(StatusItemController.self) private var controller
@@ -18,7 +18,7 @@ struct MacAuthApp: App {
         // A `MenuBarExtra` that is never inserted satisfies the requirement while presenting
         // nothing at all. The real menu bar item is the AppKit `NSStatusItem`, and settings live in
         // an `NSWindow` this app owns. See SettingsWindow.
-        MenuBarExtra("MacAuth", isInserted: $placeholderInserted) {
+        MenuBarExtra("AutoConnect", isInserted: $placeholderInserted) {
             EmptyView()
         }
 

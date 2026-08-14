@@ -1,4 +1,4 @@
-import MacAuthCore
+import AutoConnectCore
 import SwiftUI
 
 /// Adds or edits one connection: a name, a gateway address, and whatever the gateway itself

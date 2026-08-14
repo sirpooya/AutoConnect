@@ -1,5 +1,5 @@
 import Foundation
-import MacAuthCore
+import AutoConnectCore
 import WebKit
 
 /// Fills the identity provider's login form: username, then password, then the one-time code.
@@ -131,13 +131,13 @@ final class LoginFormFiller {
         // expression or corrupt the value.
         guard let encoded = Self.jsonString(value) else { return }
 
-        let script = "window.__macauth.fill(\(Self.jsonString(step.rawValue) ?? "\"\"\"\""), \(encoded))"
+        let script = "window.__autoconnect.fill(\(Self.jsonString(step.rawValue) ?? "\"\"\"\""), \(encoded))"
         _ = try? await webView.evaluateJavaScript(script)
     }
 
     private func scan(_ webView: WKWebView) async -> FormShape? {
         let raw = try? await webView.evaluateJavaScript(
-            "JSON.stringify(window.__macauth ? window.__macauth.scan() : null)"
+            "JSON.stringify(window.__autoconnect ? window.__autoconnect.scan() : null)"
         )
 
         guard let json = raw as? String, let data = json.data(using: .utf8) else { return nil }
@@ -164,7 +164,7 @@ final class LoginFormFiller {
     /// Kept entirely in the page: Swift only asks "what do you want?" and answers with one value,
     /// so no secret is ever embedded in a script that runs before the page is identified.
     static let userScript = """
-    window.__macauth = (function () {
+    window.__autoconnect = (function () {
         const OTP_HINT = /otp|totp|one.?time|passcode|verification|mfa|token|\\bcode\\b|otc/i;
         const USER_HINT = /user|email|mail|login|upn|account|ident/i;
         const PASS_HINT = /pass|pwd|secret/i;

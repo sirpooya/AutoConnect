@@ -1,5 +1,5 @@
 import XCTest
-@testable import MacAuthCore
+@testable import AutoConnectCore
 
 /// Storage of the connection list. Each test gets its own `UserDefaults` suite so nothing here
 /// touches the real settings, and no Keychain call is made: passwords are covered elsewhere.
@@ -11,7 +11,7 @@ final class VPNSettingsStoreTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        suiteName = "macauth.tests.\(UUID().uuidString)"
+        suiteName = "autoconnect.tests.\(UUID().uuidString)"
         defaults = UserDefaults(suiteName: suiteName)
         store = VPNSettingsStore(defaultsKey: "profile", defaults: defaults)
     }

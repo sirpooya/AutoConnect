@@ -2,19 +2,19 @@
 import PackageDescription
 
 let package = Package(
-    name: "MacAuth",
+    name: "AutoConnect",
     platforms: [.macOS(.v14)],
     targets: [
         // Pure logic: crypto, models, storage. No UI, fully unit testable.
         .target(
-            name: "MacAuthCore",
-            path: "Sources/MacAuthCore"
+            name: "AutoConnectCore",
+            path: "Sources/AutoConnectCore"
         ),
-        // The menu bar app itself. Assembled into MacAuth.app by Scripts/make-app.sh.
+        // The menu bar app itself. Assembled into AutoConnect.app by Scripts/make-app.sh.
         .executableTarget(
-            name: "MacAuth",
-            dependencies: ["MacAuthCore"],
-            path: "Sources/MacAuth",
+            name: "AutoConnect",
+            dependencies: ["AutoConnectCore"],
+            path: "Sources/AutoConnect",
             // The SVGs are the editable sources for the glyphs; only the PDFs are shipped.
             exclude: ["Resources/on.svg", "Resources/off.svg"],
             // The menu bar glyphs ship as vector PDFs so they stay crisp at any menu bar height
@@ -35,9 +35,9 @@ let package = Package(
             ]
         ),
         .testTarget(
-            name: "MacAuthCoreTests",
-            dependencies: ["MacAuthCore"],
-            path: "Tests/MacAuthCoreTests"
+            name: "AutoConnectCoreTests",
+            dependencies: ["AutoConnectCore"],
+            path: "Tests/AutoConnectCoreTests"
         ),
     ]
 )

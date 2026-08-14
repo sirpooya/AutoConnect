@@ -294,7 +294,7 @@ public final class OpenConnectRunner {
     /// target *only* the process this app started. That matters because a user may well have
     /// their own openconnect running in a terminal, and killing by the name "openconnect" would
     /// take that down too. Never widen this to a bare process-name match.
-    public static let pidFilePath = "/tmp/macauth-openconnect.pid"
+    public static let pidFilePath = "/tmp/autoconnect-openconnect.pid"
 
     /// The exact argument list used to bring up a tunnel. Built separately from the launch so it
     /// can be asserted on in tests, and so it is reviewable without running anything.

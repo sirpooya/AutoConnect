@@ -1,4 +1,4 @@
-import MacAuthCore
+import AutoConnectCore
 import SwiftUI
 
 /// VPN status at the top of the menu: the gateway it dials, the state, and while connected a
@@ -10,7 +10,7 @@ struct VPNSection: View {
     private var params: VPNStatusParams { VPNStatusParams.shared }
 
     /// Whether the statistics block is open. Persisted, so it reopens as it was left.
-    @AppStorage("macauth.vpnDetailsExpanded") private var showDetails = false
+    @AppStorage("autoconnect.vpnDetailsExpanded") private var showDetails = false
 
     var body: some View {
         VStack(spacing: 6) {

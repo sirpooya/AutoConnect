@@ -25,7 +25,7 @@ enum LaunchAtLogin {
             if enabled {
                 try SMAppService.mainApp.register()
                 if needsApproval {
-                    return "Allow MacAuth in System Settings, Login Items, to finish enabling this."
+                    return "Allow AutoConnect in System Settings, Login Items, to finish enabling this."
                 }
             } else {
                 try SMAppService.mainApp.unregister()

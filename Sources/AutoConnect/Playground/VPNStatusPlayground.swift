@@ -1,4 +1,4 @@
-import MacAuthCore
+import AutoConnectCore
 import SwiftUI
 
 // MARK: - Params
@@ -86,6 +86,13 @@ final class VPNStatusParams {
 
     init(loadSaved: Bool = true) {
         if loadSaved, let saved = VPNStatusSnapshot.load() { apply(saved) }
+
+        // A set that was tried and then deleted leaves its index saved on disk. Left alone that
+        // index matches no case, so the Picker holds a selection it cannot show and the status
+        // item quietly falls back. Snap it to the default instead.
+        if MenuBarIconSet(rawValue: menuBarIconSet) == nil {
+            menuBarIconSet = MenuBarIconSet.keyholeArc.rawValue
+        }
     }
 
     func reset() {
@@ -223,7 +230,7 @@ struct VPNStatusSnapshot: Codable {
     var rateExponent: Double
     var transferredExponent: Double
 
-    private static let key = "macauth.vpnStatusPlayground"
+    private static let key = "autoconnect.vpnStatusPlayground"
 
     @MainActor
     init(_ params: VPNStatusParams) {
@@ -333,6 +340,9 @@ struct VPNStatusStage: View {
     var params: VPNStatusParams
 
     @State private var scripter = PhaseScripter()
+
+    /// The mock objects the stage renders. Held in state so a body pass cannot create more.
+    @State private var mock: Mock?
 
     /// Rebuilt whenever the fake state changes, so the real `VPNSection` renders it unmodified.
     private var mockController: VPNController {
@@ -455,36 +465,56 @@ struct VPNStatusStage: View {
 
             // The icon above the panel it opens, so a phase can be judged as the menu bar shows
             // it: the glyph is the only thing visible when the panel is closed.
-            VStack(spacing: 0) {
-                menuBarStrip
+            if let mock {
+                VStack(spacing: 0) {
+                    menuBarStrip(isConnected: mock.controller.isConnected)
 
-                MenuPanel()
-                    .environmentObject(mockState)
-                    .environmentObject(mockController)
-                    // The panel's Settings button needs one; the preview copy cannot post anything.
-                    .environmentObject(mockNotifier)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .shadow(color: .black.opacity(0.35), radius: 20, y: 8)
-                    .padding(.top, 8)
+                    MenuPanel()
+                        .environmentObject(mock.state)
+                        .environmentObject(mock.controller)
+                        // The panel's Settings button needs one; the preview copy posts nothing.
+                        .environmentObject(mock.notifier)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .shadow(color: .black.opacity(0.35), radius: 20, y: 8)
+                        .padding(.top, 8)
 
-                Spacer(minLength: 0)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 40)
+                .padding(.vertical, 24)
             }
-            .padding(.horizontal, 40)
-            .padding(.vertical, 24)
-            // Identity keyed on the fake state so the panel rebuilds when a knob moves,
-            // rather than caching a stale controller.
-            .id(params.signature.description)
         }
+        // The mocks are built here, not in `body`. Building them per body pass spun the app:
+        // every pass made a fresh AppState, each with its own one-second ticker, and every tick
+        // invalidated the view that had just created it. CPU climbed, memory grew without limit,
+        // and the main thread was too busy to draw the status item.
+        .onAppear { rebuildMock() }
+        .onChange(of: params.signature) { rebuildMock() }
+    }
+
+    /// One set of mock objects, rebuilt only when a knob actually moves.
+    private struct Mock {
+        let controller: VPNController
+        let state: AppState
+        let notifier: VPNStatusNotifier
+    }
+
+    private func rebuildMock() {
+        mock = Mock(
+            controller: mockController,
+            state: mockState,
+            notifier: mockNotifier
+        )
     }
 
     /// A mock menu bar. Not a screenshot of the real one: the point is the glyph this phase
     /// produces, at the size and tint the real status item draws it, with the panel hanging off it.
-    private var menuBarStrip: some View {
+    private func menuBarStrip(isConnected: Bool) -> some View {
         HStack(spacing: 12) {
             Spacer(minLength: 0)
 
-            MenuBarIconView(isConnected: mockController.isConnected)
+            MenuBarIconView(isConnected: isConnected)
                 // The glyphs are template images; in the real menu bar AppKit tints them, so the
                 // mock has to tint them too or a white icon would vanish on a light strip.
                 .foregroundStyle(.primary)
@@ -507,7 +537,7 @@ struct VPNStatusPlaygroundView: View {
 
     /// Which accordions are open, persisted so the window reopens as it was left.
     /// The separator is a real newline in both directions.
-    @AppStorage("macauth.vpnStatusPlayground.expanded")
+    @AppStorage("autoconnect.vpnStatusPlayground.expanded")
     private var expandedRaw: String = "State\nStatistics\nAppearance\nPanel"
 
     private var expanded: Set<String> {
@@ -848,5 +878,5 @@ struct VPNStatusPlaygroundView: View {
 extension Notification.Name {
     /// Posted whenever a playground knob is saved, so AppKit-side code that reads the params can
     /// redraw. SwiftUI views observing `VPNStatusParams` do not need it.
-    static let vpnStatusParamsChanged = Notification.Name("macauth.vpnStatusParamsChanged")
+    static let vpnStatusParamsChanged = Notification.Name("autoconnect.vpnStatusParamsChanged")
 }

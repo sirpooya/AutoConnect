@@ -1,6 +1,6 @@
 import XCTest
 
-@testable import MacAuthCore
+@testable import AutoConnectCore
 
 final class ReconnectPolicyTests: XCTestCase {
 

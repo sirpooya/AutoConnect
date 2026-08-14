@@ -1,6 +1,6 @@
 import XCTest
 
-@testable import MacAuthCore
+@testable import AutoConnectCore
 
 final class StatusNotificationTests: XCTestCase {
 
@@ -153,6 +153,6 @@ final class StatusNotificationTests: XCTestCase {
 
     /// Every banner replaces the last, so a bad afternoon does not leave a stack of dead ones.
     func testOneIdentifierForEveryStatusBanner() {
-        XCTAssertEqual(StatusNotification.identifier, "macauth.vpn.status")
+        XCTAssertEqual(StatusNotification.identifier, "autoconnect.vpn.status")
     }
 }

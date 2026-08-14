@@ -1,4 +1,4 @@
-# CLAUDE.md: MacAuth (macOS menu-bar TOTP authenticator + Cisco SAML VPN connector)
+# CLAUDE.md: AutoConnect (macOS menu-bar TOTP authenticator + Cisco SAML VPN connector)
 
 ## Goal
 A native macOS menu-bar app in Swift with two halves that share a Keychain and a crypto layer.
@@ -39,12 +39,12 @@ Keep it minimal and dependency-light. No cloud sync, no accounts, no analytics.
 
 A Swift package with two targets, so `swift test` covers all the logic from the terminal and the
 UI stays out of the tested surface. `Scripts/make-app.sh` wraps the executable into the `.app`
-bundle a menu-bar app needs. **Anything worth testing belongs in `MacAuthCore`**, which is why
+bundle a menu-bar app needs. **Anything worth testing belongs in `AutoConnectCore`**, which is why
 `ReconnectPolicy` lives there despite being used only by the app.
 
 ```
 Sources/
-├── MacAuthCore/                      # pure logic, no UI, 167 tests
+├── AutoConnectCore/                      # pure logic, no UI, 167 tests
 │   ├── Crypto/
 │   │   ├── Base32.swift              # RFC 4648 decode + encode
 │   │   └── TOTP.swift                # RFC 6238 / RFC 4226 truncation
@@ -65,8 +65,8 @@ Sources/
 │       ├── ReconnectPolicy.swift      # when to renew, back off, or give up
 │       ├── StatusNotification.swift   # which status changes earn a banner, and what it says
 │       └── TunnelStats.swift          # netstat counters, rates, byte formatting
-└── MacAuth/                           # the app
-    ├── MacAuthApp.swift               # @main, playground window
+└── AutoConnect/                           # the app
+    ├── AutoConnectApp.swift               # @main, playground window
     ├── SettingsWindow.swift           # AppKit-hosted settings, not a Settings scene
     ├── StatusItemController.swift     # NSStatusItem + NSPopover (not MenuBarExtra, see below)
     ├── AppState.swift                 # accounts, ticker, code cache, clipboard
@@ -118,7 +118,7 @@ Two rules come with that popover, both learned from bugs:
 ## Menu bar and app icons
 Both are vector artwork the user supplies; neither is drawn in code.
 
-- Status item: `Sources/MacAuth/Resources/on.pdf` and `off.pdf`, shipped as SwiftPM resources and
+- Status item: `Sources/AutoConnect/Resources/on.pdf` and `off.pdf`, shipped as SwiftPM resources and
   loaded by `MenuBarIcon` at 18x18pt with `isTemplate = true` so macOS tints them for light, dark
   and the inverted open state. The SVG next to each PDF is the editable source and is excluded
   from the build. `StatusItemController.apply(phase:)` swaps them: **only `.connected` gets the on
@@ -128,7 +128,7 @@ Both are vector artwork the user supplies; neither is drawn in code.
   plain `AppIcon.icns` for anything older, then writes `CFBundleIconFile` and `CFBundleIconName`.
 - **Pass `actool` absolute paths.** It resolves relative ones against its own working directory,
   not the shell's, and fails claiming the output directory does not exist.
-- `make-app.sh` also copies SwiftPM's `MacAuth_MacAuth.bundle` into `Contents/Resources`, which is
+- `make-app.sh` also copies SwiftPM's `AutoConnect_AutoConnect.bundle` into `Contents/Resources`, which is
   what makes `Bundle.module` resolve inside the packaged app rather than only under `swift run`.
 
 ## Panel UI conventions
@@ -250,7 +250,7 @@ section 4 and section 3. Summary of the behavior contract:
   one. The app then re-asks for the login Keychain password and for Documents access on every
   launch, and "Always Allow" only holds until the next build. This is worth saying out loud when
   the user asks why a prompt keeps coming back: it is the build, not their machine.
-- **Quit the app before running `Scripts/make-app.sh`.** It starts with `rm -rf build/MacAuth.app`,
+- **Quit the app before running `Scripts/make-app.sh`.** It starts with `rm -rf build/AutoConnect.app`,
   and replacing the bundle under a running process invalidates that process's code signature.
   The Keychain then refuses the ACL check, so every code renders as `------` while the account
   names still load, because attribute reads survive and `secret(for:)` does not. It looks like
@@ -299,7 +299,7 @@ VPN connector:
   be the only path: when a selector does not match, show the window and let the user finish.
 - Capture real gateway and IdP responses as test fixtures, with secrets redacted. The parsers exist
   to handle the bytes Cisco actually sends, not an idealised version.
-- Put testable logic in `MacAuthCore`, not the app target, and never duplicate a type into a test
+- Put testable logic in `AutoConnectCore`, not the app target, and never duplicate a type into a test
   file to make it reachable.
 - Use the playground for UI work instead of connecting. Preview controllers must never touch the
   machine: a mock that polls reads the user's real tunnel, which has already happened once.
@@ -307,7 +307,7 @@ VPN connector:
 - Ask before adding any external dependency.
 
 ## Playground convention
-Dev-only tuning windows follow the pattern in `Sources/MacAuth/Playground/`: an `@Observable`
+Dev-only tuning windows follow the pattern in `Sources/AutoConnect/Playground/`: an `@Observable`
 params object the shipping views read, a `Codable` snapshot decoded key-by-key with defaults
 (never the synthesized decoder, or adding a knob discards the saved set), a mock stage rendering
 the real views, and a controls sidebar. Sliders snap by rounding inside the binding, never with

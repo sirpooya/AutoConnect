@@ -62,7 +62,7 @@ public struct StatusNotification: Equatable, Sendable {
 
     /// Notifications are posted under this, so a newer one about the same tunnel replaces the
     /// last rather than stacking four dead banners in Notification Centre.
-    public static let identifier = "macauth.vpn.status"
+    public static let identifier = "autoconnect.vpn.status"
 
     public init(event: VPNStatusEvent, title: String, body: String) {
         self.event = event

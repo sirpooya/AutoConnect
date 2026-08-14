@@ -1,4 +1,5 @@
 import AppKit
+import AutoConnectCore
 import Combine
 import SwiftUI
 
@@ -9,6 +10,11 @@ import SwiftUI
 /// `NSPopover` anchored to the status item button is always centred on the icon instead.
 @MainActor
 final class StatusItemController: NSObject, NSApplicationDelegate {
+    /// Declared first on purpose. Stored properties initialise in declaration order, and the
+    /// stores below read the Keychain services and defaults keys that the rename moved, so this
+    /// has to have moved them by the time `state` asks for the accounts.
+    private let carriedOldData = LegacyMigration.runIfNeeded()
+
     // Reachable from the App scene, which hands them to the Settings pane.
     let state = AppState()
     let vpn = VPNController()
@@ -117,7 +123,7 @@ final class StatusItemController: NSObject, NSApplicationDelegate {
         #if DEBUG
         // Lets the playground be opened straight from a launch, without hunting for the footer
         // button inside a popover that accessibility cannot see:
-        //   build/MacAuth.app/Contents/MacOS/MacAuth --playground
+        //   build/AutoConnect.app/Contents/MacOS/AutoConnect --playground
         if CommandLine.arguments.contains("--playground") {
             PlaygroundWindow.shared.show()
         }
@@ -150,7 +156,7 @@ final class StatusItemController: NSObject, NSApplicationDelegate {
 
         let set = MenuBarIconSet(rawValue: VPNStatusParams.shared.menuBarIconSet) ?? .keyholeArc
         statusItem?.button?.image = MenuBarIcon.image(connected: isConnected, set: set)
-        statusItem?.button?.toolTip = "MacAuth: \(phase.label)"
+        statusItem?.button?.toolTip = "AutoConnect: \(phase.label)"
     }
 
     @objc private func paramsChanged() {

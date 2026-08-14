@@ -1,4 +1,4 @@
-import MacAuthCore
+import AutoConnectCore
 import SwiftUI
 
 /// Add an account by hand, for a service that offers a secret rather than a QR code.

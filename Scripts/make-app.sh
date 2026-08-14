@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Builds MacAuth.app from the Swift package.
+# Builds AutoConnect.app from the Swift package.
 #
 # SwiftPM produces a bare executable, but a menu-bar-only app needs a real bundle so that
 # LSUIElement can suppress the Dock icon and so the code signature stays stable (which is what
@@ -16,8 +16,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 CONFIG="${CONFIG:-release}"
-APP_NAME="MacAuth"
-BUNDLE_ID="com.pooya.MacAuth"
+APP_NAME="AutoConnect"
+BUNDLE_ID="com.pooya.AutoConnect"
 VERSION="0.1.0"
 BUILD_NUMBER="1"
 APP_DIR="build/${APP_NAME}.app"
@@ -60,7 +60,7 @@ if [[ -d "${ICON_SOURCE}" ]] && xcrun -f actool >/dev/null 2>&1; then
     xcrun actool "${ICON_SOURCE}" \
         --compile "${PWD}/${APP_DIR}/Contents/Resources" \
         --app-icon AppIcon \
-        --output-partial-info-plist "$(mktemp -t macauth-icon-plist)" \
+        --output-partial-info-plist "$(mktemp -t autoconnect-icon-plist)" \
         --platform macosx \
         --minimum-deployment-target 14.0 \
         --errors --warnings > /dev/null

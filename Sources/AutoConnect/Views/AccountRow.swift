@@ -1,4 +1,4 @@
-import MacAuthCore
+import AutoConnectCore
 import SwiftUI
 
 /// One account in the menu: issuer, label, the live code, and a countdown ring.

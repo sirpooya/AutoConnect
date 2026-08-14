@@ -1,5 +1,5 @@
 import Foundation
-import MacAuthCore
+import AutoConnectCore
 import UserNotifications
 
 /// Posts a banner when the tunnel comes up, goes down, or gets into trouble.
@@ -7,7 +7,7 @@ import UserNotifications
 /// The menu bar icon is the always-there indicator, so this exists for the case the icon cannot
 /// cover: something happened to the VPN while the user was looking at something else. Which
 /// transitions are worth a banner, and what each says, is `StatusNotificationPolicy` in
-/// `MacAuthCore`; everything here is delivery and permission.
+/// `AutoConnectCore`; everything here is delivery and permission.
 ///
 /// Off until switched on in Settings. Nothing is requested from macOS, and no banner is ever
 /// posted, while the master switch is off.
@@ -45,10 +45,10 @@ final class VPNStatusNotifier: NSObject, ObservableObject {
     @Published private(set) var authorizationNote: String?
 
     private enum Key {
-        static let enabled = "macauth.notifications.enabled"
-        static let connect = "macauth.notifications.connect"
-        static let disconnect = "macauth.notifications.disconnect"
-        static let problem = "macauth.notifications.problem"
+        static let enabled = "autoconnect.notifications.enabled"
+        static let connect = "autoconnect.notifications.connect"
+        static let disconnect = "autoconnect.notifications.disconnect"
+        static let problem = "autoconnect.notifications.problem"
     }
 
     private let defaults = UserDefaults.standard
@@ -90,7 +90,7 @@ final class VPNStatusNotifier: NSObject, ObservableObject {
             return
         }
 
-        // Banners must appear while MacAuth itself is frontmost too. Settings being open is
+        // Banners must appear while AutoConnect itself is frontmost too. Settings being open is
         // exactly when someone is testing whether this works.
         UNUserNotificationCenter.current().delegate = self
         refreshAuthorization()
@@ -165,7 +165,7 @@ final class VPNStatusNotifier: NSObject, ObservableObject {
         post(
             StatusNotification(
                 event: .connected,
-                title: "MacAuth notifications are on",
+                title: "AutoConnect notifications are on",
                 body: "This is what a VPN status change will look like."
             )
         )
@@ -240,7 +240,7 @@ final class VPNStatusNotifier: NSObject, ObservableObject {
     }
 
     private static let deniedNote =
-        "macOS is blocking these. Allow MacAuth in System Settings, Notifications."
+        "macOS is blocking these. Allow AutoConnect in System Settings, Notifications."
 
     private static let unbundledNote =
         "Notifications need the packaged app. Build it with Scripts/make-app.sh."

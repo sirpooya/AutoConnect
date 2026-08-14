@@ -1,5 +1,5 @@
 import XCTest
-@testable import MacAuthCore
+@testable import AutoConnectCore
 
 /// Fixtures are real responses captured from the gateway on 2026-08-13, with the session token
 /// replaced by a placeholder. Keeping them verbatim is the point: this suite is what proves the

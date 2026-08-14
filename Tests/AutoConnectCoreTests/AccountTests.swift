@@ -1,5 +1,5 @@
 import XCTest
-@testable import MacAuthCore
+@testable import AutoConnectCore
 
 final class AccountTests: XCTestCase {
 

@@ -1,4 +1,4 @@
-import MacAuthCore
+import AutoConnectCore
 import SwiftUI
 
 /// Throughput over the last couple of minutes: download as a filled area, upload as a line on

@@ -1,6 +1,6 @@
 import AppKit
 import Foundation
-import MacAuthCore
+import AutoConnectCore
 import Network
 
 /// Drives the whole connect sequence and owns the VPN's observable state.
@@ -104,9 +104,9 @@ final class VPNController: ObservableObject {
 
     /// Whether automatic reconnection is wanted. Off by default: an app that dials a corporate
     /// VPN unasked is worse than one that waits to be told.
-    @Published var autoReconnect = UserDefaults.standard.bool(forKey: "macauth.autoReconnect") {
+    @Published var autoReconnect = UserDefaults.standard.bool(forKey: "autoconnect.autoReconnect") {
         didSet {
-            UserDefaults.standard.set(autoReconnect, forKey: "macauth.autoReconnect")
+            UserDefaults.standard.set(autoReconnect, forKey: "autoconnect.autoReconnect")
             autoReconnect ? scheduleRenewal() : cancelRenewal()
         }
     }
@@ -564,7 +564,7 @@ final class VPNController: ObservableObject {
                 if shouldReconnect, self.autoReconnect { self.scheduleRetryAfterFailure() }
             }
         }
-        monitor.start(queue: DispatchQueue(label: "macauth.network"))
+        monitor.start(queue: DispatchQueue(label: "autoconnect.network"))
         pathMonitor = monitor
     }
 

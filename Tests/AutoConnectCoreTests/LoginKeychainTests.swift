@@ -1,5 +1,5 @@
 import XCTest
-@testable import MacAuthCore
+@testable import AutoConnectCore
 
 /// Ranking is the part worth testing: it decides which saved website password Settings offers
 /// first. The lookup itself talks to the real login Keychain, which a test must not depend on.

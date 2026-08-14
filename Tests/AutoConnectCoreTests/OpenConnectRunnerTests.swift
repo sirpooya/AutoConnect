@@ -1,5 +1,5 @@
 import XCTest
-@testable import MacAuthCore
+@testable import AutoConnectCore
 
 /// The sample lines here are copied verbatim from the successful connect on 2026-08-13, so the
 /// parser is tested against real openconnect output rather than a guess at its format.
@@ -142,11 +142,11 @@ final class OpenConnectRunnerTests: XCTestCase {
     func testShutdownTargetsOnlyThisAppsProcess() {
         let arguments = OpenConnectRunner.shutdownArguments()
 
-        XCTAssertEqual(arguments, ["/usr/bin/pkill", "-INT", "-f", "/tmp/macauth-openconnect.pid"])
+        XCTAssertEqual(arguments, ["/usr/bin/pkill", "-INT", "-f", "/tmp/autoconnect-openconnect.pid"])
 
         // A pattern of just "openconnect" would match every openconnect on the machine.
         XCTAssertFalse(arguments.contains("openconnect"))
-        XCTAssertTrue(arguments.last?.contains("macauth") == true)
+        XCTAssertTrue(arguments.last?.contains("autoconnect") == true)
     }
 
     // MARK: - Losing the tunnel
