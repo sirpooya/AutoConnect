@@ -39,7 +39,8 @@ A webview we control has no secure-input restriction, which is what makes the Sw
 
 These are a record of what this gateway answered, not configuration. Nothing here is compiled
 into the app: `VPNProfile.empty` is what a fresh install gets, Detect asks the gateway for its
-groups, and the fingerprint is learned on first contact and pinned from then on. The table
+groups, and the fingerprint is learned on first contact and pinned from then on, with the rest
+of the certificate recorded beside it (`PinnedCertificate`). The table
 stays so the values can be checked by eye, and so a live connect can be reasoned about without
 probing again.
 
@@ -135,6 +136,11 @@ MacAuth/
     └── ConfigAuthXMLTests.swift  # parse captured real responses from fixtures
 ```
 
+This is the layout as first sketched, kept for the reasoning behind the split. It is not what
+shipped: the app is a two-target Swift package, `MenuBarExtra` gave way to `NSStatusItem`, and
+`TunnelMonitor` became `TunnelStats` plus `ReconnectPolicy`. **CLAUDE.md holds the current file
+tree; follow that one when looking for code.**
+
 `ConfigAuthXML` and the crypto layer are pure and fully testable offline using captured
 fixtures. Everything network- or process-touching sits behind a protocol so tests never
 hit the gateway.
@@ -216,6 +222,12 @@ Two things that must be true before that run:
 - **Gateway discovery.** A group-less init POST makes the gateway list its tunnel groups
   (`ConfigAuth.parseProbe`), and `GatewayClient.TrustPolicy.learnFingerprint` records the
   certificate on first contact. The only thing typed is the address.
+- **The pin, described.** `PinnedCertificate` reads what the gateway presented (both digests,
+  subject CN, subjectAltName DNS list, issuer, validity window) and keeps it on the connection
+  alongside the day it was pinned. A trust-on-first-use pin can only claim that nothing has
+  changed since that day, so the editor says which day, and says when the certificate expires:
+  that is the date on which the pin will stop matching for an innocent reason. Detect on an
+  already-pinned connection refreshes the details but keeps the original `pinnedAt`.
 - **Login-Keychain passwords.** A password a browser already saved can be reused instead of
   copied: listed by metadata (no prompt) in Settings, read at connect time (one prompt).
 
@@ -237,6 +249,10 @@ Two things that must be true before that run:
   breaks it. Mitigation: never fail closed, always fall back to showing the window.
 - **Cert pinning.** The gateway cert has no trusted signer, so `WKWebView` will also object.
   Pin the known SHA1 and refuse anything else rather than disabling validation wholesale.
+  The renewal is the failure mode to plan for, not the attack: when this certificate is
+  reissued the pin stops matching and every connect fails identically to a hijack. The editor
+  shows the expiry date so that day is expected, and Detect re-pins after the user has looked
+  at what changed. Do not add an automatic re-pin, which would throw the pin away entirely.
 - **Re-signing invalidates Keychain ACLs.** Changing signing identity can lock the app out of
   its own items. Keep one identity, or handle the re-prompt gracefully.
 - **Homebrew dependency.** The app is not self-contained. Detect the binary at launch and

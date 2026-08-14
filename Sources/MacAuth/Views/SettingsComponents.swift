@@ -148,3 +148,71 @@ extension Color {
     /// white or black alpha.
     static let settingsCardFill = Color(nsColor: .labelColor).opacity(0.05)
 }
+
+/// A pop-up button that fills the width it is given.
+///
+/// SwiftUI's menu `Picker` sizes itself to its widest choice and ignores any wider frame, so a
+/// picker standing in for a text field never lines up with the fields above and below it: the
+/// form reads as three controls of three widths rather than one column. AppKit's own control
+/// holds no such opinion once its hugging priority is lowered.
+struct WidePopUpButton: NSViewRepresentable {
+
+    struct Option: Equatable {
+        var title: String
+        var value: String
+        /// Drawn in the secondary colour, for a title that stands for no choice yet. A
+        /// placeholder rendered like a real value reads as one.
+        var isPlaceholder: Bool = false
+    }
+
+    @Binding var selection: String
+    let options: [Option]
+
+    func makeNSView(context: Context) -> NSPopUpButton {
+        let button = NSPopUpButton(frame: .zero, pullsDown: false)
+        button.controlSize = .small
+        button.font = .systemFont(ofSize: 11)
+        button.target = context.coordinator
+        button.action = #selector(Coordinator.selectionChanged(_:))
+        // Take the offered width instead of the widest title's, which is the whole point.
+        button.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        button.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return button
+    }
+
+    func updateNSView(_ button: NSPopUpButton, context: Context) {
+        context.coordinator.options = options
+        context.coordinator.selection = $selection
+
+        // Rebuilt wholesale: the choices come from the authenticator accounts and the username
+        // typed so far, so which of them exist changes as the sheet is used.
+        button.removeAllItems()
+        for option in options {
+            button.addItem(withTitle: option.title)
+            if option.isPlaceholder, let item = button.lastItem {
+                item.attributedTitle = NSAttributedString(
+                    string: option.title,
+                    attributes: [
+                        .foregroundColor: NSColor.secondaryLabelColor,
+                        .font: NSFont.systemFont(ofSize: 11),
+                    ]
+                )
+            }
+        }
+
+        button.selectItem(at: options.firstIndex { $0.value == selection } ?? 0)
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    final class Coordinator: NSObject {
+        var options: [Option] = []
+        var selection: Binding<String>?
+
+        @objc func selectionChanged(_ sender: NSPopUpButton) {
+            let index = sender.indexOfSelectedItem
+            guard options.indices.contains(index) else { return }
+            selection?.wrappedValue = options[index].value
+        }
+    }
+}

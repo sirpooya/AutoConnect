@@ -153,19 +153,19 @@ struct AccountListView: View {
 
             Button("Settings") { openSettings() }
                 .buttonStyle(.plain)
-                .font(.system(size: 10))
+                .font(.system(size: 11))
                 .foregroundStyle(.secondary)
 
             #if DEBUG
             Button("Playground") { VPNStatusPlaygroundWindow.open(openWindow) }
                 .buttonStyle(.plain)
-                .font(.system(size: 10))
+                .font(.system(size: 11))
                 .foregroundStyle(.secondary)
             #endif
 
             Button("Quit") { NSApplication.shared.terminate(nil) }
                 .buttonStyle(.plain)
-                .font(.system(size: 10))
+                .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .keyboardShortcut("q")
         }

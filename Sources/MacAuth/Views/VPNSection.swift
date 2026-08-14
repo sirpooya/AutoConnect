@@ -95,6 +95,8 @@ struct VPNSection: View {
             HStack(spacing: 5) {
                 Text(title)
                     .font(.system(size: 11, weight: .semibold))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
 
                 if showsChevron {
                     Image(systemName: "chevron.up.chevron.down")
@@ -102,17 +104,28 @@ struct VPNSection: View {
                         .foregroundStyle(.tertiary)
                 }
 
-                Text(vpn.phase.label)
-                    .font(.system(size: 9))
-                    .foregroundStyle(.tertiary)
             }
 
-            // The gateway being dialled, address and port, beneath whoever is signing in.
-            Text(subtitle)
-                .font(.system(size: 10))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
+            // Status sits on the second line with the gateway rather than beside the title,
+            // which left the title too little room and wrapped the address in half.
+            //
+            // One size throughout this block, matching the account rows below. Weight and colour
+            // carry the hierarchy; a different size per line only made the block look assembled
+            // from spare parts.
+            HStack(spacing: 4) {
+                Text(vpn.phase.label)
+                    .foregroundStyle(.secondary)
+                    .fixedSize()
+
+                Text("·")
+                    .foregroundStyle(.tertiary)
+
+                Text(subtitle)
+                    .foregroundStyle(.tertiary)
+                    .truncationMode(.middle)
+            }
+            .font(.system(size: 11))
+            .lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -277,22 +290,12 @@ struct VPNSection: View {
 
     // MARK: - Status dot
 
+    /// A plain dot in every state. No halo, no pulse: the colour already carries the state, and a
+    /// ring that only some states draw makes the dot change size as well as colour.
     private var statusDot: some View {
         Circle()
             .fill(statusColor)
             .frame(width: params.dotSize, height: params.dotSize)
-            .overlay(
-                Circle()
-                    .stroke(statusColor.opacity(0.3), lineWidth: 4)
-                    .scaleEffect(vpn.phase.isWorking ? params.pulseScale : 1)
-                    .animation(
-                        vpn.phase.isWorking
-                            ? .easeInOut(duration: params.pulseDuration)
-                                .repeatForever(autoreverses: true)
-                            : .default,
-                        value: vpn.phase.isWorking
-                    )
-            )
     }
 
     private var statusColor: Color {

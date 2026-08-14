@@ -44,7 +44,7 @@ bundle a menu-bar app needs. **Anything worth testing belongs in `MacAuthCore`**
 
 ```
 Sources/
-├── MacAuthCore/                      # pure logic, no UI, 135 tests
+├── MacAuthCore/                      # pure logic, no UI, 153 tests
 │   ├── Crypto/
 │   │   ├── Base32.swift              # RFC 4648 decode + encode
 │   │   └── TOTP.swift                # RFC 6238 / RFC 4226 truncation
@@ -61,6 +61,7 @@ Sources/
 │       ├── ConfigAuthXML.swift        # Cisco config-auth builders, parser, group probe
 │       ├── GatewayClient.swift        # the POSTs, SHA1 pinning, learn-on-first-contact
 │       ├── OpenConnectRunner.swift    # process spawn, output parsing, state machine
+│       ├── PinnedCertificate.swift    # what the pinned cert says: names, issuer, expiry
 │       ├── ReconnectPolicy.swift      # when to renew, back off, or give up
 │       └── TunnelStats.swift          # netstat counters, rates, byte formatting
 └── MacAuth/                           # the app
@@ -83,7 +84,7 @@ Sources/
     │   ├── AccountRow.swift           # code, countdown pie, copy
     │   ├── AccountFormView.swift      # manual add (accounts are read-only once enrolled)
     │   ├── AccountDetailsView.swift   # what an account is, with nothing to change
-    │   ├── SettingsComponents.swift   # cards, rows, dividers shared by the tabs
+    │   ├── SettingsComponents.swift   # cards, rows, dividers, WidePopUpButton
     │   ├── SettingsView.swift         # General / Connections / Authenticator tabs
     │   ├── ConnectionEditorView.swift # one connection: address, Detect, credentials
     │   └── SystemCertificateIcon.swift # Keychain Access artwork, loaded from the system
@@ -133,6 +134,15 @@ section 4 and section 3. Summary of the behavior contract:
   first contact (Detect, `TrustPolicy.learnFingerprint`) and enforced from then on; that one
   request is the only time an unknown certificate is accepted, and the user is shown what was
   learned.
+- What was learned means the certificate, not just the hash. `PinnedCertificate.read` records
+  both digests, the subject CN, the subjectAltName DNS list, the issuer, the validity window and
+  the day it was pinned; the connection editor shows them the way Keychain Access would. Expiry
+  is the one that earns its place: when the gateway renews, the pin stops matching and the
+  failure looks like an attack unless the date already said a renewal was due.
+  `certificateSHA1` stays the pin of record and `profile.certificate` is description only, so
+  `profile.pinnedCertificate` withholds details that no longer hash to the pin rather than
+  showing them as current. openconnect is still handed the SHA1; the SHA256 is recorded for the
+  eye, and for `pin-sha256:` if `--servercert` is ever switched over.
 - A connection is the whole combination: address, group, pin, username, password source and the
   authenticator account whose code fills the OTP field. Several can exist; one is selected, and
   the menu bar acts on that one. Credentials were briefly a list of their own and were folded
@@ -192,6 +202,8 @@ Authenticator (done, verified against the user's live accounts):
 VPN connector:
 - [x] `ConfigAuthXML` parses captured real init and auth-reply responses in unit tests.
 - [x] Cert pinning by SHA1, cross-checked against the fingerprint the gateway reports.
+- [x] The pin is shown as a certificate: names, issuer, expiry, both digests, first pinned on.
+      Parsed from a real DER fixture in tests, not from a hand-written dictionary.
 - [x] Menu bar shows state, gateway, assigned IP, session countdown, and statistics.
 - [x] Statistics parse real `netstat` output; throughput chart with shared scale.
 - [x] Shutdown targets this app's own process only, never a bare `openconnect` name match.

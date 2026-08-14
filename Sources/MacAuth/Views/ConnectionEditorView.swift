@@ -98,24 +98,16 @@ struct ConnectionEditorView: View {
                             syncOTPAccount()
                         }
                 } else {
-                    Picker("", selection: $profile.username) {
-                        // Grey, like the placeholder in every other field here, so an unset
-                        // username does not read as loudly as a chosen one.
-                        Text("Not set").foregroundStyle(.secondary).tag("")
-                        ForEach(usernameChoices, id: \.self) { choice in
-                            Text(choice).tag(choice)
-                        }
-                    }
-                    .labelsHidden()
-                    .font(.system(size: 11))
-                    // Small, to stand the same height as the bordered fields above and below it.
-                    // At regular size it was the tallest control in the sheet, which gave the
-                    // emptiest value the strongest voice.
-                    .controlSize(.small)
-                    // A menu picker sizes to its widest choice and will not stretch, so the
-                    // width cannot match the fields. Pin it to the same left edge instead, which
-                    // is what makes the three of them read as one column.
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    // AppKit's pop-up rather than a SwiftUI Picker, which sizes to its widest
+                    // choice and cannot be widened. This one stands the same height and fills
+                    // the same width as the fields above and below it, so the three read as one
+                    // column instead of three controls of three sizes.
+                    WidePopUpButton(
+                        selection: $profile.username,
+                        options: [.init(title: "Not set", value: "", isPlaceholder: true)]
+                            + usernameChoices.map { .init(title: $0, value: $0) }
+                    )
+                    .frame(height: 21)
                     .onChange(of: profile.username) { _, _ in
                         refreshKeychainItems()
                         syncOTPAccount()
@@ -178,21 +170,28 @@ struct ConnectionEditorView: View {
     @ViewBuilder
     private var passwordDetail: some View {
         if profile.passwordSource == .loginKeychain, !keychainItems.isEmpty {
-            HStack(spacing: 6) {
-                Picker("", selection: $profile.passwordKeychainServer) {
-                    ForEach(keychainItems) { item in
-                        Text(item.server).tag(String?.some(item.server))
-                    }
-                }
-                .labelsHidden()
-                .controlSize(.small)
+            // Full width, like the username pop-up and both text fields: this stands in for the
+            // password field, so it occupies the same column.
+            WidePopUpButton(
+                selection: Binding(
+                    get: { profile.passwordKeychainServer ?? "" },
+                    set: { profile.passwordKeychainServer = $0.isEmpty ? nil : $0 }
+                ),
+                options: keychainItems.map { .init(title: $0.server, value: $0.server) }
+            )
+            .frame(height: 21)
+
+            // The way back is a link under the explanation rather than a button beside the
+            // control. A second button of equal weight made the pair look like a choice being
+            // asked for, when the Keychain is the answer nearly always.
+            VStack(alignment: .leading, spacing: 2) {
+                note("Read from the login Keychain at connect time, so macOS asks permission "
+                     + "once. Nothing is copied into this app's Keychain.")
 
                 Button("Type it instead") { profile.passwordSource = .stored }
-                    .controlSize(.small)
+                    .buttonStyle(.link)
+                    .font(.system(size: 10))
             }
-
-            note("Read from the login Keychain at connect time, so macOS asks permission once. "
-                 + "Nothing is copied into this app's Keychain.")
         } else {
             HStack(spacing: 6) {
                 SecureField(
