@@ -159,8 +159,6 @@ struct SettingsView: View {
 
     private var gatewayTab: some View {
         SettingsTabBody {
-            SettingsSectionHeader(text: "Connections")
-
             if vpn.profiles.isEmpty {
                 SettingsCard {
                     SettingsRow(title: "No connections yet") { EmptyView() }
@@ -176,9 +174,11 @@ struct SettingsView: View {
                         connectionRow(item)
                     }
                 }
-                SettingsFootnote(
-                    text: "The selected connection is the one the menu bar connects."
-                )
+                if vpn.profiles.count > 1 {
+                    SettingsFootnote(
+                        text: "The selected connection is the one the menu bar connects."
+                    )
+                }
             }
 
             HStack {
@@ -193,6 +193,9 @@ struct SettingsView: View {
 
     private func connectionRow(_ item: VPNProfile) -> some View {
         let isSelected = item.id == vpn.profile.id
+        // With one connection there is nothing to choose between, so the radio reads as
+        // decoration. Show it only once a second connection exists.
+        let showsSelection = vpn.profiles.count > 1
 
         return HStack(spacing: 8) {
             // The whole left side selects, so switching connection is one click on the row
@@ -201,9 +204,11 @@ struct SettingsView: View {
                 vpn.select(profileID: item.id)
             } label: {
                 HStack(spacing: 8) {
-                    Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
-                        .font(.system(size: 12))
-                        .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+                    if showsSelection {
+                        Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
+                            .font(.system(size: 12))
+                            .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+                    }
 
                     // The title is already the address, so a second line would repeat it with
                     // a port on the end.
@@ -215,6 +220,8 @@ struct SettingsView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            // Not .disabled, which would dim the name. A lone row just is not clickable.
+            .allowsHitTesting(showsSelection)
 
             if !item.isComplete {
                 Image(systemName: "exclamationmark.triangle.fill")
@@ -470,7 +477,7 @@ private struct TabBar: View {
         HStack(spacing: 4) {
             TabButton(title: "General", systemImage: "gearshape.fill",
                       isSelected: selection == .general) { selection = .general }
-            TabButton(title: "Gateway", systemImage: "network",
+            TabButton(title: "Connections", systemImage: "network",
                       isSelected: selection == .gateway) { selection = .gateway }
             TabButton(title: "Authenticator", systemImage: "qrcode",
                       isSelected: selection == .authenticator) { selection = .authenticator }

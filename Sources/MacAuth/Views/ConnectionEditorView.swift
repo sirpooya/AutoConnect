@@ -61,8 +61,10 @@ struct ConnectionEditorView: View {
                         .focused($addressFocused)
                         .onSubmit { detect() }
 
+                    // Regular size, not small: a small button is shorter than the rounded-border
+                    // field beside it and the pair reads as misaligned.
                     Button(isProbing ? "Checking..." : "Detect") { detect() }
-                        .controlSize(.small)
+                        .font(.system(size: 11))
                         .disabled(isProbing || address.isEmpty)
 
                     if isProbing {
@@ -84,10 +86,31 @@ struct ConnectionEditorView: View {
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(.secondary)
 
-                TextField("you@example.com", text: $profile.username)
-                    .textFieldStyle(.roundedBorder)
+                // Your authenticator accounts are already labelled with the address you sign in
+                // with, so this picks from them rather than asking for it to be typed again.
+                // A gateway with no such account to draw on still gets a field.
+                if usernameChoices.isEmpty {
+                    TextField("you@example.com", text: $profile.username)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 11))
+                        .onChange(of: profile.username) { _, _ in
+                            refreshKeychainItems()
+                            syncOTPAccount()
+                        }
+                } else {
+                    Picker("", selection: $profile.username) {
+                        Text("Not set").tag("")
+                        ForEach(usernameChoices, id: \.self) { choice in
+                            Text(choice).tag(choice)
+                        }
+                    }
+                    .labelsHidden()
                     .font(.system(size: 11))
-                    .onChange(of: profile.username) { _, _ in refreshKeychainItems() }
+                    .onChange(of: profile.username) { _, _ in
+                            refreshKeychainItems()
+                            syncOTPAccount()
+                        }
+                }
             }
 
             VStack(alignment: .leading, spacing: 6) {
@@ -98,12 +121,8 @@ struct ConnectionEditorView: View {
                 passwordDetail
             }
 
-            picker("One-time code", selection: $profile.otpAccountID) {
-                Text(accounts.isEmpty ? "No accounts yet" : "Type it manually")
-                    .tag(UUID?.none)
-                ForEach(accounts) { account in
-                    Text(account.displayHeading).tag(UUID?.some(account.id))
-                }
+            if let matched = accountMatchingUsername {
+                note("Its one-time code comes from your \(matched.displayTitle) account.")
             }
 
             HStack {
@@ -132,6 +151,7 @@ struct ConnectionEditorView: View {
                 profile.username = suggestion.label
             }
             refreshKeychainItems()
+            syncOTPAccount()
             // Nothing takes the caret. A sheet full of text fields hands the first one focus by
             // itself, which puts a selected address one keystroke away from being replaced, so
             // it is given up again once the sheet has settled.
@@ -195,6 +215,17 @@ struct ConnectionEditorView: View {
         }
     }
 
+    /// The code comes from the account the username belongs to. Choosing the username is
+    /// therefore the whole choice, which is why there is no second picker for it.
+    private func syncOTPAccount() {
+        if let matched = accountMatchingUsername {
+            profile.otpAccountID = matched.id
+        } else if profile.otpAccountID != nil,
+                  !accounts.contains(where: { $0.id == profile.otpAccountID }) {
+            profile.otpAccountID = nil
+        }
+    }
+
     private func refreshKeychainItems() {
         keychainItems = LoginKeychain.rank(
             LoginKeychain.items(account: profile.username),
@@ -218,68 +249,81 @@ struct ConnectionEditorView: View {
 
     // MARK: - What the gateway said
 
-    /// Nothing until the gateway has been asked, then the group it offers and the fingerprint
-    /// that will be pinned. There is no honest value to show before that.
+    /// Nothing until the gateway has been asked, then what it answered: the group it offers and
+    /// the certificate that will be pinned. There is no honest value to show before that.
+    ///
+    /// The certificate is drawn the way Keychain Access draws one, with the system's own
+    /// artwork, so a fingerprint compared against Keychain Access is compared against something
+    /// that looks like the same object.
     @ViewBuilder
     private var gatewayFindings: some View {
         if let probeError {
             notice(probeError, icon: "exclamationmark.triangle.fill", tint: .orange)
         } else if profile.tunnelGroup.isEmpty && fingerprint.isEmpty {
-            Text("Detect asks the gateway which tunnel groups it offers and pins the certificate "
+            note("Detect asks the gateway which tunnel groups it offers and pins the certificate "
                  + "it presents. Nothing else needs typing.")
-                .font(.system(size: 10))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
         } else {
-            VStack(alignment: .leading, spacing: 8) {
-                if !discoveredGroups.isEmpty || !profile.tunnelGroup.isEmpty {
-                    HStack(spacing: 8) {
-                        Text("Group")
-                            .font(.system(size: 11))
-                            .frame(width: 74, alignment: .leading)
+            HStack(alignment: .top, spacing: 10) {
+                SystemCertificateIcon(size: 38)
 
-                        if discoveredGroups.count > 1 {
-                            Picker("", selection: $profile.tunnelGroup) {
-                                ForEach(discoveredGroups) { group in
-                                    Text(group.label).tag(group.value)
-                                }
-                            }
-                            .labelsHidden()
-                            .controlSize(.small)
-                            .fixedSize()
-                        } else {
-                            Text(profile.tunnelGroup)
+                VStack(alignment: .leading, spacing: 3) {
+                    if !profile.tunnelGroup.isEmpty || discoveredGroups.count > 1 {
+                        HStack(spacing: 6) {
+                            Text("Group")
                                 .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+
+                            if discoveredGroups.count > 1 {
+                                Picker("", selection: $profile.tunnelGroup) {
+                                    ForEach(discoveredGroups) { group in
+                                        Text(group.label).tag(group.value)
+                                    }
+                                }
+                                .labelsHidden()
+                                .controlSize(.mini)
+                                .fixedSize()
+                            } else {
+                                Text(profile.tunnelGroup)
+                                    .font(.system(size: 11))
+                            }
                         }
-
-                        Spacer(minLength: 0)
                     }
-                }
 
-                if !fingerprint.isEmpty {
-                    HStack(spacing: 8) {
-                        Text("Certificate")
-                            .font(.system(size: 11))
-                            .frame(width: 74, alignment: .leading)
-
+                    if fingerprint.isEmpty {
+                        Text("No certificate pinned")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                    } else {
                         Text(shortFingerprint)
                             .font(.system(size: 10, design: .monospaced))
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
                             .help(fingerprint)
 
-                        Spacer(minLength: 0)
+                        HStack(spacing: 3) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 9))
+                                .foregroundStyle(.green)
 
-                        Button("Forget") {
-                            profile.certificateSHA1 = nil
-                            discoveredGroups = []
+                            Text("Pinned. The gateway must present this certificate.")
+                                .font(.system(size: 10))
+                                .foregroundStyle(.secondary)
                         }
-                        // Unpinning drops the only thing that proves this is the right gateway,
-                        // so it reads as the destructive act it is rather than a tidy-up.
-                        .buttonStyle(.plain)
-                        .font(.system(size: 10))
-                        .foregroundStyle(.red)
                     }
+                }
+
+                Spacer(minLength: 0)
+
+                if !fingerprint.isEmpty {
+                    // Unpinning drops the only thing that proves this is the right gateway, so
+                    // it reads as the destructive act it is rather than a tidy-up.
+                    Button("Forget") {
+                        profile.certificateSHA1 = nil
+                        discoveredGroups = []
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.red)
                 }
             }
             .padding(10)
@@ -313,37 +357,25 @@ struct ConnectionEditorView: View {
         }
     }
 
-    private func picker<Content: View>(
-        _ title: String,
-        selection: Binding<UUID?>,
-        @ViewBuilder options: () -> Content
-    ) -> some View {
-        HStack(spacing: 8) {
-            Text(title)
-                .font(.system(size: 11))
-                .frame(width: 92, alignment: .leading)
-
-            Picker("", selection: selection, content: options)
-                .labelsHidden()
-                .controlSize(.small)
-
-            Spacer(minLength: 0)
-        }
-    }
-
-    private func field(_ title: String, prompt: String, text: Binding<String>) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(title)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.secondary)
-
-            TextField(prompt, text: text)
-                .textFieldStyle(.roundedBorder)
-                .font(.system(size: 11))
-        }
-    }
-
     // MARK: - Values
+
+    /// Addresses from the authenticator accounts, plus whatever the connection already had, so
+    /// a username typed by an older build is never silently dropped.
+    private var usernameChoices: [String] {
+        var choices = accounts.map(\.label).filter { $0.contains("@") }
+        let current = profile.username.trimmingCharacters(in: .whitespaces)
+        if !current.isEmpty, !choices.contains(current) { choices.append(current) }
+
+        return choices.reduce(into: [String]()) { unique, choice in
+            if !unique.contains(choice) { unique.append(choice) }
+        }
+    }
+
+    /// The authenticator account this username belongs to, which is therefore the one whose
+    /// code fills the OTP field.
+    private var accountMatchingUsername: Account? {
+        accounts.first { $0.label == profile.username }
+    }
 
     private var address: String { profile.host.trimmingCharacters(in: .whitespaces) }
     private var fingerprint: String { profile.certificateSHA1 ?? "" }
