@@ -18,22 +18,29 @@ struct ConnectionEditorView: View {
     @State private var probeError: String?
     @FocusState private var addressFocused: Bool
 
+    @State private var password = ""
+    @State private var passwordIsStored: Bool
+    @State private var keychainItems: [LoginKeychain.Item] = []
+
     private let isNew: Bool
-    private let credentials: [Credential]
     private let accounts: [Account]
+    private let store: VPNSettingsStore
     private let onSave: (VPNProfile) -> Void
 
     init(
         profile: VPNProfile,
         isNew: Bool,
-        credentials: [Credential] = [],
         accounts: [Account] = [],
+        store: VPNSettingsStore = VPNSettingsStore(),
         onSave: @escaping (VPNProfile) -> Void
     ) {
         _profile = State(initialValue: profile)
+        _passwordIsStored = State(
+            initialValue: store.hasPassword(account: profile.credentialAccount)
+        )
         self.isNew = isNew
-        self.credentials = credentials
         self.accounts = accounts
+        self.store = store
         self.onSave = onSave
     }
 
@@ -66,17 +73,29 @@ struct ConnectionEditorView: View {
 
             gatewayFindings
 
-            // A connection is a gateway plus who signs in and what supplies the code. Both are
-            // chosen here, and both are shown even when their lists are empty: hiding them made
-            // it look as though there was nowhere to choose.
+            // A connection is a gateway plus who signs in and what supplies the code, so all
+            // three live in this one sheet. They were briefly a separate credentials list,
+            // which for one person with one gateway was an entity to keep straight rather than
+            // a saving.
             Divider()
 
-            picker("Sign in as", selection: $profile.credentialID) {
-                Text(credentials.isEmpty ? "No credentials yet" : "Ask at sign-in")
-                    .tag(UUID?.none)
-                ForEach(credentials) { credential in
-                    Text(credential.displayName).tag(UUID?.some(credential.id))
-                }
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Username")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.secondary)
+
+                TextField("you@example.com", text: $profile.username)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 11))
+                    .onChange(of: profile.username) { _, _ in refreshKeychainItems() }
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Password")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.secondary)
+
+                passwordDetail
             }
 
             picker("One-time code", selection: $profile.otpAccountID) {
@@ -87,10 +106,6 @@ struct ConnectionEditorView: View {
                 }
             }
 
-            if credentials.isEmpty {
-                note("Add one in the Sign-in tab to have the username and password filled in.")
-            }
-
             HStack {
                 Button("Cancel") { dismiss() }
                     .keyboardShortcut(.cancelAction)
@@ -98,7 +113,7 @@ struct ConnectionEditorView: View {
                 Spacer()
 
                 Button("Done") {
-                    onSave(trimmed)
+                    commit()
                     dismiss()
                 }
                 .keyboardShortcut(.defaultAction)
@@ -110,11 +125,95 @@ struct ConnectionEditorView: View {
         .padding(16)
         .frame(width: 380)
         .onAppear {
+            // Your authenticator account is already labelled with the address you sign in
+            // with, so a new connection starts from it and only the password is left to type.
+            if isNew, profile.username.isEmpty,
+               let suggestion = accounts.first(where: { $0.label.contains("@") }) {
+                profile.username = suggestion.label
+            }
+            refreshKeychainItems()
             // Nothing takes the caret. A sheet full of text fields hands the first one focus by
             // itself, which puts a selected address one keystroke away from being replaced, so
             // it is given up again once the sheet has settled.
             DispatchQueue.main.async { addressFocused = false }
         }
+    }
+
+    // MARK: - Password
+
+    /// The Keychain is the answer nearly always, so it is the whole control. Typing nothing is
+    /// the same as being asked at sign-in time, which the placeholder says rather than costing
+    /// an option nobody would pick deliberately. Reusing a website login the browser already
+    /// saved is offered only when this Mac actually has one for the username.
+    @ViewBuilder
+    private var passwordDetail: some View {
+        if profile.passwordSource == .loginKeychain, !keychainItems.isEmpty {
+            HStack(spacing: 6) {
+                Picker("", selection: $profile.passwordKeychainServer) {
+                    ForEach(keychainItems) { item in
+                        Text(item.server).tag(String?.some(item.server))
+                    }
+                }
+                .labelsHidden()
+                .controlSize(.small)
+
+                Button("Type it instead") { profile.passwordSource = .stored }
+                    .controlSize(.small)
+            }
+
+            note("Read from the login Keychain at connect time, so macOS asks permission once. "
+                 + "Nothing is copied into this app's Keychain.")
+        } else {
+            HStack(spacing: 6) {
+                SecureField(
+                    passwordIsStored ? "Stored in Keychain" : "Leave blank to be asked",
+                    text: $password
+                )
+                .textFieldStyle(.roundedBorder)
+                .font(.system(size: 11))
+
+                if passwordIsStored {
+                    Button("Remove") { removeStoredPassword() }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.red)
+                }
+            }
+
+            if let match = keychainItems.first {
+                HStack(spacing: 4) {
+                    note("This Mac already has a saved login for \(match.server).")
+
+                    Button("Use it") {
+                        profile.passwordSource = .loginKeychain
+                        profile.passwordKeychainServer = match.server
+                    }
+                    .buttonStyle(.link)
+                    .font(.system(size: 10))
+                }
+            }
+        }
+    }
+
+    private func refreshKeychainItems() {
+        keychainItems = LoginKeychain.rank(
+            LoginKeychain.items(account: profile.username),
+            preferring: profile.idpHost
+        )
+
+        if let chosen = profile.passwordKeychainServer,
+           !keychainItems.contains(where: { $0.server == chosen }) {
+            profile.passwordKeychainServer = nil
+        }
+        if profile.passwordKeychainServer == nil {
+            profile.passwordKeychainServer = keychainItems.first?.server
+        }
+    }
+
+    private func removeStoredPassword() {
+        try? store.deletePassword(account: profile.credentialAccount)
+        passwordIsStored = false
+        password = ""
     }
 
     // MARK: - What the gateway said
@@ -261,7 +360,30 @@ struct ConnectionEditorView: View {
         var result = profile
         result.host = address
         result.tunnelGroup = profile.tunnelGroup.trimmingCharacters(in: .whitespaces)
+        result.username = profile.username.trimmingCharacters(in: .whitespaces)
         return result
+    }
+
+    /// Writes the password, then hands the connection back. The password waits for Done rather
+    /// than being written as it is typed: each write is a Keychain round trip, and a half-typed
+    /// password is not worth one.
+    private func commit() {
+        var result = trimmed
+
+        // A login-Keychain source with no item chosen is really just the Keychain field, which
+        // is what the sheet was showing.
+        if result.passwordSource == .loginKeychain, result.passwordKeychainServer == nil {
+            result.passwordSource = .stored
+        }
+        if result.passwordSource != .loginKeychain {
+            result.passwordKeychainServer = nil
+            if !password.isEmpty {
+                try? store.savePassword(password, account: result.credentialAccount)
+                password = ""
+            }
+        }
+
+        onSave(result)
     }
 
     private func detect() {

@@ -42,14 +42,8 @@ struct SettingsView: View {
     @State private var newConnection: VPNProfile?
     @State private var connectionPendingDeletion: VPNProfile?
 
-    /// The saved sign-in identities, and whichever is being added, edited or deleted.
-    @State private var credentials: [Credential] = []
-    @State private var editingCredential: Credential?
-    @State private var newCredential: Credential?
-    @State private var credentialPendingDeletion: Credential?
-
     enum Tab: Hashable {
-        case general, gateway, signIn, authenticator
+        case general, gateway, authenticator
     }
 
     var body: some View {
@@ -70,8 +64,6 @@ struct SettingsView: View {
                     generalTab
                 case .gateway:
                     gatewayTab
-                case .signIn:
-                    signInTab
                 case .authenticator:
                     authenticatorTab
                 }
@@ -116,46 +108,17 @@ struct SettingsView: View {
                 ConnectionEditorView(
                     profile: connection,
                     isNew: false,
-                    credentials: credentials,
-                    accounts: state.accounts
+                    accounts: state.accounts,
+                    store: store
                 ) { save(connection: $0) }
             }
             .sheet(item: $newConnection) { connection in
                 ConnectionEditorView(
                     profile: connection,
                     isNew: true,
-                    credentials: credentials,
-                    accounts: state.accounts
+                    accounts: state.accounts,
+                    store: store
                 ) { save(connection: $0) }
-            }
-            .sheet(item: $editingCredential) { credential in
-                CredentialEditorView(
-                    credential: credential,
-                    isNew: false,
-                    store: store,
-                    idpHost: vpn.profile.idpHost,
-                    suggestion: usernameSuggestion
-                ) { save(credential: $0) }
-            }
-            .sheet(item: $newCredential) { credential in
-                CredentialEditorView(
-                    credential: credential,
-                    isNew: true,
-                    store: store,
-                    idpHost: vpn.profile.idpHost,
-                    suggestion: usernameSuggestion
-                ) { save(credential: $0) }
-            }
-            .confirmationDialog(
-                "Delete this credential?",
-                isPresented: presenting($credentialPendingDeletion),
-                presenting: credentialPendingDeletion
-            ) { credential in
-                Button("Delete", role: .destructive) { delete(credential: credential) }
-                Button("Cancel", role: .cancel) {}
-            } message: { credential in
-                Text("\(credential.displayName)\n\nIts stored password is removed from the "
-                     + "Keychain, and any connection using it is left without one.")
             }
             .confirmationDialog(
                 "Delete this connection?",
@@ -214,8 +177,7 @@ struct SettingsView: View {
                     }
                 }
                 SettingsFootnote(
-                    text: "The selected connection is the one the menu bar connects, and the one "
-                        + "the Sign-in tab sets credentials for."
+                    text: "The selected connection is the one the menu bar connects."
                 )
             }
 
@@ -290,131 +252,6 @@ struct SettingsView: View {
         load()
     }
 
-
-    private var signInTab: some View {
-        SettingsTabBody {
-            SettingsSectionHeader(text: "Credentials")
-
-            if credentials.isEmpty {
-                SettingsCard {
-                    SettingsRow(title: "No credentials yet") { EmptyView() }
-                }
-                SettingsFootnote(
-                    text: "A credential is a username and where its password comes from. "
-                        + "Connections pick one, so an account used by two gateways is entered "
-                        + "once."
-                )
-            } else {
-                SettingsCard {
-                    ForEach(Array(credentials.enumerated()), id: \.element.id) { index, item in
-                        if index > 0 { SettingsDivider() }
-                        credentialRow(item)
-                    }
-                }
-                SettingsFootnote(
-                    text: "Ticked is the one the selected connection signs in with. Change it "
-                        + "for another connection by editing that connection."
-                )
-            }
-
-            HStack {
-                Button("Add Credential...") { newCredential = Credential() }
-                    .controlSize(.small)
-                Spacer()
-            }
-            .padding(.horizontal, SettingsMetrics.rowHPadding)
-            .padding(.top, 2)
-
-            SettingsFootnote(
-                text: "The password and the OTP secret both live in this Mac's Keychain. "
-                    + "Storing them together means this Mac alone satisfies both factors."
-            )
-            .padding(.top, 4)
-        }
-    }
-
-    private func credentialRow(_ item: Credential) -> some View {
-        let isInUse = item.id == vpn.profile.credentialID
-
-        return HStack(spacing: 6) {
-            // Clicking the row assigns this credential to the selected connection, which is the
-            // only "use" a credential has.
-            Button {
-                assign(credential: item)
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: isInUse ? "largecircle.fill.circle" : "circle")
-                        .font(.system(size: 12))
-                        .foregroundStyle(isInUse ? Color.accentColor : Color.secondary)
-
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(item.displayName)
-                            .font(.system(size: 13))
-                        Text(item.displaySubtitle)
-                            .font(.system(size: 10))
-                            .foregroundStyle(.tertiary)
-                    }
-
-                    Spacer(minLength: 10)
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .disabled(vpn.profiles.isEmpty)
-
-            Menu {
-                Button("Edit...") { editingCredential = item }
-                Divider()
-                Button("Delete...", role: .destructive) { credentialPendingDeletion = item }
-            } label: {
-                Image(systemName: "ellipsis.circle")
-            }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
-        }
-        .padding(.horizontal, SettingsMetrics.rowHPadding)
-        .frame(minHeight: 42)
-    }
-
-    /// The authenticator account whose label is an email address, preferring the one the
-    /// selected connection already uses. A credential's username is almost always that address,
-    /// so it is offered rather than asked for.
-    private var usernameSuggestion: Account? {
-        let withAddress = state.accounts.filter { $0.label.contains("@") }
-        return withAddress.first { $0.id == vpn.profile.otpAccountID } ?? withAddress.first
-    }
-
-    /// Points the selected connection at this credential.
-    private func assign(credential: Credential) {
-        guard !vpn.profiles.isEmpty else { return }
-
-        var profile = vpn.profile
-        profile.credentialID = credential.id
-        // The username lives on the credential now, but keeping the copy in step means a
-        // profile read by anything older still names the right person.
-        profile.username = credential.username
-        store.upsert(profile)
-        vpn.profile = profile
-        vpn.reloadProfiles()
-    }
-
-    private func save(credential: Credential) {
-        store.upsert(credential)
-        credentials = store.loadCredentials()
-
-        // A first credential is what the selected connection will want; later ones are only
-        // assigned when asked for.
-        if credentials.count == 1 || vpn.profile.credentialID == credential.id {
-            assign(credential: credential)
-        }
-    }
-
-    private func delete(credential: Credential) {
-        store.delete(credentialID: credential.id)
-        credentials = store.loadCredentials()
-        vpn.reloadProfiles()
-    }
 
     private var generalTab: some View {
         SettingsTabBody {
@@ -591,7 +428,6 @@ struct SettingsView: View {
         let profile = vpn.profile
         openconnectPath = profile.openconnectPath
         otpAccountID = profile.otpAccountID
-        credentials = store.loadCredentials()
         launchAtLogin = LaunchAtLogin.isEnabled
         isLoaded = true
     }
@@ -638,8 +474,6 @@ private struct TabBar: View {
                       isSelected: selection == .gateway) { selection = .gateway }
             TabButton(title: "Authenticator", systemImage: "qrcode",
                       isSelected: selection == .authenticator) { selection = .authenticator }
-            TabButton(title: "Sign-in", systemImage: "person.badge.key.fill",
-                      isSelected: selection == .signIn) { selection = .signIn }
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 10)

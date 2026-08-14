@@ -111,6 +111,9 @@ final class VPNController: ObservableObject {
             self.profile = profile
             self.profiles = [profile]
         } else {
+            // Credentials were briefly a list of their own; anything saved that way is folded
+            // back into the connection that used it before the list is read.
+            store.foldCredentialsIntoConnections()
             self.profiles = store.loadProfiles()
             self.profile = store.selectedProfile() ?? .empty
         }
@@ -307,15 +310,11 @@ final class VPNController: ObservableObject {
     /// by a closure so it is generated at the instant the field is reached rather than seconds
     /// earlier, when it might already have rolled over.
     private func autofillCredentials() -> LoginFormFiller.Credentials? {
-        // The connection names a credential; an older profile may still carry the username
-        // inline, which is what the migration reads and what this falls back to.
-        let credential = VPNSettingsStore().credential(id: profile.credentialID)
-        let username = credential?.username ?? profile.username
-
         // With no username there is nothing to start from, so let the user drive.
+        let username = profile.username
         guard !username.isEmpty else { return nil }
 
-        let password = passwordForAutofill(credential: credential, username: username)
+        let password = passwordForAutofill()
 
         let otpAccountID = profile.otpAccountID
         let accountStore = KeychainStore()
@@ -346,27 +345,19 @@ final class VPNController: ObservableObject {
     ///
     /// Never fails closed: any source that comes up empty just means the login window opens with
     /// the password field blank and the user finishes by hand.
-    private func passwordForAutofill(credential: Credential?, username: String) -> String? {
-        let store = VPNSettingsStore()
-
-        // No credential means a profile from before they existed, whose password sits under the
-        // account name the profile itself carries.
-        guard let credential else {
-            return store.password(account: profile.credentialAccount)
-        }
-
-        switch credential.passwordSource {
+    private func passwordForAutofill() -> String? {
+        switch profile.passwordSource {
         case .ask:
             return nil
 
         case .stored:
-            return store.password(account: credential.keychainAccount)
+            return VPNSettingsStore().password(account: profile.credentialAccount)
 
         case .loginKeychain:
-            guard let server = credential.passwordKeychainServer else { return nil }
+            guard let server = profile.passwordKeychainServer else { return nil }
             // This is the call that makes macOS ask permission, which is why it happens here,
             // at connect time, rather than while Settings is merely listing candidates.
-            return try? LoginKeychain.password(server: server, account: username)
+            return try? LoginKeychain.password(server: server, account: profile.username)
         }
     }
 
