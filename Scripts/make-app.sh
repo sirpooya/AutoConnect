@@ -98,6 +98,28 @@ ${ICON_KEYS}
     <true/>
     <key>NSHumanReadableCopyright</key>
     <string>Local build. Secrets stay in this Mac's Keychain.</string>
+    <!--
+      App Transport Security has to be relaxed, and this is not a shortcut.
+
+      ATS demands ECDHE for forward secrecy and refuses plain DHE. This gateway negotiates
+      DHE-RSA-AES256-SHA256, so ATS rejects the handshake before any delegate is consulted: the
+      app reports "A TLS error caused the secure connection to fail" while curl connects fine.
+      Corporate VPN concentrators are routinely this conservative, and their certificates are
+      usually privately signed as well, which ATS also refuses.
+
+      A per-domain exception cannot be written here, because nothing about any gateway is
+      compiled in: the user types an address and the app asks it for the rest.
+
+      What replaces ATS is stronger for this purpose, not weaker. Every gateway request pins the
+      certificate by SHA1 in GatewayClient, so an unexpected certificate is refused outright
+      rather than merely warned about. The identity provider, which is a normal public host,
+      still goes through full system trust evaluation in SAMLLoginController.
+    -->
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsArbitraryLoads</key>
+        <true/>
+    </dict>
 </dict>
 </plist>
 PLIST

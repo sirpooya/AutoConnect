@@ -18,9 +18,12 @@ struct ThroughputChart: View {
         max(minimumPeak, samples.flatMap { [$0.down, $0.up] }.max() ?? minimumPeak)
     }
 
+    /// Whether there is enough history to draw anything yet.
+    private var hasSeries: Bool { samples.count >= 2 }
+
     var body: some View {
         ZStack {
-            if samples.count < 2 {
+            if !hasSeries {
                 Text("Sampling...")
                     .font(.system(size: 8))
                     .foregroundStyle(.tertiary)
@@ -50,20 +53,33 @@ struct ThroughputChart: View {
                 }
             }
         }
-        .frame(height: 34)
+        // Width has to be claimed explicitly. Before there are samples the ZStack holds only the
+        // placeholder text, so without this the whole chart shrinks to that text's width and the
+        // background, the scale label and the legend stack up on top of each other in the middle.
+        // The GeometryReader hid the bug once sampling started, which is why it only looked broken
+        // for the first couple of seconds after opening Details.
+        .frame(maxWidth: .infinity, minHeight: 34, maxHeight: 34)
         .background(RoundedRectangle(cornerRadius: 4).fill(Color.primary.opacity(0.04)))
+        // Both label the lines, so neither belongs on an empty frame: a scale reading 50 KB/s with
+        // nothing plotted describes a chart that is not there yet.
         .overlay(alignment: .topTrailing) {
-            Text(scaleLabel)
-                .font(.system(size: 7))
-                .monospacedDigit()
-                .foregroundStyle(.tertiary)
-                .padding(3)
+            if hasSeries {
+                Text(scaleLabel)
+                    .font(.system(size: 7))
+                    .monospacedDigit()
+                    .foregroundStyle(.tertiary)
+                    .padding(3)
+            }
         }
         .overlay(alignment: .bottomLeading) {
-            legend
-                .padding(3)
+            if hasSeries {
+                legend
+                    .padding(3)
+            }
         }
-        .accessibilityLabel("Throughput chart, peak \(scaleLabel)")
+        .accessibilityLabel(
+            hasSeries ? "Throughput chart, peak \(scaleLabel)" : "Throughput chart, sampling"
+        )
     }
 
     private var scaleLabel: String {

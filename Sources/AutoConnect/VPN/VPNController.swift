@@ -50,6 +50,7 @@ final class VPNController: ObservableObject {
 
     @Published private(set) var phase: Phase = .idle {
         didSet {
+            if phase != oldValue { DiagnosticLog.write("phase: \(phase.label)") }
             // A renewal ends the moment it has an answer, either way. `didSet` rather than a
             // line in each of the places that reach these phases, because missing one leaves
             // the flag stuck on and the next real drop silently unreported.
@@ -115,6 +116,10 @@ final class VPNController: ObservableObject {
     private var renewalTask: Task<Void, Never>?
     private var pathMonitor: NWPathMonitor?
     private var wakeObserver: NSObjectProtocol?
+    /// Set when a stale gateway route was found but could not be removed automatically.
+    private var staleRouteHint: String?
+    /// Set when this launch adopted a tunnel it did not start, so Disconnect still works.
+    private var adoptedPID: Int32?
     private var consecutiveFailures = 0
     /// True once the user has connected at least once this launch, so a network change can restore
     /// a tunnel they asked for without ever starting one they did not.
@@ -136,6 +141,93 @@ final class VPNController: ObservableObject {
             self.profiles = store.loadProfiles()
             self.profile = store.selectedProfile() ?? .empty
         }
+
+        adoptRunningTunnel()
+    }
+
+    /// Picks up a tunnel that outlived the app.
+    ///
+    /// openconnect is a separate root process, so quitting or rebuilding the app leaves it running
+    /// and the machine still on the VPN. Reporting "Not connected" in that state would be a lie,
+    /// and Disconnect would have nothing to act on.
+    private func adoptRunningTunnel() {
+        guard !isPreview else { return }
+
+        switch TunnelAdoption.decide(marker: OpenConnectRunner.pidFilePath) {
+        case .none:
+            return
+
+        case .stalePIDFile:
+            // The process is gone; clear the marker so it cannot be adopted later.
+            TunnelAdoption.cleanUp(pidFilePath: OpenConnectRunner.pidFilePath)
+            TunnelAdoption.forget()
+
+        case .adopt(let pid, let snapshot):
+            DiagnosticLog.write("adopt: found running tunnel, pid \(pid)")
+
+            var tunnel = OpenConnectRunner.Tunnel(
+                assignedIP: snapshot?.assignedIP,
+                usingDTLS: snapshot?.usingDTLS ?? false,
+                sessionExpiry: snapshot?.sessionExpiry,
+                gatewayEndpoint: snapshot?.gatewayEndpoint,
+                transport: snapshot?.transport,
+                cipher: snapshot?.cipher,
+                connectedAt: snapshot?.connectedAt,
+                interface: snapshot?.interface
+            )
+            // A tunnel adopted without a snapshot still has to report statistics, so find its
+            // device and address from the system rather than showing an empty details block.
+            if tunnel.interface == nil || tunnel.assignedIP == nil,
+               let discovered = TunnelAdoption.discoverTunnel()
+            {
+                tunnel.interface = tunnel.interface ?? discovered.interface
+                tunnel.assignedIP = tunnel.assignedIP ?? discovered.address
+                DiagnosticLog.write(
+                    "adopt: discovered \(discovered.interface) \(discovered.address)"
+                )
+            }
+
+            tunnel.ciphersuite = snapshot?.ciphersuite
+            tunnel.securedRouteCount = snapshot?.securedRouteCount ?? 0
+            tunnel.excludedRouteCount = snapshot?.excludedRouteCount ?? 0
+            tunnel.carriesDefaultRoute = snapshot?.carriesDefaultRoute ?? false
+
+            // Point at the connection this tunnel belongs to, so Disconnect and the row's title
+            // describe what is actually running.
+            if let profileID = snapshot?.profileID,
+               let owner = profiles.first(where: { $0.id == profileID })
+            {
+                profile = owner
+            }
+
+            adoptedPID = pid
+            userHasConnected = true
+            phase = .connected(tunnel)
+            startClock()
+        }
+    }
+
+    /// Saves what cannot be read back from the system later: expiry, endpoint, cipher, routes.
+    private func rememberLiveTunnel(_ tunnel: OpenConnectRunner.Tunnel) {
+        guard !isPreview else { return }
+
+        TunnelAdoption.record(
+            TunnelAdoption.Snapshot(
+                profileID: profile.id,
+                assignedIP: tunnel.assignedIP,
+                interface: tunnel.interface,
+                gatewayEndpoint: tunnel.gatewayEndpoint,
+                transport: tunnel.transport,
+                cipher: tunnel.cipher,
+                ciphersuite: tunnel.ciphersuite,
+                sessionExpiry: tunnel.sessionExpiry,
+                connectedAt: tunnel.connectedAt,
+                usingDTLS: tunnel.usingDTLS,
+                securedRouteCount: tunnel.securedRouteCount,
+                excludedRouteCount: tunnel.excludedRouteCount,
+                carriesDefaultRoute: tunnel.carriesDefaultRoute
+            )
+        )
     }
 
     // MARK: - Connections
@@ -210,6 +302,13 @@ final class VPNController: ObservableObject {
         return hours > 0 ? "\(hours)h \(minutes)m" : "\(minutes)m"
     }
 
+    /// True when this app has an openconnect running, including one adopted from a previous
+    /// launch or one still coming up. Quitting has to tear those down too, not just a tunnel that
+    /// finished connecting.
+    var hasRunningTunnel: Bool {
+        runner != nil || adoptedPID != nil
+    }
+
     var isConnected: Bool {
         if case .connected = phase { return true }
         return false
@@ -273,10 +372,13 @@ final class VPNController: ObservableObject {
 
     private func runConnectSequence() async {
         do {
+            DiagnosticLog.startSession()
             try OpenConnectRunner.verifyBinary(at: profile.openconnectPath)
 
             // Step 1.
             phase = .contactingGateway
+            clearStaleGatewayRoute()
+
             let client = GatewayClient(profile: profile)
             let authRequest = try await client.requestAuthentication()
 
@@ -330,11 +432,46 @@ final class VPNController: ObservableObject {
                 phase = .failed(error.errorDescription ?? "\(error)")
             }
         } catch let error as GatewayClient.ClientError {
-            phase = .failed(error.description)
+            // A stale route makes the gateway unreachable, and the symptom is a timeout. Say what
+            // is actually wrong, and exactly how to fix it, rather than blaming the network.
+            if let hint = staleRouteHint {
+                phase = .failed(
+                    "The gateway could not be reached because a leftover route from a previous "
+                        + "session points at a gateway that no longer exists. Clear it with:\n\(hint)"
+                )
+            } else {
+                phase = .failed(error.description)
+            }
         } catch let error as OpenConnectRunner.RunnerError {
             phase = .failed(error.description)
         } catch {
             phase = .failed(error.localizedDescription)
+        }
+    }
+
+    /// Clears the host route a previously crashed tunnel left pointing at a gateway that no longer
+    /// exists.
+    ///
+    /// Without this the gateway is unreachable and the failure reads as a timeout, which sends the
+    /// user looking at their network rather than at a leftover routing entry. Best effort: if the
+    /// route cannot be removed (no passwordless rule for it), the connect proceeds anyway and the
+    /// error path below explains what to run.
+    private func clearStaleGatewayRoute() {
+        guard !isPreview else { return }
+
+        let host = profile.host.split(separator: ":").first.map(String.init) ?? profile.host
+        guard case .stale(let route) = RoutePreflight.check(address: host) else {
+            staleRouteHint = nil
+            return
+        }
+
+        if RoutePreflight.clear(route) {
+            staleRouteHint = nil
+        } else {
+            // Remember it, so a subsequent failure can say what to do rather than blaming the
+            // network.
+            staleRouteHint = RoutePreflight.deleteCommand(for: route.destination)
+                .joined(separator: " ")
         }
     }
 
@@ -413,6 +550,7 @@ final class VPNController: ObservableObject {
         case .disconnected:
             phase = .idle
             stopClock()
+            TunnelAdoption.forget()
             // A tunnel that dropped on its own is exactly what auto-reconnect is for.
             if autoReconnect, userHasConnected { scheduleRetryAfterFailure() }
 
@@ -423,6 +561,7 @@ final class VPNController: ObservableObject {
             phase = .connected(tunnel)
             consecutiveFailures = 0
             startClock()
+            rememberLiveTunnel(tunnel)
             if autoReconnect { scheduleRenewal() }
 
         case .reconnecting(let tunnel, let reason):
@@ -597,8 +736,19 @@ final class VPNController: ObservableObject {
 
         connectTask?.cancel()
         connectTask = nil
-        runner?.disconnect()
+
+        if let runner {
+            runner.disconnect()
+        } else if adoptedPID != nil {
+            // An adopted tunnel has no child process to signal, so stop it the same way the
+            // runner would: by its pid-file marker, which only this app's openconnect carries.
+            OpenConnectRunner.shutdownAdopted()
+        }
+
         runner = nil
+        adoptedPID = nil
+        TunnelAdoption.forget()
+        TunnelAdoption.cleanUp(pidFilePath: OpenConnectRunner.pidFilePath)
         stopClock()
         phase = .idle
     }

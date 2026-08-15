@@ -50,7 +50,24 @@ final class LoginFormFiller {
     private let maxAttemptsPerStep = 2
 
     /// Called when autofill has given up, so the caller can stop hiding anything from the user.
-    var onGiveUp: ((String) -> Void)?
+    var onGiveUp: ((String) -> Void)? {
+        didSet {
+            // Wrap whatever the caller set, so every give-up is recorded regardless of who asked.
+            let handler = onGiveUp
+            guard handler != nil, !isWrappingGiveUp else { return }
+            isWrappingGiveUp = true
+            onGiveUp = { reason in
+                DiagnosticLog.write("autofill: gave up, \(reason)")
+                handler?(reason)
+            }
+            isWrappingGiveUp = false
+        }
+    }
+
+    private var isWrappingGiveUp = false
+
+    /// True once autofill has put a value into any field this session.
+    private var hasAttemptedAnything: Bool { !attempts.isEmpty }
 
     init(credentials: Credentials, initialHost: String?) {
         self.credentials = credentials
@@ -82,16 +99,29 @@ final class LoginFormFiller {
             return
         }
 
-        guard let shape = await scan(webView) else { return }
+        guard let shape = await scan(webView) else {
+            DiagnosticLog.write("autofill: page reported no fields at \(DiagnosticLog.redact(webView.url))")
+            return
+        }
+        DiagnosticLog.write(
+            "autofill: needs username=\(shape.username) password=\(shape.password) "
+                + "otp=\(shape.otp) error=\(shape.error)"
+        )
 
-        // A reported error means the value we supplied was rejected. Retrying it verbatim would
-        // just burn attempts, so hand over immediately.
-        if shape.error {
-            onGiveUp?("The sign-in page reported an error, so autofill stopped.")
+        // Decide what the page wants before judging any error on it. OTP first: it is the most
+        // specific, and some identity providers render it as a password field.
+        let target: Step? = shape.otp ? .otp : (shape.password ? .password : (shape.username ? .username : nil))
+        guard let target else { return }
+
+        // An error banner only condemns the step it belongs to. ADFS answers a username-only
+        // submission with "Incorrect user ID or password" and then shows the password step still
+        // carrying that message, so a blanket check gives up before the password is ever tried.
+        // Only stop when the step now being asked for is one we already supplied a value for.
+        if shape.error, attempts[target, default: 0] > 0 {
+            onGiveUp?("The sign-in page rejected the \(target.rawValue), so autofill stopped.")
             return
         }
 
-        // OTP first: it is the most specific, and some IdPs render it as a password field.
         if shape.otp {
             guard let code = credentials.oneTimeCode() else {
                 onGiveUp?("No authenticator account is set for one-time codes.")
@@ -120,6 +150,9 @@ final class LoginFormFiller {
     }
 
     private func fill(_ step: Step, value: String, in webView: WKWebView) async {
+        DiagnosticLog.write(
+            "autofill: filling \(step.rawValue) (\(DiagnosticLog.describe(secret: value)))"
+        )
         let used = attempts[step, default: 0]
         guard used < maxAttemptsPerStep else {
             onGiveUp?("Could not complete the \(step.rawValue) step automatically.")
@@ -215,7 +248,14 @@ final class LoginFormFiller {
                 '[role="alert"], .error, .alert-danger, #errorText, [class*="error"]'
             );
             for (const node of nodes) {
-                if (!visible(node) && node.offsetParent === null) continue;
+                // Must be genuinely laid out and painted. ADFS keeps its error element in the
+                // DOM at all times, so text alone proves nothing.
+                if (node.offsetParent === null) continue;
+                const rect = node.getBoundingClientRect();
+                if (rect.height < 1 || rect.width < 1) continue;
+                const style = window.getComputedStyle(node);
+                if (style.visibility === 'hidden' || style.display === 'none') continue;
+                if (parseFloat(style.opacity || '1') < 0.05) continue;
                 const text = (node.textContent || '').trim();
                 if (text.length > 0 && text.length < 400) return true;
             }

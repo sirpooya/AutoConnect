@@ -169,8 +169,10 @@ final class SAMLLoginController: NSObject {
 
         switch result {
         case .success(let token):
+            DiagnosticLog.write("login: token captured (\(DiagnosticLog.describe(secret: token)))")
             continuation?.resume(returning: token)
         case .failure(let error):
+            DiagnosticLog.write("login: finished with failure: \(error)")
             continuation?.resume(throwing: error)
         }
     }
@@ -185,6 +187,9 @@ final class SAMLLoginController: NSObject {
             guard let self else { return }
 
             Task { @MainActor in
+                let names = cookies.map(\.name).sorted().joined(separator: ", ")
+                DiagnosticLog.write("login: cookies present [\(names)]")
+
                 if let errorName = self.authRequest.errorCookieName,
                    let errorCookie = cookies.first(where: { $0.name == errorName }),
                    !errorCookie.value.isEmpty
@@ -218,6 +223,8 @@ final class SAMLLoginController: NSObject {
 extension SAMLLoginController: WKNavigationDelegate {
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        DiagnosticLog.write("login: loaded \(DiagnosticLog.redact(webView.url))")
+
         // The cookie may be set before the nominated final URL is reached, so check on every
         // completed navigation rather than only at the end.
         checkForToken()
@@ -249,9 +256,26 @@ extension SAMLLoginController: WKNavigationDelegate {
 
     func webView(
         _ webView: WKWebView,
+        decidePolicyFor navigationAction: WKNavigationAction,
+        decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+    ) {
+        DiagnosticLog.write(
+            "login: navigating to \(DiagnosticLog.redact(navigationAction.request.url))"
+        )
+        decisionHandler(.allow)
+    }
+
+    func webView(
+        _ webView: WKWebView,
         decidePolicyFor navigationResponse: WKNavigationResponse,
         decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void
     ) {
+        if let response = navigationResponse.response as? HTTPURLResponse {
+            DiagnosticLog.write(
+                "login: response \(response.statusCode) from "
+                    + "\(DiagnosticLog.redact(navigationResponse.response.url))"
+            )
+        }
         decisionHandler(.allow)
         if isFinalURL(navigationResponse.response.url) {
             checkForToken()
@@ -276,6 +300,9 @@ extension SAMLLoginController: WKNavigationDelegate {
 
     private func report(navigationError error: Error) {
         let nsError = error as NSError
+        DiagnosticLog.write(
+            "login: navigation error \(nsError.domain) \(nsError.code): \(nsError.localizedDescription)"
+        )
         // Cancelled navigations are routine: redirects and our own teardown both produce them.
         guard nsError.code != NSURLErrorCancelled else { return }
         finish(with: .failure(LoginError.navigationFailed(error.localizedDescription)))
@@ -300,6 +327,9 @@ extension SAMLLoginController: WKNavigationDelegate {
         guard challenge.protectionSpace.host.caseInsensitiveCompare(gatewayHost) == .orderedSame,
               let expected = profile.normalizedCertificateSHA1
         else {
+            DiagnosticLog.write(
+                "login: system trust for \(challenge.protectionSpace.host) (not the pinned gateway)"
+            )
             return completionHandler(.performDefaultHandling, nil)
         }
 
@@ -309,6 +339,10 @@ extension SAMLLoginController: WKNavigationDelegate {
         }
 
         let fingerprint = GatewayClient.sha1Fingerprint(of: leaf)
+        DiagnosticLog.write(
+            "login: pin check for \(challenge.protectionSpace.host) "
+                + "\(fingerprint == expected ? "matched" : "MISMATCH (\(fingerprint))")"
+        )
         if fingerprint == expected {
             completionHandler(.useCredential, URLCredential(trust: trust))
         } else {

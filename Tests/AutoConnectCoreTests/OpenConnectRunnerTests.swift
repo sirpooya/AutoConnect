@@ -48,11 +48,22 @@ final class OpenConnectRunnerTests: XCTestCase {
         XCTAssertEqual(Event.parse(line: "CSTP connected. DPD 30, Keepalive 20"), .connected)
     }
 
+    /// A real mismatch, in openconnect's own words.
     func testParsesCertificateRejection() {
         XCTAssertEqual(
-            Event.parse(line: "Server certificate verify failed: signer not found"),
+            Event.parse(line: "Server certificate does not match expected fingerprint"),
             .certificateRejected
         )
+        XCTAssertEqual(
+            Event.parse(line: "Server certificate mismatch"),
+            .certificateRejected
+        )
+    }
+
+    /// The line every privately signed gateway produces on a perfectly good connect. Treating it
+    /// as a rejection made a successful connect flash a certificate error on its way to Connected.
+    func testUntrustedSignerIsNotARejection() {
+        XCTAssertNil(Event.parse(line: "Server certificate verify failed: signer not found"))
     }
 
     func testParsesAuthenticationFailure() {

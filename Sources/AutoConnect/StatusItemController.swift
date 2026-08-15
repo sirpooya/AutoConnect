@@ -26,8 +26,45 @@ final class StatusItemController: NSObject, NSApplicationDelegate {
     /// True while a system window (file picker, capture overlay) is part of an add in progress.
     /// The panel must survive losing focus to those, but only to those.
     private var isPinned = false
+    private var terminationSignalSource: DispatchSourceSignal?
 
     private var cancellables = Set<AnyCancellable>()
+
+    /// Catches a termination signal so the tunnel still comes down.
+    ///
+    /// `applicationWillTerminate` covers Cmd+Q and the Quit button, but a SIGTERM (a `pkill`, or a
+    /// tool stopping the app) can end the process without AppKit running that. A signal source
+    /// keeps the promise that quitting means disconnected.
+    ///
+    /// SIGKILL cannot be caught by anything; adoption is what covers that case.
+    private func installTerminationSignalHandler() {
+        // The default disposition has to be ignored, or the process dies before the handler runs.
+        signal(SIGTERM, SIG_IGN)
+
+        let source = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+        source.setEventHandler { [weak self] in
+            MainActor.assumeIsolated {
+                self?.applicationWillTerminate(
+                    Notification(name: NSApplication.willTerminateNotification)
+                )
+                NSApp.terminate(nil)
+            }
+        }
+        source.resume()
+        terminationSignalSource = source
+    }
+
+    /// Takes the tunnel down with the app.
+    ///
+    /// openconnect is a separate root process, so without this it keeps running after a quit and
+    /// the machine stays on the VPN with nothing managing it. Adoption exists for the cases this
+    /// cannot cover, a crash or a force quit, but a deliberate quit means deliberately off.
+    func applicationWillTerminate(_ notification: Notification) {
+        guard vpn.isConnected || vpn.hasRunningTunnel else { return }
+
+        DiagnosticLog.write("quit: tearing down the tunnel")
+        vpn.disconnect()
+    }
 
     /// Keeps the app alive when its last window closes.
     ///
@@ -70,6 +107,7 @@ final class StatusItemController: NSObject, NSApplicationDelegate {
 
         // Keeps the activation policy honest even for windows opened outside `claim`, such as
         // Settings via Cmd+comma.
+        installTerminationSignalHandler()
         WindowActivation.startObserving()
         WindowActivation.evaluate()
 

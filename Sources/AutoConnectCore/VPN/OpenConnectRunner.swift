@@ -263,7 +263,17 @@ public final class OpenConnectRunner {
                 return .reconnectAttemptFailed(reason)
             }
 
-            if trimmed.contains("Server certificate verify failed") {
+            // "Server certificate verify failed: signer not found" is informational, not fatal.
+            // openconnect prints it for any privately signed certificate, which describes every
+            // gateway this app is for, and then checks the certificate against --servercert and
+            // carries on. Treating it as a rejection made a successful connect flash "the gateway
+            // certificate did not match the pinned fingerprint" on its way to Connected, which is
+            // the exact opposite of what happened. A real mismatch says so in its own words, and
+            // anything else that kills the process is reported by explainEarlyExit.
+            if trimmed.contains("certificate does not match")
+                || trimmed.contains("certificate didn't match")
+                || trimmed.contains("Server certificate mismatch")
+            {
                 return .certificateRejected
             }
 
@@ -328,6 +338,24 @@ public final class OpenConnectRunner {
         return arguments
     }
 
+    /// Stops a tunnel this app started in an earlier launch.
+    ///
+    /// Adoption leaves no child process to signal, so the pid-file marker is the only handle on it.
+    /// Same command as a normal disconnect, and the same guarantee: it cannot match an openconnect
+    /// the user started themselves.
+    @discardableResult
+    public static func shutdownAdopted() -> Bool {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/sudo")
+        process.arguments = ["-n"] + shutdownArguments()
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+
+        guard (try? process.run()) != nil else { return false }
+        process.waitUntilExit()
+        return process.terminationStatus == 0
+    }
+
     /// Shutdown command. Matches on the pid-file path, which only this app's process carries.
     public static func shutdownArguments() -> [String] {
         ["/usr/bin/pkill", "-INT", "-f", pidFilePath]
@@ -348,6 +376,11 @@ public final class OpenConnectRunner {
     private let profile: VPNProfile
     private var process: Process?
     private var tunnel = Tunnel()
+
+    /// Last few output lines, kept so a process that exits without ever connecting can say why.
+    /// sudo's refusal goes to stderr and matches no event, so without this the failure is silent.
+    private var recentOutput: [String] = []
+    private static let recentOutputLimit = 6
 
     public private(set) var state: State = .disconnected {
         didSet {
@@ -388,6 +421,7 @@ public final class OpenConnectRunner {
             let data = handle.availableData
             guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
             for line in text.split(separator: "\n", omittingEmptySubsequences: true) {
+                self?.remember(line: String(line))
                 self?.handle(line: String(line))
             }
         }
@@ -499,15 +533,47 @@ public final class OpenConnectRunner {
     }
 
     private func handleTermination() {
+        let status = process?.terminationStatus ?? 0
         process = nil
 
-        // A clean exit after being connected is a normal disconnect; anything else is a failure
-        // worth showing, but only if we have not already recorded a more specific reason.
+        // A clean exit after being connected is a normal disconnect. Anything else is a failure,
+        // and it must say something: an exit that drops silently to "not connected" is how a
+        // missing sudo rule looked like nothing happening at all.
         switch state {
         case .failed:
             break
-        default:
+        case .connected, .reconnecting:
             state = .disconnected
+        default:
+            state = status == 0 ? .disconnected : .failed(explainEarlyExit(status: status))
         }
+    }
+
+    private func remember(line: String) {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+
+        recentOutput.append(trimmed)
+        if recentOutput.count > Self.recentOutputLimit {
+            recentOutput.removeFirst(recentOutput.count - Self.recentOutputLimit)
+        }
+    }
+
+    /// Turns an exit before the tunnel ever came up into something actionable.
+    public func explainEarlyExit(status: Int32) -> String {
+        let output = recentOutput.joined(separator: " ")
+
+        // The overwhelmingly common case, and the one that used to be invisible.
+        if output.contains("sudo:") || output.contains("password is required") {
+            return "openconnect needs administrator rights to create the tunnel, and no "
+                + "passwordless sudo rule covers \(profile.openconnectPath). Add one, or the "
+                + "tunnel cannot start. See the README."
+        }
+
+        if output.isEmpty {
+            return "openconnect exited immediately (status \(status)) without saying why."
+        }
+
+        return "openconnect exited (status \(status)): \(output)"
     }
 }
