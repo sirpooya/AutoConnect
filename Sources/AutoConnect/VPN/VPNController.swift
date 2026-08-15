@@ -371,6 +371,10 @@ final class VPNController: ObservableObject {
     }
 
     private func runConnectSequence() async {
+        // However this ends, the login is over. Held while it runs so a disconnect can close its
+        // window; left behind on a failure it would be a window nobody can close from outside.
+        defer { login = nil }
+
         do {
             DiagnosticLog.startSession()
             try OpenConnectRunner.verifyBinary(at: profile.openconnectPath)
@@ -398,7 +402,6 @@ final class VPNController: ObservableObject {
                 profile.idpHost = idpHost
                 VPNSettingsStore().save(profile: profile)
             }
-            self.login = nil
 
             // Step 3.
             phase = .exchangingToken
@@ -733,6 +736,11 @@ final class VPNController: ObservableObject {
         // Whatever a renewal was doing, this supersedes it: the tunnel is going down and staying
         // down, which is worth reporting even if a renewal was mid-flight.
         isRenewing = false
+
+        // Cancelling the task is not enough while a sign-in is on screen: it is parked on a
+        // continuation the window will never resume. Tell the window itself to go.
+        login?.cancel()
+        login = nil
 
         connectTask?.cancel()
         connectTask = nil

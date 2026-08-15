@@ -94,6 +94,18 @@ final class SAMLLoginController: NSObject {
         }
     }
 
+    /// Abandons a sign-in that is still on screen, because something outside it has decided the
+    /// connect is over.
+    ///
+    /// Disconnect cancels the task awaiting this login, and that alone does nothing: the task is
+    /// suspended on a `CheckedContinuation` waiting for a cookie, which cancellation does not
+    /// touch. So the window sat there after a disconnect with nothing left to hand its token to.
+    func cancel() {
+        guard !hasFinished else { return }
+        DiagnosticLog.write("login: cancelled from outside, closing the sign-in window")
+        finish(with: .failure(LoginError.cancelled))
+    }
+
     // MARK: - Window
 
     private func presentWindow() {
@@ -141,7 +153,38 @@ final class SAMLLoginController: NSObject {
         WindowActivation.claim()
         window.makeKeyAndOrderFront(nil)
 
-        webView.load(URLRequest(url: authRequest.loginURL))
+        Task { @MainActor in
+            await purgeStaleGatewayCookies()
+            self.webView?.load(URLRequest(url: self.authRequest.loginURL))
+        }
+    }
+
+    /// Removes the gateway's token and error cookies before the login starts.
+    ///
+    /// The data store is persistent so the IdP remembers this browser, and the gateway's own
+    /// cookies persist with it. A token left over from an earlier login looks exactly like one
+    /// this login produced, so `checkForToken` captured it on the first navigation, before the
+    /// user had signed in, and the auth-reply presented a spent token against a fresh `<opaque>`:
+    /// the gateway answered "Single sign-on AnyConnect token verification failure" and every
+    /// retry failed identically, because the stale cookie was still there. A stale error cookie
+    /// is the same bug wearing the other outcome. Only these two are cleared; the IdP's session
+    /// cookies are the whole point of a persistent store.
+    private func purgeStaleGatewayCookies() async {
+        guard let store = webView?.configuration.websiteDataStore.httpCookieStore else { return }
+
+        var names: Set<String> = [authRequest.tokenCookieName]
+        if let errorName = authRequest.errorCookieName { names.insert(errorName) }
+
+        let cookies = await withCheckedContinuation { continuation in
+            store.getAllCookies { continuation.resume(returning: $0) }
+        }
+
+        for cookie in cookies where names.contains(cookie.name) {
+            DiagnosticLog.write("login: clearing stale \(cookie.name) from a previous sign-in")
+            await withCheckedContinuation { continuation in
+                store.delete(cookie) { continuation.resume() }
+            }
+        }
     }
 
     private func dismissWindow() {
@@ -229,7 +272,9 @@ extension SAMLLoginController: WKNavigationDelegate {
         // completed navigation rather than only at the end.
         checkForToken()
 
-        guard let filler else { return }
+        // The flow can end on a navigation that is still settling: keep typing into a webview
+        // whose window has already gone and the log reads as a login continuing past its failure.
+        guard !hasFinished, let filler else { return }
 
         // Every host reached by following the gateway's own login URL is part of the flow, so the
         // IdP's domain becomes trusted here rather than being hardcoded.
