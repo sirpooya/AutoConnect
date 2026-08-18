@@ -280,9 +280,16 @@ final class OpenConnectRunnerTests: XCTestCase {
     }
 
     /// The real binary is present on this machine, which the connect path depends on.
-    func testInstalledBinaryPasses() {
-        XCTAssertNoThrow(
-            try OpenConnectRunner.verifyBinary(at: VPNProfile.example.openconnectPath)
+    ///
+    /// Skipped where it is not installed, such as a CI runner: the absence of openconnect there
+    /// says nothing about `verifyBinary`, and `testMissingBinaryIsReportedWithInstallAdvice`
+    /// already covers the path that reports it.
+    func testInstalledBinaryPasses() throws {
+        let path = VPNProfile.example.openconnectPath
+        try XCTSkipUnless(
+            FileManager.default.isExecutableFile(atPath: path),
+            "openconnect is not installed at \(path)"
         )
+        XCTAssertNoThrow(try OpenConnectRunner.verifyBinary(at: path))
     }
 }
