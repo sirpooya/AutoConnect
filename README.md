@@ -11,10 +11,20 @@ typing.
 Secrets live in the Keychain. There is no account, no sync, and no telemetry of any kind. See
 [plan.md](plan.md) for the gateway protocol and for why AnyConnect itself cannot be automated.
 
+## Download
+
+Each tag on [Releases](https://github.com/sirpooya/AutoConnect/releases) carries an
+`AutoConnect-<version>.zip` built by GitHub Actions from a clean checkout.
+
+That build is **ad-hoc signed and not notarised**, because the signing identity for this project
+stays on one machine, so Gatekeeper refuses it on first launch: right-click the app and choose
+Open. Building it yourself is the better path anyway, since a stable signature of your own is what
+stops macOS re-prompting for Keychain access on every launch.
+
 ## Build and run
 
 ```bash
-swift test              # 176 tests, including every RFC 6238 Appendix B vector
+swift test              # 203 tests, including every RFC 6238 Appendix B vector
 ./Scripts/make-app.sh   # produces build/AutoConnect.app, signed
 open build/AutoConnect.app
 ```
@@ -52,6 +62,21 @@ Override it explicitly if needed:
 SIGN_IDENTITY="-" ./Scripts/make-app.sh          # ad-hoc
 SIGN_IDENTITY="Developer ID Application: ..." ./Scripts/make-app.sh
 ```
+
+### Releasing
+
+Pushing a `v*` tag runs [.github/workflows/release.yml](.github/workflows/release.yml), which
+tests, builds, verifies the bundle and attaches the zip to that tag's release. The version comes
+from the tag rather than from the script:
+
+```bash
+VERSION=1.2.0 ./Scripts/make-app.sh       # stamp a version other than the default
+REQUIRE_ICON=1 ./Scripts/make-app.sh      # fail rather than fall back to the generic icon
+```
+
+`REQUIRE_ICON` is what the workflow sets. Compiling `Icons/AppIcon.icon` needs `actool` from
+Xcode 26 or newer; locally a missing one is only a warning, but a release must not quietly ship
+the generic icon.
 
 ## Using it
 
@@ -96,7 +121,7 @@ Sources/
     Notifications/               # VPNStatusNotifier, the delivery half of the banners
     Views/                       # panel, VPN section, chart, rows, forms, settings
     Playground/                  # dev-only tuning window
-Tests/AutoConnectCoreTests/     # 176 tests
+Tests/AutoConnectCoreTests/     # 203 tests
 ```
 
 A Swift package rather than an Xcode project, so `swift test` runs the whole suite from the
