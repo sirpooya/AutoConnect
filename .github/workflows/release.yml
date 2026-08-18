@@ -1,0 +1,151 @@
+name: Release
+
+# Builds AutoConnect.app from a clean checkout and attaches it to the GitHub release for the tag.
+#
+# The build is ad-hoc signed: GitHub's runners hold no Apple Development certificate, and this
+# project deliberately keeps one signing identity on the user's own machine (re-signing with a
+# different one makes macOS re-prompt for Keychain access). A downloaded build is therefore
+# unsigned as far as Gatekeeper is concerned, which the release notes say out loud.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to build and upload to'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    # Icon Composer documents (Icons/AppIcon.icon) need actool from Xcode 26 or newer.
+    runs-on: macos-26
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select the newest Xcode
+        run: |
+          set -euo pipefail
+          latest="$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+          echo "Using ${latest}"
+          sudo xcode-select -s "${latest}"
+          xcodebuild -version
+          swift --version
+
+      - name: Resolve the version from the tag
+        id: version
+        run: |
+          set -euo pipefail
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Test
+        run: swift test
+
+      - name: Build the app
+        env:
+          SIGN_IDENTITY: '-'
+          REQUIRE_ICON: '1'
+          VERSION: ${{ steps.version.outputs.version }}
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: ./Scripts/make-app.sh
+
+      - name: Verify the bundle
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          app="build/AutoConnect.app"
+          plist="${app}/Contents/Info.plist"
+          fail=0
+          check() {
+            if [[ -e "$1" ]]; then
+              echo "  ok    $1"
+            else
+              echo "  MISS  $1"
+              fail=1
+            fi
+          }
+
+          echo "Bundle contents:"
+          check "${app}/Contents/MacOS/AutoConnect"
+          check "${plist}"
+          # The layered macOS 26 icon, the fallback icon for older systems, and the SwiftPM
+          # resource bundle that makes the menu bar glyphs resolve outside `swift run`.
+          check "${app}/Contents/Resources/Assets.car"
+          check "${app}/Contents/Resources/AppIcon.icns"
+          check "${app}/Contents/Resources/AutoConnect_AutoConnect.bundle"
+
+          echo "Info.plist keys:"
+          for key in CFBundleIconFile CFBundleIconName; do
+            value="$(/usr/libexec/PlistBuddy -c "Print :${key}" "${plist}" 2>/dev/null || true)"
+            if [[ "${value}" == "AppIcon" ]]; then
+              echo "  ok    ${key} = ${value}"
+            else
+              echo "  BAD   ${key} = ${value:-<missing>} (expected AppIcon)"
+              fail=1
+            fi
+          done
+
+          stamped="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${plist}")"
+          if [[ "${stamped}" == "${VERSION}" ]]; then
+            echo "  ok    CFBundleShortVersionString = ${stamped}"
+          else
+            echo "  BAD   CFBundleShortVersionString = ${stamped} (expected ${VERSION})"
+            fail=1
+          fi
+
+          echo "Signature:"
+          codesign --verify --deep --strict --verbose=2 "${app}"
+
+          # Nothing that only makes sense on the machine that built it should reach a download.
+          echo "Stray files:"
+          strays="$(find "${app}" \( -name '.DS_Store' -o -name '*.swiftmodule' -o -name '*.dSYM' \) -print)"
+          if [[ -n "${strays}" ]]; then
+            echo "${strays}"
+            fail=1
+          else
+            echo "  none"
+          fi
+
+          exit "${fail}"
+
+      - name: Package
+        id: package
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          name="AutoConnect-${VERSION}.zip"
+          # Quarantine and other extended attributes belong to the machine that made the file,
+          # not to the download. Bundle signatures live in _CodeSignature and inside the Mach-O,
+          # so clearing xattrs does not disturb them, and the check below proves it.
+          xattr -cr build/AutoConnect.app
+          # ditto, not zip: it preserves the bundle structure and the code signature.
+          ditto -c -k --sequesterRsrc --keepParent build/AutoConnect.app "${name}"
+
+          # Verify what people actually download, not just what was built.
+          unpacked="$(mktemp -d)"
+          ditto -x -k "${name}" "${unpacked}"
+          codesign --verify --deep --strict --verbose=2 "${unpacked}/AutoConnect.app"
+          test -f "${unpacked}/AutoConnect.app/Contents/Resources/Assets.car"
+          test -f "${unpacked}/AutoConnect.app/Contents/Resources/AppIcon.icns"
+
+          echo "name=${name}" >> "$GITHUB_OUTPUT"
+          shasum -a 256 "${name}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AutoConnect-app
+          path: ${{ steps.package.outputs.name }}
+
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ steps.version.outputs.tag }}" "${{ steps.package.outputs.name }}" --clobber

@@ -10,6 +10,8 @@
 #   Scripts/make-app.sh                    # release build, signed with the first Apple Development identity
 #   SIGN_IDENTITY="-" Scripts/make-app.sh  # ad-hoc signature
 #   CONFIG=debug Scripts/make-app.sh       # debug build
+#   VERSION=1.2.0 Scripts/make-app.sh      # stamp a version other than the default
+#   REQUIRE_ICON=1 Scripts/make-app.sh     # fail instead of falling back to the generic icon
 #
 set -euo pipefail
 
@@ -18,8 +20,8 @@ cd "$(dirname "$0")/.."
 CONFIG="${CONFIG:-release}"
 APP_NAME="AutoConnect"
 BUNDLE_ID="com.pooya.AutoConnect"
-VERSION="0.1.0"
-BUILD_NUMBER="1"
+VERSION="${VERSION:-1.0.0}"
+BUILD_NUMBER="${BUILD_NUMBER:-1}"
 APP_DIR="build/${APP_NAME}.app"
 
 echo "==> Building (${CONFIG})"
@@ -65,8 +67,18 @@ if [[ -d "${ICON_SOURCE}" ]] && xcrun -f actool >/dev/null 2>&1; then
         --minimum-deployment-target 14.0 \
         --errors --warnings > /dev/null
     ICON_KEYS=$'    <key>CFBundleIconFile</key>\n    <string>AppIcon</string>\n    <key>CFBundleIconName</key>\n    <string>AppIcon</string>'
+elif [[ "${REQUIRE_ICON:-0}" == "1" ]]; then
+    echo "REQUIRE_ICON is set but ${ICON_SOURCE} or actool is missing" >&2
+    exit 1
 else
     echo "No ${ICON_SOURCE} or no actool; the app will use the generic icon" >&2
+fi
+
+# actool reports some failures on stdout and still exits 0, so check that it really produced the
+# compiled catalog rather than trusting the exit status.
+if [[ -n "${ICON_KEYS}" && ! -f "${APP_DIR}/Contents/Resources/Assets.car" ]]; then
+    echo "actool ran but produced no Assets.car" >&2
+    exit 1
 fi
 
 cat > "${APP_DIR}/Contents/Info.plist" <<PLIST
