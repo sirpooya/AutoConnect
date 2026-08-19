@@ -14,12 +14,18 @@ Secrets live in the Keychain. There is no account, no sync, and no telemetry of 
 ## Download
 
 Each tag on [Releases](https://github.com/sirpooya/AutoConnect/releases) carries an
-`AutoConnect-<version>.zip` built by GitHub Actions from a clean checkout.
+`AutoConnect-<version>.zip` built by GitHub Actions from a clean checkout. It is universal
+(Apple Silicon and Intel), signed with Developer ID, notarised by Apple, and has the ticket
+stapled, so it opens with no warning and needs no right-click.
 
-That build is **ad-hoc signed and not notarised**, because the signing identity for this project
-stays on one machine, so Gatekeeper refuses it on first launch: right-click the app and choose
-Open. Building it yourself is the better path anyway, since a stable signature of your own is what
-stops macOS re-prompting for Keychain access on every launch.
+Unzip it, drag `AutoConnect.app` to `/Applications`, and open it. Remember it is menu-bar only:
+there is no Dock icon and no window, so look for the icon in the menu bar.
+
+You still need `openconnect`:
+
+```bash
+brew install openconnect
+```
 
 ## Build and run
 
@@ -66,17 +72,46 @@ SIGN_IDENTITY="Developer ID Application: ..." ./Scripts/make-app.sh
 ### Releasing
 
 Pushing a `v*` tag runs [.github/workflows/release.yml](.github/workflows/release.yml), which
-tests, builds, verifies the bundle and attaches the zip to that tag's release. The version comes
-from the tag rather than from the script:
+tests, builds universal, signs with Developer ID, notarises, staples, verifies and attaches the
+zip to that tag's release. The version comes from the tag rather than from the script:
 
 ```bash
 VERSION=1.2.0 ./Scripts/make-app.sh       # stamp a version other than the default
 REQUIRE_ICON=1 ./Scripts/make-app.sh      # fail rather than fall back to the generic icon
+UNIVERSAL=1 ./Scripts/make-app.sh         # arm64 + x86_64, which a download needs
 ```
 
-`REQUIRE_ICON` is what the workflow sets. Compiling `Icons/AppIcon.icon` needs `actool` from
-Xcode 26 or newer; locally a missing one is only a warning, but a release must not quietly ship
-the generic icon.
+The workflow sets all three. Compiling `Icons/AppIcon.icon` needs `actool` from Xcode 26 or
+newer; locally a missing one is only a warning, but a release must not quietly ship the generic
+icon.
+
+**Signing is not optional for a release.** An ad-hoc signed bundle launches only on a Mac with
+Gatekeeper assessments disabled, and Apple's own `syspolicy_check distribution` calls a missing
+notary ticket fatal. The workflow refuses to run without these five repository secrets, rather
+than publish something nobody can open:
+
+| Secret | What it is |
+| --- | --- |
+| `MACOS_CERTIFICATE_P12` | base64 of a **Developer ID Application** `.p12` export |
+| `MACOS_CERTIFICATE_PASSWORD` | the password set when exporting that `.p12` |
+| `NOTARY_APPLE_ID` | the Apple ID of the developer account |
+| `NOTARY_PASSWORD` | an app-specific password from [appleid.apple.com](https://appleid.apple.com) |
+| `NOTARY_TEAM_ID` | the 10-character team identifier |
+
+A Developer ID Application certificate needs a paid Apple Developer Program membership. An Apple
+Development certificate is not a substitute: it signs for local use only, and the workflow checks
+which kind it was handed. To produce the first secret, export the certificate from Keychain
+Access as a `.p12`, then:
+
+```bash
+base64 -i DeveloperID.p12 | pbcopy
+```
+
+The workflow verifies what it built the way a downloader's Mac would: both architectures present,
+the authority is Developer ID rather than ad-hoc, the ticket staples and validates, `spctl`
+accepts it, and `syspolicy_check distribution` passes. It then unpacks the finished zip, marks it
+with a quarantine flag, and asks `spctl` again, so the thing that gets checked is the thing that
+gets downloaded.
 
 ## Using it
 

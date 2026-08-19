@@ -12,6 +12,7 @@
 #   CONFIG=debug Scripts/make-app.sh       # debug build
 #   VERSION=1.2.0 Scripts/make-app.sh      # stamp a version other than the default
 #   REQUIRE_ICON=1 Scripts/make-app.sh     # fail instead of falling back to the generic icon
+#   UNIVERSAL=1 Scripts/make-app.sh        # arm64 + x86_64, which a download needs
 #
 set -euo pipefail
 
@@ -24,9 +25,16 @@ VERSION="${VERSION:-1.0.0}"
 BUILD_NUMBER="${BUILD_NUMBER:-1}"
 APP_DIR="build/${APP_NAME}.app"
 
-echo "==> Building (${CONFIG})"
-swift build -c "${CONFIG}" --product "${APP_NAME}"
-BIN_PATH="$(swift build -c "${CONFIG}" --product "${APP_NAME}" --show-bin-path)"
+# A build for this machine is native, and quick. A build for other people has to carry both
+# slices, since an arm64-only bundle will not launch on an Intel Mac at all.
+BUILD_FLAGS=(-c "${CONFIG}" --product "${APP_NAME}")
+if [[ "${UNIVERSAL:-0}" == "1" ]]; then
+    BUILD_FLAGS+=(--arch arm64 --arch x86_64)
+fi
+
+echo "==> Building (${CONFIG}${UNIVERSAL:+, universal})"
+swift build "${BUILD_FLAGS[@]}"
+BIN_PATH="$(swift build "${BUILD_FLAGS[@]}" --show-bin-path)"
 BINARY="${BIN_PATH}/${APP_NAME}"
 
 if [[ ! -x "${BINARY}" ]]; then
@@ -146,12 +154,25 @@ if [[ -z "${SIGN_IDENTITY:-}" ]]; then
     SIGN_IDENTITY="${SIGN_IDENTITY:--}"
 fi
 
+# The notary service rejects a signature with no secure timestamp, so a Developer ID build asks
+# Apple's timestamp server for one. Every other identity signs offline, which keeps a local build
+# working without the network and is all an Apple Development or ad-hoc signature can do anyway.
+if [[ "${SIGN_IDENTITY}" == "Developer ID Application"* ]]; then
+    TIMESTAMP_FLAG="--timestamp"
+else
+    TIMESTAMP_FLAG="--timestamp=none"
+fi
+
 echo "==> Signing with: ${SIGN_IDENTITY}"
-codesign --force --options runtime --timestamp=none \
+codesign --force --options runtime "${TIMESTAMP_FLAG}" \
     --sign "${SIGN_IDENTITY}" "${APP_DIR}" 2>&1 | sed 's/^/    /'
 
 echo "==> Verifying"
 codesign --verify --deep --strict "${APP_DIR}" && echo "    signature OK"
+
+if [[ -n "${SHOW_ARCHS:-}" ]]; then
+    echo "    architectures: $(lipo -archs "${APP_DIR}/Contents/MacOS/${APP_NAME}")"
+fi
 
 echo
 echo "Built ${APP_DIR}"

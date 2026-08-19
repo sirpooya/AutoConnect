@@ -1,11 +1,20 @@
 name: Release
 
-# Builds AutoConnect.app from a clean checkout and attaches it to the GitHub release for the tag.
+# Builds AutoConnect.app from a clean checkout, signs it with Developer ID, notarizes it, staples
+# the ticket, and attaches it to the GitHub release for the tag.
 #
-# The build is ad-hoc signed: GitHub's runners hold no Apple Development certificate, and this
-# project deliberately keeps one signing identity on the user's own machine (re-signing with a
-# different one makes macOS re-prompt for Keychain access). A downloaded build is therefore
-# unsigned as far as Gatekeeper is concerned, which the release notes say out loud.
+# Signing and notarization are not optional here. An ad-hoc signed build launches only on a Mac
+# with Gatekeeper turned off: everyone else is refused, which is exactly what happened to the
+# first 1.0.0 zip. `syspolicy_check distribution` calls a missing notary ticket fatal, so this
+# workflow fails loudly when the secrets are absent rather than publishing a bundle that cannot
+# be opened.
+#
+# Required repository secrets:
+#   MACOS_CERTIFICATE_P12       base64 of a "Developer ID Application" .p12 export
+#   MACOS_CERTIFICATE_PASSWORD  the password set when exporting that .p12
+#   NOTARY_APPLE_ID             the Apple ID of the developer account
+#   NOTARY_PASSWORD             an app-specific password from appleid.apple.com
+#   NOTARY_TEAM_ID              the 10-character team identifier
 
 on:
   push:
@@ -45,16 +54,105 @@ jobs:
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
           echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
 
+      - name: Check the signing secrets are present
+        env:
+          P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          P12_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
+          NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
+          TEAM_ID: ${{ secrets.NOTARY_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [[ -n "${P12}" ]] || missing+=(MACOS_CERTIFICATE_P12)
+          [[ -n "${P12_PASSWORD}" ]] || missing+=(MACOS_CERTIFICATE_PASSWORD)
+          [[ -n "${APPLE_ID}" ]] || missing+=(NOTARY_APPLE_ID)
+          [[ -n "${NOTARY_PASSWORD}" ]] || missing+=(NOTARY_PASSWORD)
+          [[ -n "${TEAM_ID}" ]] || missing+=(NOTARY_TEAM_ID)
+          if (( ${#missing[@]} )); then
+            echo "Missing repository secrets: ${missing[*]}" >&2
+            echo "Without them the build would be ad-hoc signed, and Gatekeeper refuses such a" >&2
+            echo "bundle on every Mac that has not had assessments disabled." >&2
+            exit 1
+          fi
+          echo "All five signing secrets are set."
+
       - name: Test
         run: swift test
 
+      - name: Import the Developer ID certificate
+        id: signing
+        env:
+          P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          P12_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          # A throwaway keychain, so the certificate never touches the runner's login keychain
+          # and dies with the job.
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          password="$(uuidgen)"
+          security create-keychain -p "${password}" "${keychain}"
+          security set-keychain-settings -lut 21600 "${keychain}"
+          security unlock-keychain -p "${password}" "${keychain}"
+
+          echo "${P12}" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security import "$RUNNER_TEMP/certificate.p12" \
+            -k "${keychain}" -P "${P12_PASSWORD}" \
+            -T /usr/bin/codesign -T /usr/bin/security
+          rm -f "$RUNNER_TEMP/certificate.p12"
+
+          # Without this, codesign blocks on a UI prompt for keychain access that nobody can answer.
+          security set-key-partition-list -S apple-tool:,apple: -k "${password}" "${keychain}" >/dev/null
+          security list-keychains -d user -s "${keychain}" $(security list-keychains -d user | tr -d '"')
+
+          identity="$(security find-identity -v -p codesigning "${keychain}" \
+            | awk -F'"' '/Developer ID Application/ {print $2; exit}')"
+          if [[ -z "${identity}" ]]; then
+            echo "The imported certificate is not a Developer ID Application certificate." >&2
+            echo "Apple Development certificates cannot sign a build for distribution." >&2
+            security find-identity -v -p codesigning "${keychain}" >&2
+            exit 1
+          fi
+          echo "Signing as: ${identity}"
+          echo "identity=${identity}" >> "$GITHUB_OUTPUT"
+
       - name: Build the app
         env:
-          SIGN_IDENTITY: '-'
+          SIGN_IDENTITY: ${{ steps.signing.outputs.identity }}
           REQUIRE_ICON: '1'
+          UNIVERSAL: '1'
+          SHOW_ARCHS: '1'
           VERSION: ${{ steps.version.outputs.version }}
           BUILD_NUMBER: ${{ github.run_number }}
         run: ./Scripts/make-app.sh
+
+      - name: Notarize and staple
+        env:
+          APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
+          NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
+          TEAM_ID: ${{ secrets.NOTARY_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          # The notary service takes a zip, but the ticket is stapled to the .app itself, which is
+          # what lets a downloaded copy pass Gatekeeper with no network.
+          ditto -c -k --sequesterRsrc --keepParent build/AutoConnect.app "$RUNNER_TEMP/notarize.zip"
+
+          if ! xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" \
+              --apple-id "${APPLE_ID}" \
+              --password "${NOTARY_PASSWORD}" \
+              --team-id "${TEAM_ID}" \
+              --wait --timeout 30m; then
+            echo "Notarization failed. Fetching the log for the most recent submission:" >&2
+            id="$(xcrun notarytool history --apple-id "${APPLE_ID}" --password "${NOTARY_PASSWORD}" \
+              --team-id "${TEAM_ID}" --output-format json \
+              | python3 -c 'import json,sys; print(json.load(sys.stdin)["history"][0]["id"])')"
+            xcrun notarytool log "${id}" --apple-id "${APPLE_ID}" --password "${NOTARY_PASSWORD}" \
+              --team-id "${TEAM_ID}" >&2 || true
+            exit 1
+          fi
+
+          xcrun stapler staple build/AutoConnect.app
+          xcrun stapler validate build/AutoConnect.app
 
       - name: Verify the bundle
         env:
@@ -101,8 +199,54 @@ jobs:
             fail=1
           fi
 
+          echo "Architectures:"
+          archs="$(lipo -archs "${app}/Contents/MacOS/AutoConnect")"
+          for arch in arm64 x86_64; do
+            if [[ " ${archs} " == *" ${arch} "* ]]; then
+              echo "  ok    ${arch}"
+            else
+              echo "  MISS  ${arch} (have: ${archs})"
+              fail=1
+            fi
+          done
+
           echo "Signature:"
           codesign --verify --deep --strict --verbose=2 "${app}"
+          authority="$(codesign -dv --verbose=4 "${app}" 2>&1 | awk -F'=' '/Authority=/ {print $2; exit}')"
+          if [[ "${authority}" == "Developer ID Application"* ]]; then
+            echo "  ok    signed by ${authority}"
+          else
+            echo "  BAD   signed by ${authority:-<ad-hoc>}, which Gatekeeper refuses on download"
+            fail=1
+          fi
+
+          echo "Notarization:"
+          # The ticket is the whole point: without it a downloaded copy is refused, and this is
+          # the check that would have caught the first 1.0.0 zip.
+          if xcrun stapler validate "${app}"; then
+            echo "  ok    ticket stapled"
+          else
+            echo "  BAD   no stapled notarization ticket"
+            fail=1
+          fi
+
+          echo "Gatekeeper:"
+          # The runner has assessments enabled, unlike a development Mac, so this is the verdict a
+          # person downloading the zip will actually get.
+          if spctl -a -vvv -t exec "${app}"; then
+            echo "  ok    accepted by Gatekeeper"
+          else
+            echo "  BAD   rejected by Gatekeeper"
+            fail=1
+          fi
+
+          echo "Apple distribution checks:"
+          if syspolicy_check distribution "${app}"; then
+            echo "  ok    passes syspolicy_check distribution"
+          else
+            echo "  BAD   fails syspolicy_check distribution"
+            fail=1
+          fi
 
           # Nothing that only makes sense on the machine that built it should reach a download.
           echo "Stray files:"
@@ -133,9 +277,18 @@ jobs:
           # Verify what people actually download, not just what was built.
           unpacked="$(mktemp -d)"
           ditto -x -k "${name}" "${unpacked}"
-          codesign --verify --deep --strict --verbose=2 "${unpacked}/AutoConnect.app"
-          test -f "${unpacked}/AutoConnect.app/Contents/Resources/Assets.car"
-          test -f "${unpacked}/AutoConnect.app/Contents/Resources/AppIcon.icns"
+          app="${unpacked}/AutoConnect.app"
+          codesign --verify --deep --strict --verbose=2 "${app}"
+          test -f "${app}/Contents/Resources/Assets.car"
+          test -f "${app}/Contents/Resources/AppIcon.icns"
+          # The ticket has to survive the round trip, and Gatekeeper has to accept what comes out
+          # of the zip rather than only what went into it.
+          xcrun stapler validate "${app}"
+          spctl -a -vvv -t exec "${app}"
+          # Quarantine is what a real download carries, so judge the artifact wearing it.
+          xattr -w com.apple.quarantine "0083;00000000;Safari;" "${app}"
+          spctl -a -vvv -t exec "${app}"
+          echo "Accepted by Gatekeeper while quarantined."
 
           echo "name=${name}" >> "$GITHUB_OUTPUT"
           shasum -a 256 "${name}"
