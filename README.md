@@ -14,14 +14,26 @@ Secrets live in the Keychain. There is no account, no sync, and no telemetry of 
 ## Download
 
 Each tag on [Releases](https://github.com/sirpooya/AutoConnect/releases) carries an
-`AutoConnect-<version>.zip` built by GitHub Actions from a clean checkout. It is universal
-(Apple Silicon and Intel), signed with Developer ID, notarised by Apple, and has the ticket
-stapled, so it opens with no warning and needs no right-click.
+`AutoConnect-<version>.zip` built by GitHub Actions from a clean checkout. It is universal, so it
+runs on Apple Silicon and Intel.
 
-Unzip it, drag `AutoConnect.app` to `/Applications`, and open it. Remember it is menu-bar only:
-there is no Dock icon and no window, so look for the icon in the menu bar.
+It is **ad-hoc signed and not notarised**, because there is no Developer ID certificate for this
+project. macOS quarantines whatever a browser downloads, so clear that flag once:
 
-You still need `openconnect`:
+```bash
+unzip AutoConnect-1.0.1.zip
+xattr -dr com.apple.quarantine AutoConnect.app
+mv AutoConnect.app /Applications/
+open /Applications/AutoConnect.app
+```
+
+Downloading with `curl` instead of a browser skips the quarantine flag entirely, so the `xattr`
+line is only needed for a browser download.
+
+**It is menu-bar only.** There is no Dock icon and no window, so after opening it, look for the
+icon in the menu bar rather than waiting for something to appear.
+
+You also need `openconnect`:
 
 ```bash
 brew install openconnect
@@ -72,46 +84,29 @@ SIGN_IDENTITY="Developer ID Application: ..." ./Scripts/make-app.sh
 ### Releasing
 
 Pushing a `v*` tag runs [.github/workflows/release.yml](.github/workflows/release.yml), which
-tests, builds universal, signs with Developer ID, notarises, staples, verifies and attaches the
-zip to that tag's release. The version comes from the tag rather than from the script:
+tests, builds, verifies, launches and attaches the zip to that tag's release. The version comes
+from the tag rather than from the script:
 
 ```bash
 VERSION=1.2.0 ./Scripts/make-app.sh       # stamp a version other than the default
 REQUIRE_ICON=1 ./Scripts/make-app.sh      # fail rather than fall back to the generic icon
-UNIVERSAL=1 ./Scripts/make-app.sh         # arm64 + x86_64, which a download needs
 ```
 
-The workflow sets all three. Compiling `Icons/AppIcon.icon` needs `actool` from Xcode 26 or
-newer; locally a missing one is only a warning, but a release must not quietly ship the generic
-icon.
+Compiling `Icons/AppIcon.icon` needs `actool` from Xcode 26 or newer; locally a missing one is
+only a warning, but a release must not quietly ship the generic icon.
 
-**Signing is not optional for a release.** An ad-hoc signed bundle launches only on a Mac with
-Gatekeeper assessments disabled, and Apple's own `syspolicy_check distribution` calls a missing
-notary ticket fatal. The workflow refuses to run without these five repository secrets, rather
-than publish something nobody can open:
+**The build is always universal, and not only for Intel support.** Passing more than one `--arch`
+is what moves SwiftPM onto XCBuild, and the two build systems generate different `Bundle.module`
+accessors. The native one looks in the `.app` root and then in an absolute `.build` path baked in
+at compile time; the XCBuild one looks in `Contents/Resources`, which is where `make-app.sh` puts
+the resource bundle. A native build therefore resolves its resources only through the build
+directory of the machine that compiled it: it runs there and traps at launch everywhere else.
 
-| Secret | What it is |
-| --- | --- |
-| `MACOS_CERTIFICATE_P12` | base64 of a **Developer ID Application** `.p12` export |
-| `MACOS_CERTIFICATE_PASSWORD` | the password set when exporting that `.p12` |
-| `NOTARY_APPLE_ID` | the Apple ID of the developer account |
-| `NOTARY_PASSWORD` | an app-specific password from [appleid.apple.com](https://appleid.apple.com) |
-| `NOTARY_TEAM_ID` | the 10-character team identifier |
-
-A Developer ID Application certificate needs a paid Apple Developer Program membership. An Apple
-Development certificate is not a substitute: it signs for local use only, and the workflow checks
-which kind it was handed. To produce the first secret, export the certificate from Keychain
-Access as a `.p12`, then:
-
-```bash
-base64 -i DeveloperID.p12 | pbcopy
-```
-
-The workflow verifies what it built the way a downloader's Mac would: both architectures present,
-the authority is Developer ID rather than ad-hoc, the ticket staples and validates, `spctl`
-accepts it, and `syspolicy_check distribution` passes. It then unpacks the finished zip, marks it
-with a quarantine flag, and asks `spctl` again, so the thing that gets checked is the thing that
-gets downloaded.
+That is how 1.0.0 shipped a bundle that opened for nobody, including its author. Being menu-bar
+only, it died with no window and no dialog, so it read as "it does not open" rather than as a
+crash. The workflow now unpacks the finished zip, moves `.build` out of the way, runs the app and
+requires it to still be alive ten seconds later, which is the only check that would have caught
+it.
 
 ## Using it
 

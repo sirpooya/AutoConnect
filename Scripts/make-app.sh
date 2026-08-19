@@ -12,7 +12,6 @@
 #   CONFIG=debug Scripts/make-app.sh       # debug build
 #   VERSION=1.2.0 Scripts/make-app.sh      # stamp a version other than the default
 #   REQUIRE_ICON=1 Scripts/make-app.sh     # fail instead of falling back to the generic icon
-#   UNIVERSAL=1 Scripts/make-app.sh        # arm64 + x86_64, which a download needs
 #
 set -euo pipefail
 
@@ -25,14 +24,21 @@ VERSION="${VERSION:-1.0.0}"
 BUILD_NUMBER="${BUILD_NUMBER:-1}"
 APP_DIR="build/${APP_NAME}.app"
 
-# A build for this machine is native, and quick. A build for other people has to carry both
-# slices, since an arm64-only bundle will not launch on an Intel Mac at all.
-BUILD_FLAGS=(-c "${CONFIG}" --product "${APP_NAME}")
-if [[ "${UNIVERSAL:-0}" == "1" ]]; then
-    BUILD_FLAGS+=(--arch arm64 --arch x86_64)
-fi
+# Always universal, and not only so an Intel Mac can run it.
+#
+# Passing more than one --arch is what moves SwiftPM off its native build system and onto XCBuild,
+# and the two generate *different* `Bundle.module` accessors:
+#
+#   native   looks in <App>.app/ and then in an absolute .build path baked in at compile time
+#   XCBuild  looks in <App>.app/Contents/Resources/ first, which is where this script puts it
+#
+# A native build therefore produces an app that resolves its resources only through the build
+# directory of the machine that compiled it. It runs there and traps at launch everywhere else,
+# which is exactly how 1.0.0 shipped a bundle that could not open for anyone. Do not "optimise"
+# this back to a single arch.
+BUILD_FLAGS=(-c "${CONFIG}" --product "${APP_NAME}" --arch arm64 --arch x86_64)
 
-echo "==> Building (${CONFIG}${UNIVERSAL:+, universal})"
+echo "==> Building (${CONFIG}, universal)"
 swift build "${BUILD_FLAGS[@]}"
 BIN_PATH="$(swift build "${BUILD_FLAGS[@]}" --show-bin-path)"
 BINARY="${BIN_PATH}/${APP_NAME}"
@@ -51,10 +57,20 @@ cp "${BINARY}" "${APP_DIR}/Contents/MacOS/${APP_NAME}"
 # bundle's Resources directory first, so copying it here is what makes the menu bar icon resolve
 # inside the packaged app (rather than only under `swift run`).
 RESOURCE_BUNDLE="${BIN_PATH}/${APP_NAME}_${APP_NAME}.bundle"
+COPIED_BUNDLE="${APP_DIR}/Contents/Resources/${APP_NAME}_${APP_NAME}.bundle"
 if [[ -d "${RESOURCE_BUNDLE}" ]]; then
     cp -R "${RESOURCE_BUNDLE}" "${APP_DIR}/Contents/Resources/"
 else
     echo "Missing ${RESOURCE_BUNDLE}; the menu bar icon will fall back to an SF Symbol" >&2
+    exit 1
+fi
+
+# XCBuild emits a real bundle, with Contents/Info.plist, which is what `Bundle.init(url:)` needs
+# to return anything at all. Check it rather than assume it: "the directory is present" is the
+# check that passed while 1.0.0 was fatally broken.
+if [[ ! -f "${COPIED_BUNDLE}/Contents/Info.plist" ]]; then
+    echo "${COPIED_BUNDLE} has no Contents/Info.plist, so Bundle.module will trap at launch" >&2
+    exit 1
 fi
 
 # The app icon is an Icon Composer document. actool turns it into both an Assets.car, which is
@@ -170,9 +186,7 @@ codesign --force --options runtime "${TIMESTAMP_FLAG}" \
 echo "==> Verifying"
 codesign --verify --deep --strict "${APP_DIR}" && echo "    signature OK"
 
-if [[ -n "${SHOW_ARCHS:-}" ]]; then
-    echo "    architectures: $(lipo -archs "${APP_DIR}/Contents/MacOS/${APP_NAME}")"
-fi
+echo "    architectures: $(lipo -archs "${APP_DIR}/Contents/MacOS/${APP_NAME}")"
 
 echo
 echo "Built ${APP_DIR}"
