@@ -44,7 +44,7 @@ bundle a menu-bar app needs. **Anything worth testing belongs in `AutoConnectCor
 
 ```
 Sources/
-├── AutoConnectCore/                      # pure logic, no UI, 176 tests
+├── AutoConnectCore/                      # pure logic, no UI, 226 tests
 │   ├── Crypto/
 │   │   ├── Base32.swift              # RFC 4648 decode + encode
 │   │   └── TOTP.swift                # RFC 6238 / RFC 4226 truncation
@@ -62,8 +62,10 @@ Sources/
 │       ├── ConfigAuthXML.swift        # Cisco config-auth builders, parser, group probe
 │       ├── GatewayClient.swift        # the POSTs, SHA1 pinning, learn-on-first-contact
 │       ├── OpenConnectRunner.swift    # process spawn, output parsing, state machine
+│       ├── OpenConnectVersion.swift   # asks the installed binary what version it is
 │       ├── PinnedCertificate.swift    # what the pinned cert says: names, issuer, expiry
 │       ├── ReconnectPolicy.swift      # when to renew, back off, or give up
+│       ├── SetupCommands.swift        # install and sudo lines the user copies, built from the same constants
 │       ├── StatusNotification.swift   # which status changes earn a banner, and what it says
 │       └── TunnelStats.swift          # netstat counters, rates, byte formatting
 └── AutoConnect/                           # the app
@@ -90,7 +92,8 @@ Sources/
     │   ├── AccountFormView.swift      # manual add (accounts are read-only once enrolled)
     │   ├── AccountDetailsView.swift   # what an account is, with nothing to change
     │   ├── SettingsComponents.swift   # cards, rows, dividers, WidePopUpButton
-    │   ├── SettingsView.swift         # General / Connections / Authenticator tabs
+    │   ├── SettingsView.swift         # General / Connections / Authenticator / About tabs
+    │   ├── AboutTab.swift             # version, source, and what this Mac is running
     │   ├── ConnectionEditorView.swift # one connection: address, Detect, credentials
     │   └── SystemCertificateIcon.swift # Keychain Access artwork, loaded from the system
     └── Playground/
@@ -251,6 +254,13 @@ section 4 and section 3. Summary of the behavior contract:
 - The group comes from a group-less init POST (`ConfigAuth.parseProbe`), never typed.
 - Detect the openconnect binary at launch; if missing, say so plainly and point at
   `brew install openconnect`.
+- **Setup the user must do by hand ships as a command to copy, never as "see the README."** A
+  downloaded `.app` has no README beside it. `SetupCommands` builds both lines (the brew install and
+  the sudoers drop-in) from the same constants `OpenConnectRunner` launches with, so a pasted rule
+  cannot cover a path the app does not use, and the advice changes when Homebrew itself is absent
+  rather than telling someone to run a command that will say "command not found". Settings also
+  offers Locate, since only one machine in the world has openconnect exactly where the default
+  looks.
 - Disconnect must actually tear down the tunnel and restore routing.
 
 ## Features / Behavior (authenticator half)

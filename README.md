@@ -39,6 +39,10 @@ You also need `openconnect`:
 brew install openconnect
 ```
 
+The app looks for it at `/opt/homebrew/bin/openconnect`. If yours is somewhere else, an Intel
+Homebrew prefix or MacPorts for instance, Settings > General shows the missing-binary row with a
+Locate button, and no reinstall is needed.
+
 ## Build and run
 
 ```bash
