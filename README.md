@@ -1,12 +1,30 @@
-# AutoConnect
+<p align="center">
+  <img src="Icons/readme/appicon-256.png" width="128" alt="AutoConnect">
+</p>
 
-A native macOS menu-bar app that replaces Cisco AnyConnect, built with Apple frameworks only.
+<h1 align="center">AutoConnect</h1>
 
-It is two halves sharing a Keychain and a crypto layer. The connector drives the SAML login in a
-`WKWebView` it owns, captures the session token, and hands it to `openconnect`, showing live
-status, the assigned IP, and a countdown to expiry. The authenticator is a full RFC 6238 TOTP
-client, and it feeds its own code into that login: the name is the point, a connect takes no
-typing.
+<p align="center"><b>Cisco AnyConnect, without AnyConnect.</b></p>
+
+<p align="center">
+  A native macOS menu-bar app that signs into a Cisco SAML gateway in a web view it owns,
+  <br>feeds it a TOTP code it generates itself, and brings the tunnel up with openconnect.
+</p>
+
+<p align="center">
+  <a href="https://github.com/sirpooya/AutoConnect/releases/latest"><img alt="Download" src="https://img.shields.io/badge/DOWNLOAD-.ZIP-2563eb?style=for-the-badge&labelColor=555555"></a>
+  <a href="https://github.com/sirpooya/AutoConnect/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/sirpooya/AutoConnect?style=for-the-badge&label=RELEASE&color=2563eb&labelColor=555555"></a>
+  <img alt="macOS 14 Sonoma and later" src="https://img.shields.io/badge/macOS-14%20SONOMA%2B-000000?style=for-the-badge&logo=apple&logoColor=white&labelColor=555555">
+  <img alt="Free" src="https://img.shields.io/badge/FREE-22c55e?style=for-the-badge">
+</p>
+
+---
+
+Built with Apple frameworks only. It is two halves sharing a Keychain and a crypto layer. The
+connector drives the SAML login in a `WKWebView` it owns, captures the session token, and hands it
+to `openconnect`, showing live status, the assigned IP, and a countdown to expiry. The
+authenticator is a full RFC 6238 TOTP client, and it feeds its own code into that login: the name
+is the point, a connect takes no typing.
 
 Secrets live in the Keychain. There is no account, no sync, and no telemetry of any kind. See
 [plan.md](plan.md) for the gateway protocol and for why AnyConnect itself cannot be automated.
