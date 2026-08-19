@@ -1,25 +1,15 @@
 import AppKit
-import AutoConnectCore
 import SwiftUI
 
-/// The About pane: what this build is, where it came from, and what it is running on.
-///
-/// It exists to answer two questions without leaving the app. "Which version am I on" is the
-/// obvious one. The other is what a bug report needs, which for this app is never just the app:
-/// the tunnel is `openconnect`, and its version and the OS are as much a part of a failure as
-/// anything here. So the same three lines the pane shows are also one button away from the
-/// clipboard, rather than being three things to go and look up.
+/// The About pane: what this build is, and where it came from.
 ///
 /// A separate view, not another computed property on `SettingsView`. That file has already had the
 /// type checker give up on one over-long expression, and this pane shares no state with the others.
 struct AboutTab: View {
 
-    /// Taken from the settings pane rather than read again here, so a path edited on the General
-    /// tab is the one probed, not the one last saved.
-    let openconnectPath: String
-
-    /// Nil until the probe answers, and nil for good if there is no binary to ask.
-    @State private var openconnectVersion: String?
+    /// The process-wide Sparkle wrapper. Observed rather than read once, so the button disables
+    /// itself while a check is running and "Last checked" moves when one finishes.
+    @ObservedObject private var updates = UpdateController.shared
 
     var body: some View {
         SettingsTabBody {
@@ -33,14 +23,8 @@ struct AboutTab: View {
                     + "does not bundle or modify it."
             )
 
+            updatesSection
             sourceSection
-            systemSection
-        }
-        // Spawning openconnect takes milliseconds, but it is still a process, and the pane must
-        // not be waiting on one. Re-runs if the configured path changes underneath it.
-        .task(id: openconnectPath) {
-            let path = openconnectPath
-            openconnectVersion = await Task.detached { OpenConnectVersion.read(at: path) }.value
         }
     }
 
@@ -66,10 +50,51 @@ struct AboutTab: View {
                 }
 
                 Spacer(minLength: 10)
+
+                // Beside the version, because "which version am I on" and "is there a newer one"
+                // are the same question asked twice.
+                Button("Check Now") {
+                    updates.checkForUpdates()
+                }
+                .controlSize(.small)
+                .disabled(!updates.canCheckForUpdates)
             }
             .padding(.horizontal, SettingsMetrics.rowHPadding)
             .padding(.vertical, 12)
         }
+    }
+
+    /// Automatic checks, and when the last one happened.
+    ///
+    /// The switch is Sparkle's own preference rather than a defaults key of ours, so turning it off
+    /// stops the scheduled cycle instead of only hiding it. The date earns its row because a check
+    /// that finds nothing says nothing: without it there is no way to tell "up to date" from
+    /// "never asked".
+    @ViewBuilder
+    private var updatesSection: some View {
+        SettingsSectionHeader(text: "Updates")
+            .padding(.top, 10)
+
+        SettingsCard {
+            SettingsRow(title: "Check automatically") {
+                SettingsSwitch(isOn: $updates.checksAutomatically)
+            }
+            SettingsDivider()
+            SettingsRow(title: "Last checked") {
+                Text(lastCheckedText)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .disabled(!updates.isAvailable)
+
+        SettingsFootnote(
+            text: updates.isAvailable
+                ? "Once a day, in the background, and never while the tunnel is up: installing an "
+                    + "update restarts the app, which would take the connection down with it."
+                : "Updates need the packaged app. An unpackaged build has no Info.plist, so there "
+                    + "is no feed to read."
+        )
     }
 
     @ViewBuilder
@@ -90,32 +115,6 @@ struct AboutTab: View {
         }
     }
 
-    /// The three lines a report needs, and the button that takes all three at once.
-    @ViewBuilder
-    private var systemSection: some View {
-        SettingsSectionHeader(text: "This Mac")
-            .padding(.top, 10)
-
-        SettingsCard {
-            SettingsRow(title: "macOS") {
-                Text(systemVersion)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-            }
-            SettingsDivider()
-            SettingsRow(title: "openconnect") {
-                Text(openconnectVersion.map { "Version \($0)" } ?? "Not installed")
-                    .font(.system(size: 12))
-                    .foregroundStyle(openconnectVersion == nil ? .orange : .secondary)
-            }
-            SettingsDivider()
-            SettingsRow(title: "Version details") {
-                SettingsCopyButton(title: "Copy", value: diagnostics)
-                    .controlSize(.small)
-            }
-        }
-    }
-
     // MARK: - What to show
 
     /// The repo the README sends people to for releases. The `osx-auth-qr` name it was pushed
@@ -126,6 +125,16 @@ struct AboutTab: View {
     /// Read from the bundle rather than compiled in, so `make-app.sh` stamping a version is the
     /// single place a version number lives. `swift run` has no Info.plist at all, and saying so
     /// is more use than a number that would be a guess.
+    /// Relative, because the exact minute never matters; whether it was today or a month ago does.
+    private var lastCheckedText: String {
+        guard updates.isAvailable else { return "Unavailable" }
+        guard let date = updates.lastCheck else { return "Never" }
+
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .full
+        return formatter.localizedString(for: date, relativeTo: Date())
+    }
+
     private var appVersion: String {
         let info = Bundle.main.infoDictionary
         let short = info?["CFBundleShortVersionString"] as? String
@@ -138,30 +147,4 @@ struct AboutTab: View {
         }
     }
 
-    private var systemVersion: String {
-        let version = ProcessInfo.processInfo.operatingSystemVersion
-        return "\(version.majorVersion).\(version.minorVersion).\(version.patchVersion)"
-    }
-
-    /// The slice actually running, not what the build produced. The app is universal, so on an
-    /// Intel Mac and under Rosetta this says x86_64 where `uname -m` from a terminal may not.
-    private var architecture: String {
-        #if arch(arm64)
-        return "arm64"
-        #elseif arch(x86_64)
-        return "x86_64"
-        #else
-        return "unknown"
-        #endif
-    }
-
-    private var diagnostics: String {
-        let openconnect = openconnectVersion.map { "openconnect \($0)" }
-            ?? "openconnect not installed"
-        return """
-            AutoConnect \(appVersion)
-            macOS \(systemVersion) (\(architecture))
-            \(openconnect) at \(openconnectPath)
-            """
-    }
 }

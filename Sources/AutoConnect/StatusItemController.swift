@@ -111,6 +111,14 @@ final class StatusItemController: NSObject, NSApplicationDelegate {
         WindowActivation.startObserving()
         WindowActivation.evaluate()
 
+        // In-app updates. Started here rather than lazily from About, so a build left running for
+        // weeks still learns that a new one exists. The closure is the tunnel gate: a scheduled
+        // check that offered an update mid-session would be offering to drop the connection.
+        UpdateController.shared.start { [weak self] in
+            guard let self else { return false }
+            return vpn.isConnected || vpn.hasRunningTunnel || vpn.phase.isWorking
+        }
+
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         item.button?.imagePosition = .imageOnly
         item.button?.target = self

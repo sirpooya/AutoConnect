@@ -30,6 +30,8 @@ struct SettingsView: View {
 
     @State private var otpAccountID: UUID?
     @State private var openconnectPath = ""
+    /// Nil until the probe answers, and nil for good if there is no binary to ask.
+    @State private var openconnectVersion: String?
     @State private var status: String?
     @State private var launchAtLogin = false
     /// Guards the write-through: `load` assigns every field, and those assignments
@@ -76,7 +78,7 @@ struct SettingsView: View {
                 case .about:
                     // The one tab that edits nothing, so it owns its own state and takes only
                     // the path it reports on.
-                    AboutTab(openconnectPath: openconnectPath)
+                    AboutTab()
                 }
             }
             .frame(minHeight: SettingsMetrics.bodyHeight, maxHeight: .infinity, alignment: .top)
@@ -95,6 +97,13 @@ struct SettingsView: View {
             .onChange(of: openconnectPath) { _, _ in persist() }
             .onChange(of: otpAccountID) { _, _ in persist() }
             .onDisappear { WindowActivation.release() }
+            // Spawning openconnect takes milliseconds, but it is still a process, and the pane
+            // must not be waiting on one. Re-runs if the path changes underneath it, whether
+            // typed, Located, or loaded from a different connection.
+            .task(id: openconnectPath) {
+                let path = openconnectPath
+                openconnectVersion = await Task.detached { OpenConnectVersion.read(at: path) }.value
+            }
     }
 
     private func sheets<Content: View>(_ content: Content) -> some View {
@@ -398,6 +407,17 @@ struct SettingsView: View {
                 monospaced: true
             )
 
+            // Only shown once there is a binary to ask, and only once it has answered: nil still
+            // means "checking" while the binary exists, and the row would be noise otherwise.
+            if binaryExists {
+                SettingsDivider()
+                SettingsRow(title: "Version") {
+                    Text(openconnectVersion.map { "Version \($0)" } ?? "Checking\u{2026}")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             // Only when it is missing: with a working tunnel binary there is nothing to install
             // and nothing to find, and the row would be an instruction for a problem nobody has.
             if !binaryExists {
@@ -424,26 +444,31 @@ struct SettingsView: View {
         SettingsSectionHeader(text: "Administrator rights")
             .padding(.top, 10)
         SettingsCard {
-            SettingsRow(
-                title: "Passwordless sudo rule",
-                help: "Covers only the openconnect binary above and the signal that stops it."
-            ) {
-                SettingsCopyButton(
-                    title: "Copy Command",
-                    value: SetupCommands.sudoersInstallCommand(
-                        user: NSUserName(),
-                        binaryPath: profileBinaryPath
+            if sudoersRuleInstalled {
+                SettingsRow(title: "No password needed") {
+                    SettingsCopyButton(title: "Copy Command", value: SetupCommands.sudoersRemoveCommand)
+                        .controlSize(.small)
+                }
+            } else {
+                SettingsRow(title: "Skip the password prompt") {
+                    SettingsCopyButton(
+                        title: "Copy Command",
+                        value: SetupCommands.sudoersInstallCommand(
+                            user: NSUserName(),
+                            binaryPath: profileBinaryPath
+                        )
                     )
-                )
-                .controlSize(.small)
+                    .controlSize(.small)
+                }
             }
         }
         SettingsFootnote(
-            text: """
-                openconnect needs root to create the tunnel device, so without this rule every \
-                connect asks for your password. Installing it means anything running as you can \
-                start the VPN. Remove it any time with: \(SetupCommands.sudoersRemoveCommand)
-                """
+            text: sudoersRuleInstalled
+                ? "openconnect can already open the tunnel without asking for your password. "
+                    + "Remove the rule any time with the command above."
+                : "Lets openconnect open the tunnel without asking for your password each time. "
+                    + "The same rule works for anything else running as you, so only add it on "
+                    + "a Mac you trust."
         )
     }
 
@@ -573,6 +598,12 @@ struct SettingsView: View {
 
     private var binaryExists: Bool {
         FileManager.default.isExecutableFile(atPath: openconnectPath)
+    }
+
+    /// Whether the passwordless rule is already on this Mac. `/etc/sudoers.d` is world-traversable
+    /// even though the file inside is root-only, so checking it needs no elevated rights.
+    private var sudoersRuleInstalled: Bool {
+        FileManager.default.fileExists(atPath: SetupCommands.sudoersFile)
     }
 
     /// Which advice is true on this machine: openconnect comes from Homebrew, and telling someone

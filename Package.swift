@@ -4,6 +4,12 @@ import PackageDescription
 let package = Package(
     name: "AutoConnect",
     platforms: [.macOS(.v14)],
+    dependencies: [
+        // The only external dependency, and the one CLAUDE.md's "ask first" rule was asked about:
+        // in-app updates. Sparkle ships as a binary xcframework, so `swift build` links it but
+        // cannot embed it; Scripts/make-app.sh copies it into Contents/Frameworks and signs it.
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.5"),
+    ],
     targets: [
         // Pure logic: crypto, models, storage. No UI, fully unit testable.
         .target(
@@ -13,7 +19,10 @@ let package = Package(
         // The menu bar app itself. Assembled into AutoConnect.app by Scripts/make-app.sh.
         .executableTarget(
             name: "AutoConnect",
-            dependencies: ["AutoConnectCore"],
+            dependencies: [
+                "AutoConnectCore",
+                .product(name: "Sparkle", package: "Sparkle"),
+            ],
             path: "Sources/AutoConnect",
             // The SVGs are the editable sources for the glyphs; only the PDFs are shipped.
             exclude: ["Resources/on.svg", "Resources/off.svg"],
@@ -36,7 +45,10 @@ let package = Package(
         ),
         .testTarget(
             name: "AutoConnectCoreTests",
-            dependencies: ["AutoConnectCore"],
+            dependencies: [
+                "AutoConnectCore",
+                .product(name: "Sparkle", package: "Sparkle"),
+            ],
             path: "Tests/AutoConnectCoreTests"
         ),
     ]

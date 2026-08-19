@@ -38,19 +38,12 @@ struct SettingsDivider: View {
 /// One row: leading title, trailing control.
 struct SettingsRow<Trailing: View>: View {
     let title: String
-    var help: String?
     @ViewBuilder var trailing: Trailing
 
     var body: some View {
         HStack(spacing: 6) {
             Text(title)
                 .font(.system(size: 13))
-            if let help {
-                Image(systemName: "info.circle")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .help(help)
-            }
             Spacer(minLength: 10)
             trailing
         }
@@ -126,7 +119,11 @@ struct SettingsCopyButton: View {
                 Text(title).hidden()
                 Text(copied ? "Copied" : title)
             }
+            .font(.system(size: 12))
         }
+        // Blue text, not a bordered button: this row already has one control, and a link reads
+        // as the lighter-weight action a copy-to-clipboard actually is.
+        .buttonStyle(.link)
         // The command is long and the button is small, so the tooltip is where you read it.
         .help(value)
     }

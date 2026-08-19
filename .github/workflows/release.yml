@@ -9,6 +9,12 @@ name: Release
 #
 # It is universal on purpose. An arm64-only bundle will not launch on an Intel Mac at all, and
 # that failure looks identical to the Gatekeeper one from the outside.
+#
+# Publishing has a second half now: the zip is signed with the Sparkle EdDSA key and appcast.xml on
+# main is regenerated to point at it. That signature, not the transport and not Apple, is what
+# makes an in-app update safe to install, so a release that cannot be signed fails rather than
+# shipping an update every copy of the app would refuse. A release whose appcast never lands is
+# equally useless: nobody is ever offered it.
 
 on:
   push:
@@ -29,7 +35,12 @@ jobs:
     runs-on: macos-26
 
     steps:
+      # The tag, not main: a workflow_dispatch can rebuild an older tag, and building main for it
+      # would attach code the tag never contained. The appcast commit at the end checks main out
+      # separately, once there is nothing left to build.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Select the newest Xcode
         run: |
@@ -84,6 +95,46 @@ jobs:
           check "${app}/Contents/Resources/Assets.car"
           check "${app}/Contents/Resources/AppIcon.icns"
           check "${app}/Contents/Resources/AutoConnect_AutoConnect.bundle"
+          # Sparkle, and the four nested programs it updates the app with.
+          check "${app}/Contents/Frameworks/Sparkle.framework/Versions/B/Sparkle"
+          check "${app}/Contents/Frameworks/Sparkle.framework/Versions/B/Autoupdate"
+          check "${app}/Contents/Frameworks/Sparkle.framework/Versions/B/Updater.app"
+
+          echo "Sparkle:"
+          # Both slices here too. A universal app around a single-architecture framework fails to
+          # launch on the architecture the framework is missing, and only there.
+          sparkle_archs="$(lipo -archs "${app}/Contents/Frameworks/Sparkle.framework/Versions/B/Sparkle")"
+          for arch in arm64 x86_64; do
+            if [[ " ${sparkle_archs} " == *" ${arch} "* ]]; then
+              echo "  ok    ${arch}"
+            else
+              echo "  MISS  ${arch} (have: ${sparkle_archs})"
+              fail=1
+            fi
+          done
+          # The search path that finds the framework at runtime. Without it dyld kills the process
+          # before main, which reads from outside exactly like the Gatekeeper refusal it is not.
+          #
+          # Captured, then matched. Piping otool into `grep -q` fails even on a match: grep exits at
+          # the first hit, otool dies of SIGPIPE, and `pipefail` calls the pipeline failed.
+          load_commands="$(otool -l "${app}/Contents/MacOS/AutoConnect")"
+          if [[ "${load_commands}" == *"@executable_path/../Frameworks"* ]]; then
+            echo "  ok    rpath @executable_path/../Frameworks"
+          else
+            echo "  MISS  rpath @executable_path/../Frameworks"
+            fail=1
+          fi
+          # An ad-hoc signature has no Team ID, and the hardened runtime demands that every loaded
+          # library share one. Setting both is the combination that cannot load Sparkle at all.
+          # "(runtime)" with the parentheses, from the flags field. A plain "runtime" would also
+          # match the "Runtime Version=" line, which every signature has.
+          signature="$(codesign -d --verbose=2 "${app}" 2>&1)"
+          if [[ "${signature}" == *"(runtime)"* ]]; then
+            echo "  BAD   hardened runtime on an ad-hoc signature: Sparkle will not load"
+            fail=1
+          else
+            echo "  ok    no hardened runtime on the ad-hoc signature"
+          fi
 
           echo "Architectures:"
           # Both slices, or Intel Macs cannot start it and the symptom reads as "it will not open",
@@ -105,6 +156,18 @@ jobs:
               echo "  ok    ${key} = ${value}"
             else
               echo "  BAD   ${key} = ${value:-<missing>} (expected AppIcon)"
+              fail=1
+            fi
+          done
+
+          # Sparkle reads both of these from the bundle and does nothing without them: no feed URL
+          # means no checks, and no public key means every update is refused as unsigned.
+          for key in SUFeedURL SUPublicEDKey; do
+            value="$(/usr/libexec/PlistBuddy -c "Print :${key}" "${plist}" 2>/dev/null || true)"
+            if [[ -n "${value}" ]]; then
+              echo "  ok    ${key} = ${value}"
+            else
+              echo "  MISS  ${key}"
               fail=1
             fi
           done
@@ -157,7 +220,16 @@ jobs:
           test -f "${app}/Contents/Resources/AppIcon.icns"
           lipo -archs "${app}/Contents/MacOS/AutoConnect"
 
-          echo "name=${name}" >> "$GITHUB_OUTPUT"
+          # Everything the appcast entry needs, read back out of the bundle that was just built
+          # rather than restated here, so the feed cannot claim a version the app does not have.
+          plist="build/AutoConnect.app/Contents/Info.plist"
+          {
+            echo "name=${name}"
+            echo "short_version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${plist}")"
+            echo "build_version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "${plist}")"
+            echo "min_system=$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "${plist}")"
+            echo "length=$(stat -f%z "${name}")"
+          } >> "$GITHUB_OUTPUT"
           shasum -a 256 "${name}"
 
       - name: Launch the packaged app with no build directory
@@ -203,12 +275,127 @@ jobs:
           wait "${pid}" 2>/dev/null || true
           mv "$RUNNER_TEMP/build-hidden" .build
 
+          # dyld can refuse an embedded framework while something else keeps the process alive, so
+          # the log is read on its own rather than trusted to the liveness check above. Sparkle is
+          # the only embedded framework, and Library Validation is the way it fails.
+          if grep -qE "Library not loaded|different Team IDs|code signature.*not valid" "${log}"; then
+            echo "dyld refused an embedded library:" >&2
+            cat "${log}" >&2
+            exit 1
+          fi
+
       - uses: actions/upload-artifact@v4
         with:
           name: AutoConnect-app
           path: ${{ steps.package.outputs.name }}
 
+      # The signature the app checks before it installs anything. SPARKLE_PRIVATE_KEY is the base64
+      # private key that `generate_keys -x` prints, held as a repository secret; its public half is
+      # the SUPublicEDKey that Scripts/make-app.sh writes into the bundle. A missing secret fails
+      # the release rather than publishing a zip every installed copy would refuse.
+      - name: Sign the update
+        id: sign
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${SPARKLE_PRIVATE_KEY:-}" ]]; then
+            echo "SPARKLE_PRIVATE_KEY is not set, so the update cannot be signed." >&2
+            echo "Add it with: gh secret set SPARKLE_PRIVATE_KEY" >&2
+            exit 1
+          fi
+
+          # Sparkle's own tool, from the artifacts SwiftPM unpacked for the binary target. The
+          # -path filter matters: the same tree also holds bin/old_dsa_scripts/sign_update, the
+          # deprecated DSA signer, and picking that one emits a signature Sparkle rejects.
+          # `|| true` keeps the guard below reachable, since a find over a missing directory exits
+          # non-zero and would otherwise kill the step with no explanation.
+          sign_update="$(find .build/artifacts -path '*/Sparkle/bin/sign_update' -type f 2>/dev/null | head -1 || true)"
+          if [[ -z "${sign_update}" ]]; then
+            echo "sign_update was not found under .build/artifacts." >&2
+            echo "It ships with the Sparkle binary target, so check that the dependency resolved." >&2
+            exit 1
+          fi
+          echo "Using ${sign_update}"
+
+          # --ed-key-file reads the key from disk instead of a Keychain this runner does not have,
+          # and keeps it out of the process list. printf, not echo, so no newline is appended to
+          # the key material.
+          key_file="$RUNNER_TEMP/sparkle_key"
+          printf '%s' "${SPARKLE_PRIVATE_KEY}" > "${key_file}"
+          chmod 600 "${key_file}"
+          trap 'rm -f "${key_file}"' EXIT
+
+          # It prints: sparkle:edSignature="..." length="..."
+          output="$("${sign_update}" "${{ steps.package.outputs.name }}" --ed-key-file "${key_file}")"
+          signature="$(echo "${output}" | sed -n 's/.*sparkle:edSignature="\([^"]*\)".*/\1/p')"
+          if [[ -z "${signature}" ]]; then
+            echo "Could not read a signature out of: ${output}" >&2
+            exit 1
+          fi
+          echo "signature=${signature}" >> "$GITHUB_OUTPUT"
+          echo "Signed ${{ steps.package.outputs.name }}"
+
       - name: Attach to the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "${{ steps.version.outputs.tag }}" "${{ steps.package.outputs.name }}" --clobber
+
+      # The feed is served from main, so publishing an update means committing to main. This is the
+      # step that makes a release visible to anyone who already has the app: without it the asset
+      # is attached to the tag and nobody is ever offered it.
+      - name: Update the appcast
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${{ steps.version.outputs.tag }}"
+          notes="$(gh release view "${tag}" --json body -q .body 2>/dev/null || echo "")"
+
+          # main, not the tag this job checked out: the entry has to land on a branch, and main may
+          # well have moved on since the tag was cut. Everything that needed the tag's code is
+          # already built, signed and uploaded by this point.
+          git fetch origin main
+          git checkout -B main origin/main
+
+          python3 Scripts/update-appcast.py \
+            --tag "${tag}" \
+            --short-version "${{ steps.package.outputs.short_version }}" \
+            --build-version "${{ steps.package.outputs.build_version }}" \
+            --min-system "${{ steps.package.outputs.min_system }}" \
+            --zip-name "${{ steps.package.outputs.name }}" \
+            --length "${{ steps.package.outputs.length }}" \
+            --signature "${{ steps.sign.outputs.signature }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --notes "${notes}"
+
+          echo "--- appcast.xml ---"
+          cat appcast.xml
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git diff --quiet appcast.xml; then
+            echo "appcast.xml is unchanged, so there is nothing to commit."
+            exit 0
+          fi
+
+          git add appcast.xml
+          git commit -m "Add ${tag} to the update feed"
+
+          # main can move while a release builds, and a rejected push would leave the asset
+          # published with no feed entry pointing at it. Rebase onto whatever landed and retry.
+          for attempt in 1 2 3; do
+            if git push origin main; then
+              echo "appcast.xml pushed."
+              exit 0
+            fi
+            echo "Push rejected (attempt ${attempt}); rebasing onto origin/main"
+            git pull --rebase origin main
+          done
+
+          echo "Could not push appcast.xml after three attempts." >&2
+          echo "The zip is attached to ${tag}, but no installed copy will be offered it until" >&2
+          echo "appcast.xml lands on main." >&2
+          exit 1

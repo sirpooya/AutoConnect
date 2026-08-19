@@ -33,6 +33,11 @@ line is only needed for a browser download.
 **It is menu-bar only.** There is no Dock icon and no window, so after opening it, look for the
 icon in the menu bar rather than waiting for something to appear.
 
+Once it is installed, it updates itself: Settings > About has a Check Now button, and the app also
+checks daily in the background. That download is verified against a signing key of its own rather
+than by Apple, so the version you get is the one that was built and signed here even though the zip
+is unnotarised. See [Updates](#updates).
+
 You also need `openconnect`:
 
 ```bash
@@ -85,11 +90,19 @@ SIGN_IDENTITY="-" ./Scripts/make-app.sh          # ad-hoc
 SIGN_IDENTITY="Developer ID Application: ..." ./Scripts/make-app.sh
 ```
 
+Signing has one consequence that is easy to miss: **an ad-hoc signature cannot carry the hardened
+runtime here.** The hardened runtime enables Library Validation, which requires every library loaded
+into the process to share the main binary's Team ID, and an ad-hoc signature has no Team ID at all.
+An ad-hoc build with the flag set therefore cannot load `Sparkle.framework` and dies in `dyld`
+before any code runs. `make-app.sh` drops the flag for ad-hoc signatures and keeps it for real
+identities, where the app and Sparkle are signed alike.
+
 ### Releasing
 
 Pushing a `v*` tag runs [.github/workflows/release.yml](.github/workflows/release.yml), which
-tests, builds, verifies, launches and attaches the zip to that tag's release. The version comes
-from the tag rather than from the script:
+tests, builds, verifies, launches, signs the zip for Sparkle, attaches it to that tag's release and
+commits the new [appcast.xml](appcast.xml) entry to `main`. The version comes from the tag rather
+than from the script:
 
 ```bash
 VERSION=1.2.0 ./Scripts/make-app.sh       # stamp a version other than the default
@@ -110,7 +123,52 @@ That is how 1.0.0 shipped a bundle that opened for nobody, including its author.
 only, it died with no window and no dialog, so it read as "it does not open" rather than as a
 crash. The workflow now unpacks the finished zip, moves `.build` out of the way, runs the app and
 requires it to still be alive ten seconds later, which is the only check that would have caught
-it.
+it. That same check is what catches a Sparkle framework `dyld` refuses to load.
+
+### Updates
+
+In-app updates use [Sparkle](https://sparkle-project.org), the only external dependency in the
+package. `swift build` links it; `make-app.sh` copies `Sparkle.framework` into
+`Contents/Frameworks`, signs it and the four nested programs it brings, and writes the feed keys
+into the Info.plist. SwiftPM has no notion of embedding a framework in a bundle, so all of that is
+the script's job.
+
+The feed is [appcast.xml](appcast.xml) at the root of this repo, served raw from `main`. Each
+release appends an entry pointing at the zip attached to that tag, and every zip is signed with an
+EdDSA key whose public half is compiled into the app as `SUPublicEDKey`. Sparkle refuses any update
+that key does not verify, which is what makes an unnotarised download safe to install: the transport
+is not trusted, the signature is.
+
+The private half lives in one Mac's login Keychain, under `https://sparkle-project.org`, and in the
+repository secret `SPARKLE_PRIVATE_KEY` that the release workflow signs with. To read it out of the
+Keychain for that secret:
+
+```bash
+# Exports the key already in the Keychain; without -x it would generate one, and a new key is
+# exactly what must not happen here.
+.build/artifacts/sparkle/Sparkle/bin/generate_keys -x sparkle-key.txt
+gh secret set SPARKLE_PRIVATE_KEY < sparkle-key.txt
+rm sparkle-key.txt
+```
+
+**Replacing that key strands every copy already installed**, in the same way that changing the
+bundle identifier strands the Keychain items: those copies verify against the old public key and
+refuse everything signed with the new one, so the only way back is a manual download.
+
+Two behaviours are specific to this app, and both live in
+[UpdateController.swift](Sources/AutoConnect/Updates/UpdateController.swift):
+
+- **Background checks are refused while a tunnel is up or being built.** Installing an update
+  restarts the app, and quitting takes `openconnect` down with it, so a scheduled check that
+  surfaced an update mid-session would be offering a button that drops the connection. A check the
+  user asked for is allowed: they are standing right there, and Sparkle asks before it installs.
+- **Sparkle's own windows claim the activation policy.** An `.accessory` app cannot take key focus,
+  so its alerts would open unfocused behind whatever is in front. They go through `WindowActivation`
+  rather than setting the policy directly, so Settings being open at the same time cannot leave the
+  app stuck as `.regular`.
+
+Under `swift run` there is no Info.plist and therefore no feed, so the updater is not started at
+all and About says so rather than offering a button that does nothing.
 
 ## Using it
 
@@ -153,6 +211,7 @@ Sources/
     QR/                          # Vision barcode detection
     VPN/                         # VPNController, SAMLLoginController, LoginFormFiller
     Notifications/               # VPNStatusNotifier, the delivery half of the banners
+    Updates/                     # UpdateController, the Sparkle updater and its two rules
     Views/                       # panel, VPN section, chart, rows, forms, settings
     Playground/                  # dev-only tuning window
 Tests/AutoConnectCoreTests/     # 226 tests

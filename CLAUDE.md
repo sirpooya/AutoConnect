@@ -19,7 +19,7 @@ gateway facts, the phase order, and the open questions. Do not re-derive them.
 
 Keep it minimal and dependency-light. No cloud sync, no accounts, no analytics.
 
-## Tech Stack (Apple frameworks only, no Swift packages)
+## Tech Stack (Apple frameworks, plus Sparkle for updates)
 - **Language:** Swift 5.9+
 - **UI:** SwiftUI views hosted by AppKit: `NSStatusItem` + `NSPopover`, not `MenuBarExtra`
 - **Min target:** macOS 14 (Sonoma)
@@ -31,9 +31,14 @@ Keep it minimal and dependency-light. No cloud sync, no accounts, no analytics.
 - **SAML login:** `WebKit` (`WKWebView`, `WKHTTPCookieStore`, `WKWebsiteDataStore`)
 - **Gateway calls:** `URLSession` posting Cisco `config-auth` XML
 - **Tunnel:** `Process` spawning `/opt/homebrew/bin/openconnect` (runtime dependency, detected at launch)
+- **Updates:** `Sparkle` 2.9+, the one Swift package, wrapped by `UpdateController`
 
-> Do NOT add SwiftOTP, or any Swift package, unless a task truly needs it. Ask first.
-> `openconnect` is an external binary, not a library dependency; that is the one exception.
+> Do NOT add SwiftOTP, or any other Swift package, unless a task truly needs it. Ask first.
+> There are two approved exceptions. `openconnect` is an external binary, not a library
+> dependency. Sparkle is a real package dependency, added deliberately: the app is distributed as
+> a zip on a GitHub release, so without in-app updates the only way anyone learns a new version
+> exists is by going back to the releases page, and the only way they install it is by replacing
+> the bundle by hand.
 
 ## Project Layout
 
@@ -79,6 +84,8 @@ Sources/
     ├── QR/QRScanner.swift             # Vision barcode detection
     ├── Notifications/
     │   └── VPNStatusNotifier.swift    # permission and delivery for the status banners
+    ├── Updates/
+    │   └── UpdateController.swift     # Sparkle: the tunnel gate and the activation policy
     ├── VPN/
     │   ├── VPNController.swift        # sequences the four connect steps, owns VPN state
     │   ├── SAMLLoginController.swift  # WKWebView login, acSamlv2Token capture
@@ -93,7 +100,7 @@ Sources/
     │   ├── AccountDetailsView.swift   # what an account is, with nothing to change
     │   ├── SettingsComponents.swift   # cards, rows, dividers, WidePopUpButton
     │   ├── SettingsView.swift         # General / Connections / Authenticator / About tabs
-    │   ├── AboutTab.swift             # version, source, and what this Mac is running
+    │   ├── AboutTab.swift             # version, updates, source
     │   ├── ConnectionEditorView.swift # one connection: address, Detect, credentials
     │   └── SystemCertificateIcon.swift # Keychain Access artwork, loaded from the system
     └── Playground/
@@ -275,6 +282,35 @@ section 4 and section 3. Summary of the behavior contract:
 - Codes refresh every second; recompute on each period boundary.
 - Delete account with confirmation, which also removes it from the Keychain.
 
+## In-app updates (Sparkle)
+The app updates itself from `appcast.xml` at the root of this repo, served raw from `main`. About
+has the Check Now button and the automatic-checks switch; `UpdateController` owns the one
+`SPUStandardUpdaterController` for the process.
+
+- **The signature is the trust, not the transport.** Every release zip is signed with an EdDSA key
+  whose public half is `SUPublicEDKey` in the Info.plist, and Sparkle refuses anything that key
+  does not verify. That is what makes an unnotarised zip fetched over
+  `raw.githubusercontent.com` safe to install. **`SUPublicEDKey` is a storage address, like the
+  bundle id and the Keychain services:** replacing the key strands every copy already installed,
+  because those copies verify against the old one.
+- **Background checks are refused while a tunnel is up or being built.** Installing an update
+  restarts the app, and quitting takes openconnect down with it, so a scheduled check that
+  surfaced an update mid-session would offer a button that drops the user's connection. A check
+  the user asked for is allowed: they are there, and Sparkle asks before installing. The gate is a
+  closure installed by `StatusItemController`, so the updater never has to know what a tunnel is.
+- **Sparkle's windows go through `WindowActivation`,** never `setActivationPolicy` directly. An
+  `.accessory` app cannot take key focus, so an alert would open unfocused behind whatever is in
+  front; claiming and releasing through the one place that derives the policy from open windows is
+  what keeps Settings-open-behind-Sparkle from leaving the app `.regular` forever.
+- **Nothing starts under `swift run`.** Sparkle reads the feed URL and the public key from the
+  Info.plist, and a bare executable has none, so `start` returns early and About says the feature
+  is unavailable rather than offering a button that does nothing. Same `isBundled` test as
+  `VPNStatusNotifier`, for the same class of reason.
+- SwiftPM links the framework but cannot embed one, so `Scripts/make-app.sh` copies
+  `Sparkle.framework` into `Contents/Frameworks`, checks the rpath and both architectures, and
+  signs the four nested programs inside out before the app. `Scripts/update-appcast.py` writes the
+  feed entry from the release workflow.
+
 ## Security Requirements
 - Secrets live ONLY in the Keychain (`kSecClassGenericPassword`, `kSecAttrAccessibleWhenUnlocked`). Never log them or write them to disk in plaintext.
 - Never log the TOTP seed, the VPN password, the `acSamlv2Token`, or the session token. Redact
@@ -311,6 +347,17 @@ section 4 and section 3. Summary of the behavior contract:
   The Keychain then refuses the ACL check, so every code renders as `------` while the account
   names still load, because attribute reads survive and `secret(for:)` does not. It looks like
   lost secrets and is not: quit, rebuild, reopen.
+- **An ad-hoc signature must not carry the hardened runtime, now that a framework is embedded.**
+  The hardened runtime turns on Library Validation, which demands that every library loaded into
+  the process share the main binary's Team ID, and an ad-hoc signature has no Team ID at all. The
+  app then dies in `dyld` before any code runs, with "Library not loaded:
+  @rpath/Sparkle.framework/... have different Team IDs". `make-app.sh` drops the flag for ad-hoc
+  and keeps it for a real identity, where the app and Sparkle are signed alike. Do not "restore"
+  it for consistency: the sibling app shipped two releases that could not start this way.
+- **`otool ... | grep -q` is a trap under `set -o pipefail`.** grep exits at the first match, otool
+  dies of SIGPIPE, and the pipeline reports failure while the thing being looked for is right
+  there. Capture the output first, then match it. Both the rpath check in `make-app.sh` and the one
+  in the release workflow were written this way and reported a missing rpath that was present.
 - Verified toolchain on this machine: macOS 26.5.1, Xcode 26.6, Swift 6.3.3, arm64.
 
 ## Definition of Done
@@ -342,6 +389,14 @@ VPN connector:
 - [ ] Autofill completes a connect with zero typing, falling back to the visible window.
 - [ ] Disconnect tears down the tunnel and restores routing.
 - [ ] Auto-reconnect near expiry works in practice.
+
+Updates:
+- [x] Sparkle embedded, signed inside out, and verified for both architectures by the build script.
+- [x] About shows the version, a Check Now button, the automatic switch, and the last check.
+- [x] Background checks are refused while a tunnel is up; a manual check is not.
+- [x] The release workflow signs the zip and commits the feed entry, or fails the release.
+- [ ] **An update installs end to end**, meaning a real release is offered to an older copy and
+      replaces it. Needs two releases to exist and `SPARKLE_PRIVATE_KEY` to be set on the repo.
 
 **Everything unchecked needs a live connect, and the user must be asked first.** See below.
 
