@@ -26,19 +26,15 @@ struct AboutTab: View {
             header
 
             SettingsFootnote(
-                text: "A menu-bar connector for a Cisco SAML gateway, with the authenticator that "
-                    + "fills in its own one-time code. Apple frameworks only. No account, no "
-                    + "sync, and no telemetry of any kind."
+                text: "A menu-bar connector for a Cisco gateway over the AnyConnect protocol, "
+                    + "signing in with SAML, and the authenticator that fills in its own "
+                    + "one-time code. The tunnel itself is openconnect, a separate program "
+                    + "under the LGPL; this app launches the copy installed on this Mac and "
+                    + "does not bundle or modify it."
             )
 
             sourceSection
             systemSection
-
-            SettingsFootnote(
-                text: "Secrets stay in this Mac's Keychain and never leave it. Because the "
-                    + "corporate password and the TOTP seed are both here, this Mac alone "
-                    + "satisfies both factors: keep it locked."
-            )
         }
         // Spawning openconnect takes milliseconds, but it is still a process, and the pane must
         // not be waiting on one. Re-runs if the configured path changes underneath it.
@@ -92,11 +88,6 @@ struct AboutTab: View {
                     .font(.system(size: 12))
             }
         }
-
-        SettingsFootnote(
-            text: "The tunnel itself is openconnect, a separate program under the LGPL. This app "
-                + "launches the copy installed on this Mac; it does not bundle or modify it."
-        )
     }
 
     /// The three lines a report needs, and the button that takes all three at once.
@@ -127,8 +118,10 @@ struct AboutTab: View {
 
     // MARK: - What to show
 
-    private static let repository = URL(string: "https://github.com/sirpooya/osx-auth-qr")!
-    private static let issues = URL(string: "https://github.com/sirpooya/osx-auth-qr/issues")!
+    /// The repo the README sends people to for releases. The `osx-auth-qr` name it was pushed
+    /// under first is gone, so nothing here should point at it.
+    private static let repository = URL(string: "https://github.com/sirpooya/AutoConnect")!
+    private static let issues = URL(string: "https://github.com/sirpooya/AutoConnect/issues")!
 
     /// Read from the bundle rather than compiled in, so `make-app.sh` stamping a version is the
     /// single place a version number lives. `swift run` has no Info.plist at all, and saying so
