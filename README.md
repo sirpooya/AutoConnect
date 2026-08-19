@@ -42,7 +42,7 @@ brew install openconnect
 ## Build and run
 
 ```bash
-swift test              # 203 tests, including every RFC 6238 Appendix B vector
+swift test              # 226 tests, including every RFC 6238 Appendix B vector
 ./Scripts/make-app.sh   # produces build/AutoConnect.app, signed
 open build/AutoConnect.app
 ```
@@ -151,7 +151,7 @@ Sources/
     Notifications/               # VPNStatusNotifier, the delivery half of the banners
     Views/                       # panel, VPN section, chart, rows, forms, settings
     Playground/                  # dev-only tuning window
-Tests/AutoConnectCoreTests/     # 203 tests
+Tests/AutoConnectCoreTests/     # 226 tests
 ```
 
 A Swift package rather than an Xcode project, so `swift test` runs the whole suite from the
@@ -193,6 +193,14 @@ pointed at empty storage, with the accounts looking deleted.
 `macauth.`-prefixed default out of the old preferences domain under the new prefix. A value
 already set since the rename is left alone. On a Mac that never ran the old app it does nothing.
 
+It also rewrites the leading `MacAuth` in each item's `kSecAttrLabel` and `kSecAttrDescription`.
+Nothing reads those, since an item is addressed by service and account, but they are the two parts
+macOS quotes back at the user: the label names the item in the panel asking permission to read it,
+and the description is the "Kind" column in Keychain Access. Left stale, the app asks for
+permission under a name the user has never heard of. That step is recorded under its own key, so a
+Mac that migrated before it existed still gets it, and the key is only set once nothing is left to
+rename, so a denied prompt is retried rather than remembered as done.
+
 Two things it cannot do anything about, both one-time and both harmless:
 
 - macOS asks once more for Keychain access, because the item's access control names the app that
@@ -216,7 +224,8 @@ Settings (Cmd+comma, or the footer button) configures everything; nothing is har
 | Reconnect automatically | Renews before expiry, restores after a drop or network change |
 | Notify on VPN status changes | Banners for connect, disconnect, and trouble. Off until switched on |
 | Launch at login | Registers a login item via `SMAppService` |
-| Binary | Path to openconnect, with a warning when it is missing |
+| Binary | Path to openconnect. When it is missing, the row offers Locate and the install command to copy |
+| Passwordless sudo rule | The exact drop-in to paste in Terminal, built from the paths this build launches |
 
 Connecting runs four steps: ask the gateway how to authenticate, log in through a `WKWebView` this
 app owns, trade the resulting SAML token for a session token, then hand that to `openconnect` over
@@ -262,11 +271,17 @@ error, autofill stops and the window stays open for you to finish by hand.
 ### Root privilege
 
 openconnect needs root to create the tunnel device. Either accept a password prompt per connect, or
-install a narrowly scoped sudoers rule:
+install a narrowly scoped sudoers rule. Settings > General has the whole command on a Copy button,
+built from your user name and the binary path this build will actually launch, which is the form to
+prefer: a rule typed from the README covers the wrong path as soon as either differs.
 
 ```
-pooya ALL=(root) NOPASSWD: /opt/homebrew/bin/openconnect, /usr/bin/pkill -INT -f /tmp/autoconnect-openconnect.pid
+sudo sh -c 'echo "pooya ALL=(root) NOPASSWD: /opt/homebrew/bin/openconnect, /usr/bin/pkill -INT -f /tmp/autoconnect-openconnect.pid" > /etc/sudoers.d/autoconnect.tmp && visudo -cf /etc/sudoers.d/autoconnect.tmp && chmod 440 /etc/sudoers.d/autoconnect.tmp && mv /etc/sudoers.d/autoconnect.tmp /etc/sudoers.d/autoconnect'
 ```
+
+It stages the file under a name sudo ignores (any name in `sudoers.d` containing a dot), validates
+it with `visudo -c`, and only then moves it into place, because a malformed drop-in breaks sudo for
+the whole machine rather than just this app. Remove it with `sudo rm /etc/sudoers.d/autoconnect`.
 
 Be aware of what that buys: openconnect can run arbitrary scripts via `--script`, so the rule is
 effectively passwordless root for anything running as you. Replacing it with a privileged helper is

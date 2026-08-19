@@ -50,7 +50,7 @@ struct SettingsView: View {
     @State private var connectionPendingDeletion: VPNProfile?
 
     enum Tab: Hashable {
-        case general, connections, authenticator
+        case general, connections, authenticator, about
     }
 
     var body: some View {
@@ -73,6 +73,10 @@ struct SettingsView: View {
                     connectionsTab
                 case .authenticator:
                     authenticatorTab
+                case .about:
+                    // The one tab that edits nothing, so it owns its own state and takes only
+                    // the path it reports on.
+                    AboutTab(openconnectPath: openconnectPath)
                 }
             }
             .frame(minHeight: SettingsMetrics.bodyHeight, maxHeight: .infinity, alignment: .top)
@@ -393,12 +397,74 @@ struct SettingsView: View {
                 text: $openconnectPath,
                 monospaced: true
             )
+
+            // Only when it is missing: with a working tunnel binary there is nothing to install
+            // and nothing to find, and the row would be an instruction for a problem nobody has.
+            if !binaryExists {
+                SettingsDivider()
+                SettingsRow(title: "Install") {
+                    HStack(spacing: 6) {
+                        Button("Locate\u{2026}") { locateBinary() }
+                        if let command = installAdvice.command {
+                            SettingsCopyButton(title: "Copy Command", value: command)
+                        } else if let link = installAdvice.link {
+                            Button("Get Homebrew") { NSWorkspace.shared.open(link) }
+                        }
+                    }
+                    .controlSize(.small)
+                }
+            }
         }
 
         if !binaryExists {
-            SettingsFootnote(text: "Not found. Install with: brew install openconnect")
+            SettingsFootnote(text: installAdvice.message)
                 .foregroundStyle(.orange)
         }
+
+        SettingsSectionHeader(text: "Administrator rights")
+            .padding(.top, 10)
+        SettingsCard {
+            SettingsRow(
+                title: "Passwordless sudo rule",
+                help: "Covers only the openconnect binary above and the signal that stops it."
+            ) {
+                SettingsCopyButton(
+                    title: "Copy Command",
+                    value: SetupCommands.sudoersInstallCommand(
+                        user: NSUserName(),
+                        binaryPath: profileBinaryPath
+                    )
+                )
+                .controlSize(.small)
+            }
+        }
+        SettingsFootnote(
+            text: """
+                openconnect needs root to create the tunnel device, so without this rule every \
+                connect asks for your password. Installing it means anything running as you can \
+                start the VPN. Remove it any time with: \(SetupCommands.sudoersRemoveCommand)
+                """
+        )
+    }
+
+    /// Lets someone point the app at an openconnect Homebrew did not put where this app looks,
+    /// which is every Intel Mac, MacPorts, and any custom prefix.
+    private func locateBinary() {
+        let panel = NSOpenPanel()
+        panel.title = "Choose the openconnect binary"
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = false
+        // /usr/local and /opt are hidden in the standard sidebar, and the binary lives in one of
+        // them on most machines, so both the flag and a sensible starting directory are needed.
+        panel.showsHiddenFiles = true
+        panel.directoryURL = URL(
+            fileURLWithPath: (openconnectPath as NSString).deletingLastPathComponent
+        )
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        openconnectPath = url.path
     }
 
     // MARK: - Authenticator
@@ -509,6 +575,20 @@ struct SettingsView: View {
         FileManager.default.isExecutableFile(atPath: openconnectPath)
     }
 
+    /// Which advice is true on this machine: openconnect comes from Homebrew, and telling someone
+    /// without Homebrew to run `brew install` sends them to "command not found".
+    private var installAdvice: SetupCommands.InstallAdvice {
+        SetupCommands.openconnectInstall(homebrewInstalled: SetupCommands.homebrewPath() != nil)
+    }
+
+    /// The path the sudo rule has to name, which is the one the runner will launch. The field is
+    /// the live value, and falling back to the placeholder keeps the command valid while it is
+    /// empty rather than offering a rule with a hole in it.
+    private var profileBinaryPath: String {
+        let typed = openconnectPath.trimmingCharacters(in: .whitespaces)
+        return typed.isEmpty ? VPNProfile.empty.openconnectPath : typed
+    }
+
     private func accountLabel(_ account: Account) -> String {
         account.displaySubtitle.isEmpty
             ? account.displayTitle
@@ -568,6 +648,8 @@ private struct TabBar: View {
                       isSelected: selection == .connections) { selection = .connections }
             TabButton(title: "Authenticator", systemImage: "qrcode",
                       isSelected: selection == .authenticator) { selection = .authenticator }
+            TabButton(title: "About", systemImage: "info.circle",
+                      isSelected: selection == .about) { selection = .about }
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 10)

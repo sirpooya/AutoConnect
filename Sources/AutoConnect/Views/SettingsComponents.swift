@@ -102,6 +102,36 @@ struct SettingsSwitch: View {
     }
 }
 
+/// A button that puts a command on the clipboard and says so for a moment.
+///
+/// Copying is the whole point of these rows: a downloaded app has no README beside it, so the
+/// exact line has to reach Terminal somehow. The title itself becomes the confirmation, and the
+/// label is sized by the longer of the two strings, so the row does not twitch when it changes.
+struct SettingsCopyButton: View {
+    let title: String
+    let value: String
+    @State private var copied = false
+
+    var body: some View {
+        Button {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(value, forType: .string)
+            copied = true
+            Task {
+                try? await Task.sleep(for: .seconds(2))
+                copied = false
+            }
+        } label: {
+            ZStack {
+                Text(title).hidden()
+                Text(copied ? "Copied" : title)
+            }
+        }
+        // The command is long and the button is small, so the tooltip is where you read it.
+        .help(value)
+    }
+}
+
 /// A bold section header above a card.
 struct SettingsSectionHeader: View {
     let text: String

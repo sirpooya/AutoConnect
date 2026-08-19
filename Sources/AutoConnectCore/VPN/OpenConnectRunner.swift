@@ -114,8 +114,10 @@ public final class OpenConnectRunner {
             switch self {
             case .binaryMissing(let path):
                 return """
-                    openconnect was not found at \(path). \
-                    Install it with: brew install openconnect
+                    openconnect is not installed at \(path). \
+                    Install it with: brew install openconnect. \
+                    Settings has that command ready to copy, and a Locate button for an \
+                    openconnect that is already on this Mac somewhere else.
                     """
             case .alreadyRunning:
                 return "A VPN connection is already running."
@@ -566,8 +568,8 @@ public final class OpenConnectRunner {
         // The overwhelmingly common case, and the one that used to be invisible.
         if output.contains("sudo:") || output.contains("password is required") {
             return "openconnect needs administrator rights to create the tunnel, and no "
-                + "passwordless sudo rule covers \(profile.openconnectPath). Add one, or the "
-                + "tunnel cannot start. See the README."
+                + "passwordless sudo rule covers \(profile.openconnectPath). Settings has the "
+                + "exact command to install one, ready to copy."
         }
 
         if output.isEmpty {
