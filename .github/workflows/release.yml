@@ -337,10 +337,23 @@ jobs:
           echo "signature=${signature}" >> "$GITHUB_OUTPUT"
           echo "Signed ${{ steps.package.outputs.name }}"
 
+      # Created if it is not there, because pushing a tag does not create a release: a bare `gh
+      # release upload` fails with "release not found", which is how v1.1.0 built, tested, launched
+      # and signed cleanly and then published nothing. Notes come from the commits since the last
+      # tag, and an existing release keeps whatever notes it already has.
       - name: Attach to the release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${{ steps.version.outputs.tag }}" "${{ steps.package.outputs.name }}" --clobber
+        run: |
+          set -euo pipefail
+          tag="${{ steps.version.outputs.tag }}"
+
+          if ! gh release view "${tag}" >/dev/null 2>&1; then
+            echo "No release for ${tag} yet; creating it."
+            gh release create "${tag}" --title "AutoConnect ${{ steps.version.outputs.version }}" --generate-notes
+          fi
+
+          gh release upload "${tag}" "${{ steps.package.outputs.name }}" --clobber
 
       # The feed is served from main, so publishing an update means committing to main. This is the
       # step that makes a release visible to anyone who already has the app: without it the asset
