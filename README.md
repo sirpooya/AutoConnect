@@ -21,7 +21,7 @@ It is **ad-hoc signed and not notarised**, because there is no Developer ID cert
 project. macOS quarantines whatever a browser downloads, so clear that flag once:
 
 ```bash
-unzip AutoConnect-1.0.1.zip
+unzip AutoConnect-1.1.0.zip
 xattr -dr com.apple.quarantine AutoConnect.app
 mv AutoConnect.app /Applications/
 open /Applications/AutoConnect.app
