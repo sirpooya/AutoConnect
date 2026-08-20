@@ -14,6 +14,21 @@
         <description>Most recent changes to AutoConnect.</description>
         <language>en</language>
         <item>
+            <title>1.2.0</title>
+            <pubDate>Thu, 20 Aug 2026 05:19:36 +0000</pubDate>
+            <sparkle:version>6</sparkle:version>
+            <sparkle:shortVersionString>1.2.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+**Full Changelog**: https://github.com/sirpooya/AutoConnect/compare/v1.1.0...v1.2.0
+            ]]></description>
+            <enclosure
+                url="https://github.com/sirpooya/AutoConnect/releases/download/v1.2.0/AutoConnect-1.2.0.zip"
+                length="4268508"
+                type="application/octet-stream"
+                sparkle:edSignature="/xNVpRne2KmZ2tcXymUqmFGeAMhKxocLy4LcX41OQFk4J69U9uWpComs0wY8TBMs/eIh2ahh14P7v90HgEEgDA==" />
+        </item>
+        <item>
             <title>1.1.0</title>
             <pubDate>Wed, 19 Aug 2026 17:32:24 +0000</pubDate>
             <sparkle:version>5</sparkle:version>
