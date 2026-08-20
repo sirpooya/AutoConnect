@@ -22,7 +22,7 @@ final class StatusNotificationTests: XCTestCase {
         )
     }
 
-    // MARK: - The master switch
+    // MARK: - The switch
 
     /// Notifications are opt-in, so the default preferences must post nothing at all.
     func testDisabledByDefault() {
@@ -34,50 +34,12 @@ final class StatusNotificationTests: XCTestCase {
         }
     }
 
-    func testMasterSwitchOverridesEveryCategory() {
-        let off = NotificationPreferences(
-            isEnabled: false,
-            notifiesOnConnect: true,
-            notifiesOnDisconnect: true,
-            notifiesOnProblem: true
-        )
-
-        XCTAssertNil(notification(from: .disconnected, to: .connected, preferences: off))
-    }
-
-    // MARK: - Categories
-
-    func testCategoriesAreIndependent() {
-        let connectOnly = NotificationPreferences(
-            isEnabled: true,
-            notifiesOnConnect: true,
-            notifiesOnDisconnect: false,
-            notifiesOnProblem: false
-        )
-
-        XCTAssertNotNil(notification(from: .disconnected, to: .connected,
-                                     preferences: connectOnly))
-        XCTAssertNil(notification(from: .connected, to: .disconnected,
-                                  preferences: connectOnly))
-        XCTAssertNil(notification(from: .connected, to: .reconnecting,
-                                  preferences: connectOnly))
-        XCTAssertNil(notification(from: .connected, to: .failed, preferences: connectOnly))
-    }
-
-    /// Reconnecting and failing share one switch: both mean the VPN is in trouble.
-    func testProblemSwitchCoversReconnectingAndFailed() {
-        let problemsOnly = NotificationPreferences(
-            isEnabled: true,
-            notifiesOnConnect: false,
-            notifiesOnDisconnect: false,
-            notifiesOnProblem: true
-        )
-
-        XCTAssertNotNil(notification(from: .connected, to: .reconnecting,
-                                     preferences: problemsOnly))
-        XCTAssertNotNil(notification(from: .connected, to: .failed, preferences: problemsOnly))
-        XCTAssertNil(notification(from: .disconnected, to: .connected,
-                                  preferences: problemsOnly))
+    /// One switch covers every kind: with it on, each notifiable moment is announced.
+    func testEnabledCoversEveryKind() {
+        XCTAssertNotNil(notification(from: .disconnected, to: .connected))
+        XCTAssertNotNil(notification(from: .connected, to: .disconnected))
+        XCTAssertNotNil(notification(from: .connected, to: .reconnecting))
+        XCTAssertNotNil(notification(from: .connected, to: .failed))
     }
 
     // MARK: - Which transitions are news

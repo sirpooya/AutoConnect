@@ -15,43 +15,23 @@ public enum VPNStatusEvent: String, Equatable, Sendable, CaseIterable {
     case failed
 }
 
-/// Which status changes the user wants to hear about.
+/// Whether the user wants to hear about status changes at all.
 ///
-/// Off by default, every one of them. An app that starts posting banners the first time it is
-/// launched is an app people turn off, and the menu bar icon already carries the state for anyone
-/// who wants to look.
+/// One switch, off by default. An app that starts posting banners the first time it is launched
+/// is an app people turn off, and the menu bar icon already carries the state for anyone who
+/// wants to look. There is no switch per kind: the three moments this covers (up, down, in
+/// trouble) are the same question asked three times, and nobody wants to be told about two of
+/// them and not the third.
 public struct NotificationPreferences: Equatable, Sendable {
-    /// The master switch. With this off nothing is posted and no authorization is ever requested.
+    /// The only switch. With this off nothing is posted and no authorization is ever requested.
     public var isEnabled: Bool
-    /// Banner when the tunnel comes up.
-    public var notifiesOnConnect: Bool
-    /// Banner when the tunnel goes down, however it went down.
-    public var notifiesOnDisconnect: Bool
-    /// Banner when the tunnel is dropping and being re-established, and when a connect fails.
-    /// One switch for both because they are the same event to the user: the VPN is in trouble.
-    public var notifiesOnProblem: Bool
 
-    public init(
-        isEnabled: Bool = false,
-        notifiesOnConnect: Bool = true,
-        notifiesOnDisconnect: Bool = true,
-        notifiesOnProblem: Bool = true
-    ) {
+    public init(isEnabled: Bool = false) {
         self.isEnabled = isEnabled
-        self.notifiesOnConnect = notifiesOnConnect
-        self.notifiesOnDisconnect = notifiesOnDisconnect
-        self.notifiesOnProblem = notifiesOnProblem
     }
 
-    /// Whether this event is wanted, master switch included.
-    public func wants(_ event: VPNStatusEvent) -> Bool {
-        guard isEnabled else { return false }
-        switch event {
-        case .connected: return notifiesOnConnect
-        case .disconnected: return notifiesOnDisconnect
-        case .reconnecting, .failed: return notifiesOnProblem
-        }
-    }
+    /// Whether this event is wanted. Every notifiable event is, once the switch is on.
+    public func wants(_ event: VPNStatusEvent) -> Bool { isEnabled }
 }
 
 /// A banner ready to be posted.

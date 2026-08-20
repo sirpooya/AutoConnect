@@ -49,7 +49,7 @@ bundle a menu-bar app needs. **Anything worth testing belongs in `AutoConnectCor
 
 ```
 Sources/
-├── AutoConnectCore/                      # pure logic, no UI, 226 tests
+├── AutoConnectCore/                      # pure logic, no UI, 224 tests
 │   ├── Crypto/
 │   │   ├── Base32.swift              # RFC 4648 decode + encode
 │   │   └── TOTP.swift                # RFC 6238 / RFC 4226 truncation
@@ -96,7 +96,6 @@ Sources/
     │   ├── StatusLine.swift           # the status text, its shimmer, and StatusPacer
     │   ├── ThroughputChart.swift      # download area + upload line sparkline
     │   ├── AccountRow.swift           # code, countdown pie, copy
-    │   ├── AccountFormView.swift      # manual add (accounts are read-only once enrolled)
     │   ├── AccountDetailsView.swift   # what an account is, with nothing to change
     │   ├── SettingsComponents.swift   # cards, rows, dividers, WidePopUpButton
     │   ├── SettingsView.swift         # General / Connections / Authenticator / About tabs
@@ -230,7 +229,8 @@ section 4 and section 3. Summary of the behavior contract:
   from openconnect's `Session authentication will expire at ...` line.
 - Notifications are opt-in and cover state, not progress. The icon serves whoever is looking at
   the menu bar; a banner is for whoever is not, so only connect, disconnect and trouble are
-  announced. The steps of a connect are not, the same event twice running says so once, the
+  announced. One switch covers all three: they are the same question asked three times, and the
+  footnote under it names the moments, which is all a row per kind ever really said. The steps of a connect are not, the same event twice running says so once, the
   launch state is never announced, and a renewal, which drops the tunnel to rebuild it, is
   silent unless it fails (`VPNController.isRenewing`). The decision lives in
   `StatusNotificationPolicy`; `VPNStatusNotifier` only asks permission and posts. Every call into
@@ -365,7 +365,8 @@ has the Check Now button and the automatic-checks switch; `UpdateController` own
 Authenticator (done, verified against the user's live accounts):
 - [x] TOTP unit tests pass against all RFC 6238 Appendix B vectors (SHA1/256/512).
 - [x] Base32 decoder handles padding, lowercase, spaces, hyphens, impossible lengths.
-- [x] Can add an account by scanning the screen, by image, by pasted link, by manual entry.
+- [x] Can add an account by scanning the screen, by image, or by pasted link. Every path reads
+      the issuer's QR code; typing a Base32 seed by hand was offered and removed.
 - [x] Live code + per-account countdown render in the panel.
 - [x] One-click copy with visual confirmation.
 - [x] Secrets persist across launches via Keychain; delete removes them.
@@ -381,8 +382,8 @@ VPN connector:
 - [x] Shutdown targets this app's own process only, never a bare `openconnect` name match.
 - [x] Missing openconnect binary produces a clear, actionable message.
 - [x] Settings: General / Connections / Authenticator, with a connection list.
-- [x] Status notifications, off by default, with a switch per kind and a test button. Which
-      transitions are news is pure and tested.
+- [x] Status notifications, off by default, behind one switch that covers connect, disconnect
+      and reconnect. Which transitions are news is pure and tested.
 - [x] Nothing about any gateway is compiled in: Detect reads its groups and pins its cert.
 - [x] Reconnect decisions are pure and tested (renewal lead, backoff, give-up, network change).
 - [ ] **Connects end to end and brings up a working tunnel with corporate DNS.** Not yet run.

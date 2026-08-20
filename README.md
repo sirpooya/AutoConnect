@@ -69,7 +69,7 @@ Locate button, and no reinstall is needed.
 ## Build and run
 
 ```bash
-swift test              # 226 tests, including every RFC 6238 Appendix B vector
+swift test              # 224 tests, including every RFC 6238 Appendix B vector
 ./Scripts/make-app.sh   # produces build/AutoConnect.app, signed
 open build/AutoConnect.app
 ```
@@ -197,7 +197,10 @@ all and About says so rather than offering a button that does nothing.
   Recording permission.
 - *Open QR Image* picks a saved screenshot or enrollment image.
 - *Paste otpauth:// Link* reads a URI from the clipboard.
-- *Enter Secret Manually* takes an issuer, account name and Base32 secret.
+
+Every one of them reads the secret from the QR code the issuer produced. Typing a Base32 seed by
+hand was offered and removed: a mistyped character produces codes that look right and are
+rejected, with nothing on screen to say why.
 
 You can also drag a QR image file straight onto the panel.
 
@@ -232,7 +235,7 @@ Sources/
     Updates/                     # UpdateController, the Sparkle updater and its two rules
     Views/                       # panel, VPN section, chart, rows, forms, settings
     Playground/                  # dev-only tuning window
-Tests/AutoConnectCoreTests/     # 226 tests
+Tests/AutoConnectCoreTests/     # 224 tests
 ```
 
 A Swift package rather than an Xcode project, so `swift test` runs the whole suite from the
@@ -325,14 +328,14 @@ automatic reconnect off, the session simply expires and openconnect exits.
 
 ### Status notifications
 
-Off until switched on in Settings, General. Flipping the switch is what asks macOS for
-permission, and the three kinds below it (connected, disconnected, reconnecting or failed) can be
-turned off separately. Banners are silent, and each one replaces the last rather than stacking.
+Off until switched on in Settings, General. One switch, and flipping it on is what asks macOS
+for permission. It covers the three moments worth hearing about, meaning the VPN connecting,
+disconnecting, and dropping and reconnecting. Banners are silent, and each one replaces the last
+rather than stacking.
 
 Only changes in whether the machine is on the VPN are announced: the steps of a connect are not,
 the same state twice running says so once, and an automatic renewal, which takes the tunnel down
-in order to bring it back, stays quiet unless it fails. A test notification button is there
-because the alternative way to check permission is to connect the VPN and hope.
+in order to bring it back, stays quiet unless it fails.
 
 Notifications need the packaged `build/AutoConnect.app`. Under `swift run` there is no bundle
 identifier, `UNUserNotificationCenter` would trap, and the app says so instead.

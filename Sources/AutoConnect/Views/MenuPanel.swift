@@ -12,8 +12,6 @@ struct MenuPanel: View {
             switch state.route {
             case .list:
                 AccountListView()
-            case .add:
-                AccountFormView()
             case .details(let account):
                 AccountDetailsView(account: account)
             case .confirmDelete(let account):
@@ -31,11 +29,14 @@ struct MenuPanel: View {
 
 /// Every way an account can be added, declared once so the Add menu and the empty state cannot
 /// drift apart, and so the empty state's copy can never describe a path it fails to offer.
+///
+/// Every one of them reads the secret from a QR code the issuer produced. Typing a Base32 seed
+/// by hand was offered and removed: a mistyped character produces codes that look right and are
+/// rejected, with nothing on screen to say why.
 enum AddMethod: String, CaseIterable, Identifiable {
     case scanScreen
     case openImage
     case pasteLink
-    case manual
 
     var id: String { rawValue }
 
@@ -45,7 +46,6 @@ enum AddMethod: String, CaseIterable, Identifiable {
         case .scanScreen: "Scan QR Code"
         case .openImage: "Open QR Image..."
         case .pasteLink: "Paste otpauth:// Link"
-        case .manual: "Enter Secret Manually..."
         }
     }
 
@@ -55,7 +55,6 @@ enum AddMethod: String, CaseIterable, Identifiable {
         case .scanScreen: state.scanScreenRegion()
         case .openImage: state.scanImageFile()
         case .pasteLink: state.scanClipboard()
-        case .manual: state.route = .add
         }
     }
 }
@@ -108,9 +107,6 @@ struct AccountListView: View {
     private var addMenu: some View {
         Menu {
             ForEach(AddMethod.allCases) { method in
-                // Manual entry is the odd one out: it takes a form rather than reading a
-                // code from somewhere, so it sits below a separator.
-                if method == .manual { Divider() }
                 Button(method.menuTitle) { method.run(state) }
             }
         } label: {

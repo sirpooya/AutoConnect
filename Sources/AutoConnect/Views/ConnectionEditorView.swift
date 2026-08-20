@@ -6,8 +6,8 @@ import SwiftUI
 ///
 /// Two typed fields and a button. Everything else appears only once the gateway has answered,
 /// because until then there is nothing true to say about its groups or its certificate. The
-/// form idiom (label above a bordered field) matches AccountFormView, so the parts you type
-/// look typeable, which the settings-row style does not.
+/// form idiom is a label above a bordered field, so the parts you type look typeable, which the
+/// settings-row style does not.
 struct ConnectionEditorView: View {
     @Environment(\.dismiss) private var dismiss
 

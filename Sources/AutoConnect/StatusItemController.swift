@@ -229,8 +229,8 @@ final class StatusItemController: NSObject, NSApplicationDelegate {
     private func show() {
         guard let button = statusItem?.button else { return }
 
-        // A menu bar app is not active by default, and an inactive app's text fields refuse
-        // first responder, which would make the manual entry form untypeable.
+        // A menu bar app is not active by default, and an inactive app's controls refuse first
+        // responder, which would make anything typeable in the panel untypeable.
         //
         // Only activate while the app is still accessory-only. If a real window is open the app
         // is already `.regular` and already active, and activating again asks AppKit to restore

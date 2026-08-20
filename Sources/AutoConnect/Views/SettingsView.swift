@@ -38,11 +38,9 @@ struct SettingsView: View {
     /// would otherwise each look like an edit and save the profile straight back.
     @State private var isLoaded = false
 
-    /// The account whose details are open, and whether the manual add form is up. Both are
-    /// presented as sheets over the pane and mirrored into `AppState.route`, which is what
-    /// those views' own Cancel and Done buttons reset.
+    /// The account whose details are open, presented as a sheet over the pane and mirrored into
+    /// `AppState.route`, which is what that view's own Done button resets.
     @State private var detailedAccount: Account?
-    @State private var isAddingAccount = false
     @State private var accountPendingDeletion: Account?
 
 
@@ -108,20 +106,15 @@ struct SettingsView: View {
 
     private func sheets<Content: View>(_ content: Content) -> some View {
         content
-            // AccountFormView ends by routing the panel back to its list. That is also the
+            // A sheet's own view ends by routing the panel back to its list. That is also the
             // signal that its sheet here is finished with.
             .onChange(of: state.route) { _, route in
                 if route == .list {
                     detailedAccount = nil
-                    isAddingAccount = false
                 }
             }
             .sheet(item: $detailedAccount) { account in
                 AccountDetailsView(account: account)
-                    .frame(width: 320)
-            }
-            .sheet(isPresented: $isAddingAccount) {
-                AccountFormView()
                     .frame(width: 320)
             }
             .sheet(item: $editingConnection) { connection in
@@ -330,9 +323,9 @@ struct SettingsView: View {
 
     /// Banners for what the tunnel did while you were looking elsewhere.
     ///
-    /// One master switch, then a row per kind. The three kinds only appear once the master switch
-    /// is on: with notifications off they are three controls that do nothing, and hiding them is
-    /// what makes the first row read as the decision it is.
+    /// One switch, not one per kind. Connect, disconnect and trouble are the same question asked
+    /// three times, and the footnote says which moments it covers, which is all the three rows
+    /// ever really did.
     @ViewBuilder
     private var notificationsSection: some View {
         SettingsSectionHeader(text: "Notifications")
@@ -342,28 +335,6 @@ struct SettingsView: View {
             SettingsRow(title: "Notify on status change") {
                 SettingsSwitch(isOn: $notifier.isEnabled)
             }
-
-            if notifier.isEnabled {
-                SettingsDivider()
-                SettingsRow(title: "Connected") {
-                    SettingsSwitch(isOn: $notifier.notifiesOnConnect)
-                }
-                SettingsDivider()
-                SettingsRow(title: "Disconnected") {
-                    SettingsSwitch(isOn: $notifier.notifiesOnDisconnect)
-                }
-                SettingsDivider()
-                SettingsRow(title: "Reconnecting or failed") {
-                    SettingsSwitch(isOn: $notifier.notifiesOnProblem)
-                }
-                SettingsDivider()
-                // Otherwise the only way to find out whether permission was ever granted is to
-                // connect the VPN and hope.
-                SettingsRow(title: "Send a test notification") {
-                    Button("Send") { notifier.sendTest() }
-                        .controlSize(.small)
-                }
-            }
         }
 
         if let note = notifier.authorizationNote {
@@ -371,7 +342,7 @@ struct SettingsView: View {
                 .foregroundStyle(.orange)
         } else {
             SettingsFootnote(
-                text: "A banner when the tunnel comes up, goes down, or gets into trouble. "
+                text: "A banner when the VPN connects, disconnects, or drops and reconnects. "
                     + "Never for the steps in between."
             )
         }
@@ -516,10 +487,9 @@ struct SettingsView: View {
             HStack {
                 Menu("Add Account") {
                     ForEach(AddMethod.allCases) { method in
-                        // Manual entry is the odd one out: it takes a form rather than
-                        // reading a code from somewhere, so it sits below a separator.
-                        if method == .manual { Divider() }
-                        Button(method.menuTitle) { add(method) }
+                        // The scanners run against the screen, a file, or the clipboard and add
+                        // the account themselves. Nothing to present here.
+                        Button(method.menuTitle) { method.run(state) }
                     }
                 }
                 .menuStyle(.borderlessButton)
@@ -576,17 +546,6 @@ struct SettingsView: View {
         }
         .padding(.horizontal, SettingsMetrics.rowHPadding)
         .frame(minHeight: 42)
-    }
-
-    private func add(_ method: AddMethod) {
-        if method == .manual {
-            state.route = .add
-            isAddingAccount = true
-        } else {
-            // The scanners run against the screen, a file, or the clipboard and add
-            // the account themselves. Nothing to present here.
-            method.run(state)
-        }
     }
 
     private func showDetails(_ account: Account) {

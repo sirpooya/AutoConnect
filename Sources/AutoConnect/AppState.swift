@@ -6,7 +6,6 @@ import AutoConnectCore
 /// Which screen the menu bar panel is showing.
 enum PanelRoute: Equatable {
     case list
-    case add
     case details(Account)
     case confirmDelete(Account)
 }
@@ -119,32 +118,6 @@ final class AppState: ObservableObject {
     func add(_ parsed: OTPAuthURI.Parsed) {
         do {
             try store.add(parsed.account, secret: parsed.secret)
-            reload()
-            route = .list
-        } catch {
-            errorMessage = describe(error)
-        }
-    }
-
-    /// Adds an account from manually typed fields.
-    func addManual(
-        issuer: String,
-        label: String,
-        secret rawSecret: String,
-        algorithm: TOTP.Algorithm,
-        digits: Int,
-        period: Int
-    ) {
-        do {
-            let secret = try Base32.decode(rawSecret)
-            let account = Account(
-                issuer: issuer.trimmingCharacters(in: .whitespaces),
-                label: label.trimmingCharacters(in: .whitespaces),
-                algorithm: algorithm,
-                digits: digits,
-                period: period
-            )
-            try store.add(account, secret: secret)
             reload()
             route = .list
         } catch {

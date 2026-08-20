@@ -10,11 +10,11 @@ import UserNotifications
 /// `AutoConnectCore`; everything here is delivery and permission.
 ///
 /// Off until switched on in Settings. Nothing is requested from macOS, and no banner is ever
-/// posted, while the master switch is off.
+/// posted, while it is off.
 @MainActor
 final class VPNStatusNotifier: NSObject, ObservableObject {
 
-    /// The master switch. Flipping it on is what asks macOS for permission, so the system prompt
+    /// The only switch. Flipping it on is what asks macOS for permission, so the system prompt
     /// arrives as a direct result of something the user just did.
     @Published var isEnabled: Bool {
         didSet {
@@ -28,27 +28,12 @@ final class VPNStatusNotifier: NSObject, ObservableObject {
         }
     }
 
-    @Published var notifiesOnConnect: Bool {
-        didSet { defaults.set(notifiesOnConnect, forKey: Key.connect) }
-    }
-
-    @Published var notifiesOnDisconnect: Bool {
-        didSet { defaults.set(notifiesOnDisconnect, forKey: Key.disconnect) }
-    }
-
-    @Published var notifiesOnProblem: Bool {
-        didSet { defaults.set(notifiesOnProblem, forKey: Key.problem) }
-    }
-
     /// Why banners will not appear even though the switch is on: permission was refused, or this
     /// is an unbundled build. Nil when there is nothing to explain.
     @Published private(set) var authorizationNote: String?
 
     private enum Key {
         static let enabled = "autoconnect.notifications.enabled"
-        static let connect = "autoconnect.notifications.connect"
-        static let disconnect = "autoconnect.notifications.disconnect"
-        static let problem = "autoconnect.notifications.problem"
     }
 
     private let defaults = UserDefaults.standard
@@ -57,29 +42,18 @@ final class VPNStatusNotifier: NSObject, ObservableObject {
     /// is never announced at all.
     private var lastEvent: VPNStatusEvent?
 
-    /// True for the playground's copy. It reads and writes the same preferences, so the switches
-    /// look real, but it never registers with the notification centre and never posts: a mock
+    /// True for the playground's copy. It reads and writes the same preference, so the switch
+    /// looks real, but it never registers with the notification centre and never posts: a mock
     /// must not be able to put a banner about a tunnel on screen.
     private let isPreview: Bool
 
-    /// A notifier for the playground: same switches, no delivery.
+    /// A notifier for the playground: same switch, no delivery.
     static func preview() -> VPNStatusNotifier { VPNStatusNotifier(isPreview: true) }
 
     init(isPreview: Bool = false) {
         self.isPreview = isPreview
 
-        // The three categories default to on: they only take effect once the master switch is
-        // turned on, and someone who turns notifications on wants notifications.
-        defaults.register(defaults: [
-            Key.connect: true,
-            Key.disconnect: true,
-            Key.problem: true,
-        ])
-
         isEnabled = defaults.bool(forKey: Key.enabled)
-        notifiesOnConnect = defaults.bool(forKey: Key.connect)
-        notifiesOnDisconnect = defaults.bool(forKey: Key.disconnect)
-        notifiesOnProblem = defaults.bool(forKey: Key.problem)
 
         super.init()
 
@@ -97,12 +71,7 @@ final class VPNStatusNotifier: NSObject, ObservableObject {
     }
 
     var preferences: NotificationPreferences {
-        NotificationPreferences(
-            isEnabled: isEnabled,
-            notifiesOnConnect: notifiesOnConnect,
-            notifiesOnDisconnect: notifiesOnDisconnect,
-            notifiesOnProblem: notifiesOnProblem
-        )
+        NotificationPreferences(isEnabled: isEnabled)
     }
 
     // MARK: - Watching the tunnel
@@ -130,7 +99,7 @@ final class VPNStatusNotifier: NSObject, ObservableObject {
             preferences: preferences
         )
 
-        // The event is remembered whether or not a banner went out, so turning a category on
+        // The event is remembered whether or not a banner went out, so turning notifications on
         // mid-session does not immediately fire about a state that has been true for hours.
         lastEvent = event
 
@@ -153,22 +122,6 @@ final class VPNStatusNotifier: NSObject, ObservableObject {
         case .contactingGateway, .awaitingLogin, .exchangingToken, .startingTunnel:
             return nil
         }
-    }
-
-    /// Posts one banner on demand, ignoring the categories.
-    ///
-    /// The only other way to find out whether notifications work is to connect the VPN, and
-    /// permission for these is refused once and then forgotten about. This is how someone checks.
-    func sendTest() {
-        guard isEnabled else { return }
-
-        post(
-            StatusNotification(
-                event: .connected,
-                title: "AutoConnect notifications are on",
-                body: "This is what a VPN status change will look like."
-            )
-        )
     }
 
     // MARK: - Delivery
