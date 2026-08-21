@@ -20,7 +20,7 @@ cd "$(dirname "$0")/.."
 CONFIG="${CONFIG:-release}"
 APP_NAME="AutoConnect"
 BUNDLE_ID="com.pooya.AutoConnect"
-VERSION="${VERSION:-1.2.0}"
+VERSION="${VERSION:-1.3.0}"
 BUILD_NUMBER="${BUILD_NUMBER:-1}"
 APP_DIR="build/${APP_NAME}.app"
 
