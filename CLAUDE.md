@@ -417,9 +417,9 @@ VPN connector:
 - [x] Adopts a tunnel left running by a previous launch, and now starts the renewal, the network
       monitor and the wake observers for it, which it did not before.
 - [x] Disconnect tears down the tunnel and restores routing. Verified live.
-- [~] Auto-reconnect near expiry. `ReconnectPolicy.evaluateHealth` answers the two ways
-      "connected" goes stale (process gone, session expired) and is unit-tested; the live work is
-      being finished in a separate session.
+- [x] Auto-reconnect near expiry works in practice. `ReconnectPolicy.evaluateHealth` answers the
+      two ways "connected" goes stale (process gone, session expired), and the renewal rebuilds
+      the session without announcing itself as a disconnection.
 
 Updates:
 - [x] Sparkle embedded, signed inside out, and verified for both architectures by the build script.
@@ -430,8 +430,10 @@ Updates:
       replaces it. Needs two releases to exist and `SPARKLE_PRIVATE_KEY` to be set on the repo.
 
 **The one thing left is B6, the privileged helper, and it is optional.** Everything else in the
-connector has now been run live: connect, zero-typing autofill, and disconnect. Root still comes
-from the sudoers rule. A live connect or disconnect still needs asking first, because the session
+connector has now been run live: connect, zero-typing autofill, disconnect, and renewal at expiry.
+Root still comes from the sudoers rule, which Settings installs, detects and removes for the user
+(`SetupCommands`) rather than pointing at a README. `SMAppService` is used here only for the login
+item, not for a helper. A live connect or disconnect still needs asking first, because the session
 at risk is the one the user is working over.
 
 ## Working Style for Claude Code

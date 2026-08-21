@@ -153,9 +153,10 @@ user's call, so there is a real working app in the menu bar before any VPN work 
 
 > **Progress as of 2026-08-21.** Stage A is complete and in use. Stage B works: the app brings up
 > the user's tunnel, fills the IdP form with no typing, and tears the tunnel down again.
-> `openconnect-sso` is out of the loop. B1 to B4 are verified live, and so is disconnect. B5's
-> renewal is being finished in a separate session. **B6 is the only phase not started**, and it is
-> optional. Still: no connect, disconnect, or process kill without asking, and the reason has only
+> `openconnect-sso` is out of the loop. B1 to B5 are verified live, disconnect included, and the
+> renewal at expiry now rebuilds the session on its own. **B6 is the only phase not started**, and
+> it is optional: the sudoers rule is what grants root, and Settings installs, detects and removes
+> it rather than asking anyone to read a README. Still: no connect, disconnect, or process kill without asking, and the reason has only
 > changed hands. The session at risk is now the app's own, and the user is working over it.
 
 ### Stage A: the authenticator app (ships standalone)
@@ -225,9 +226,9 @@ because none of them is visible in the code alone:
    been replaced. Without them a renewal still authenticating announced itself as connected, and
    two openconnects could race for one tunnel.
 
-Disconnect has since been exercised live and tears the tunnel down cleanly. What is left is
-**auto-reconnect at a real twelve-hour expiry**, being finished in a separate session, and **B6**,
-which nobody has started and nobody has to.
+Disconnect has since been exercised live and tears the tunnel down cleanly, and the renewal at
+expiry rebuilds the session without reporting itself as a disconnection. The only phase left is
+**B6**, which nobody has started and nobody has to.
 
 Two things that had to be true before that first run, and still are:
 
