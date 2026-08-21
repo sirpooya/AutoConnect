@@ -113,6 +113,50 @@ final class StatusNotificationTests: XCTestCase {
         )
     }
 
+    // MARK: - Renewing
+
+    /// A renewal is announced now. It used to be the one status change that passed in silence, and
+    /// the tunnel really is down for the seconds it takes, so the gap read as a fault.
+    func testRenewingIsAnnouncedAndSaysWhy() {
+        let banner = notification(
+            from: .connected,
+            to: .renewing,
+            detail: "The session expired."
+        )
+
+        XCTAssertEqual(banner?.event, .renewing)
+        XCTAssertEqual(banner?.title, "VPN session renewing")
+        XCTAssertEqual(
+            banner?.body,
+            "The session expired. Renewing the session on vpn.example.com."
+        )
+    }
+
+    /// Without a reason it still has to say what is happening and to which gateway.
+    func testRenewingWithoutAReasonStillNamesTheGateway() {
+        XCTAssertEqual(
+            notification(from: .connected, to: .renewing)?.body,
+            "The session on vpn.example.com is expiring. Renewing it now."
+        )
+    }
+
+    /// A renewal and a drop are different events, so the tunnel coming back after one is still
+    /// news rather than the same event twice running.
+    func testConnectedAfterARenewalIsAnnounced() {
+        XCTAssertEqual(
+            notification(from: .renewing, to: .connected, detail: "10.250.232.4")?.title,
+            "VPN connected"
+        )
+    }
+
+    /// The switch still governs it, and a renewal at launch is not a thing that can happen.
+    func testRenewingObeysTheSwitchAndTheLaunchRule() {
+        XCTAssertNil(
+            notification(from: .connected, to: .renewing, preferences: NotificationPreferences())
+        )
+        XCTAssertNil(notification(from: nil, to: .renewing))
+    }
+
     /// Every banner replaces the last, so a bad afternoon does not leave a stack of dead ones.
     func testOneIdentifierForEveryStatusBanner() {
         XCTAssertEqual(StatusNotification.identifier, "autoconnect.vpn.status")

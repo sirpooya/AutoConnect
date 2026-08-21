@@ -323,9 +323,9 @@ struct SettingsView: View {
 
     /// Banners for what the tunnel did while you were looking elsewhere.
     ///
-    /// One switch, not one per kind. Connect, disconnect and trouble are the same question asked
-    /// three times, and the footnote says which moments it covers, which is all the three rows
-    /// ever really did.
+    /// One switch, not one per kind. Connect, disconnect, trouble and the session being rebuilt
+    /// are the same question asked several times, and the footnote says which moments it covers,
+    /// which is all the rows per kind ever really did.
     @ViewBuilder
     private var notificationsSection: some View {
         SettingsSectionHeader(text: "Notifications")
@@ -342,8 +342,8 @@ struct SettingsView: View {
                 .foregroundStyle(.orange)
         } else {
             SettingsFootnote(
-                text: "A banner when the VPN connects, disconnects, or drops and reconnects. "
-                    + "Never for the steps in between."
+                text: "A banner when the VPN connects, disconnects, drops and reconnects, or "
+                    + "renews its session near expiry. Never for the steps in between."
             )
         }
     }

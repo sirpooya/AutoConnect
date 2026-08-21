@@ -1,7 +1,7 @@
 # plan.md: AutoConnect, TOTP authenticator + Cisco SAML VPN connector
 
-Status: verified end to end on 2026-08-13 with `openconnect-sso`. This plan replaces that
-Python tool with a native Swift menu-bar app.
+Status: the Swift app connects. Verified live on 2026-08-21, and it now owns the tunnel the user
+works over; `openconnect-sso` proved the route on 2026-08-13 and is no longer used.
 
 ---
 
@@ -151,10 +151,12 @@ Two stages. **Stage A ships a complete, usable authenticator app** that can repl
 extension on its own. **Stage B** adds the VPN connector on top of it. Ordered this way on the
 user's call, so there is a real working app in the menu bar before any VPN work starts.
 
-> **Progress as of 2026-08-14.** Stage A is complete and in use. Stage B is written through B5 but
-> **nothing has been run against the live gateway yet**: B1 is fixture-tested, B2 to B5 are
-> unverified code. 103 tests pass. The user keeps their own `openconnect-sso` session running, so
-> no connect, disconnect, or process kill happens without asking.
+> **Progress as of 2026-08-21.** Stage A is complete and in use. Stage B works: the app brings up
+> the user's tunnel, fills the IdP form with no typing, and tears the tunnel down again.
+> `openconnect-sso` is out of the loop. B1 to B4 are verified live, and so is disconnect. B5's
+> renewal is being finished in a separate session. **B6 is the only phase not started**, and it is
+> optional. Still: no connect, disconnect, or process kill without asking, and the reason has only
+> changed hands. The session at risk is now the app's own, and the user is working over it.
 
 ### Stage A: the authenticator app (ships standalone)
 
@@ -197,12 +199,37 @@ login, disconnect that tears down cleanly.
 
 **B6 (optional).** Replace the sudoers rule with an `SMAppService` privileged helper.
 
-### What is written but unverified
+### What the live connect proved, and what it left open
 
-Code exists and compiles for B2 to B5; none of it has met the gateway. The first live connect is
-the next real milestone and needs the user present, because it disconnects their current session.
+The first live connect ran on 2026-08-21 and the app has owned the tunnel since. What the machine
+showed afterwards, checked read-only: `utun6` at `10.250.232.17`, the default route through it,
+corporate DNS on `172.30.6.21` and `172.30.6.22`, and the openconnect the app itself spawned under
+`sudo -n` with the pinned SHA1 on its command line. Section 4's four steps are no longer a plan.
 
-Two things that must be true before that run:
+Three things came out of real use rather than out of the plan, and all three are recorded here
+because none of them is visible in the code alone:
+
+1. **Autofill connects with zero typing.** All three fields injected, the token captured, nothing
+   touched by hand. Getting there meant learning that ADFS can render an error on the page while
+   the password field is still presenting: read naively that says the password was rejected when
+   nothing has been submitted yet, which is what used to stop the filler one field short. The
+   fail-open rule stands regardless, and the visible window is still the answer to any selector
+   that does not match.
+2. **An adopted tunnel had none of the machinery a connected one gets.** A tunnel inherited from a
+   previous launch had no runner watching its output, no renewal scheduled and no wake observers,
+   so it sat on "Connected" beside a countdown reading expired while nothing got through.
+   `ReconnectPolicy.evaluateHealth` answers the two ways that happens, process gone and session
+   expired, and adoption now starts what a connect starts.
+3. **A renewal that supersedes a connect needs the older one silenced.** Two generation counters in
+   `VPNController` drop the phase reports and the process starts belonging to an attempt that has
+   been replaced. Without them a renewal still authenticating announced itself as connected, and
+   two openconnects could race for one tunnel.
+
+Disconnect has since been exercised live and tears the tunnel down cleanly. What is left is
+**auto-reconnect at a real twelve-hour expiry**, being finished in a separate session, and **B6**,
+which nobody has started and nobody has to.
+
+Two things that had to be true before that first run, and still are:
 
 1. The sudoers rule is installed, scoped to the pid-file marker:
    ```

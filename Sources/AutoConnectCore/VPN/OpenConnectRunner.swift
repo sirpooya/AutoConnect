@@ -395,6 +395,13 @@ public final class OpenConnectRunner {
         self.profile = profile
     }
 
+    /// Whether the openconnect this runner started is still alive.
+    ///
+    /// The state machine follows openconnect's output, and output simply stops arriving when the
+    /// process dies. This is the direct question, for the watchdog that has to tell a tunnel which
+    /// is merely quiet from one that is not there any more.
+    public var isRunning: Bool { process?.isRunning ?? false }
+
     /// Brings up the tunnel. `sessionToken` is written to stdin and not retained.
     ///
     /// Requires a passwordless sudo rule for the openconnect binary, otherwise sudo will block

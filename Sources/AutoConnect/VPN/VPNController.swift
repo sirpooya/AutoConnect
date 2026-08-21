@@ -62,8 +62,8 @@ final class VPNController: ObservableObject {
     }
 
     /// True while an automatic renewal is tearing the tunnel down in order to build it again.
-    /// That drop is a step of the renewal, not a disconnection, and nothing should report it as
-    /// one: a session renewed at midday would otherwise announce itself twice for no change.
+    /// That drop is a step of the renewal rather than a disconnection, so it is reported as one:
+    /// the steps in between stay quiet, and the renewal itself says that is what it is.
     @Published private(set) var isRenewing = false
     /// The connection the menu bar acts on. Assigning it switches which gateway Connect dials.
     @Published var profile: VPNProfile
@@ -125,9 +125,34 @@ final class VPNController: ObservableObject {
     /// a tunnel they asked for without ever starting one they did not.
     private var userHasConnected = false
 
+    /// Which connect sequence is the current one, and which runner is the current one.
+    ///
+    /// Both exist because a renewal abandons work that has not finished talking. A cancelled
+    /// connect still unwinds through its catch blocks, and an abandoned openconnect keeps printing
+    /// until it dies, its output handler still holding a callback into here. Stamping each with the
+    /// generation it belongs to is what stops the tail of one attempt from reporting itself over
+    /// the phase of the attempt that replaced it, which is how a renewal that was still
+    /// authenticating announced itself as connected.
+    private var connectGeneration = 0
+    private var runnerGeneration = 0
+
+    /// Why the app is rebuilding the session, in the words the banner and the panel both use.
+    private static let expiringReason = "The session is about to expire."
+    private static let expiredReason = "The session expired."
+    private static let droppedReason = "The tunnel dropped."
+
+    /// How often a connected tunnel is re-examined: the countdown is redrawn, and the two ways
+    /// "connected" goes stale without anything reporting it are checked for.
+    private static let heartbeat: TimeInterval = 15
+
     /// Loads the saved connections and selects one, or starts empty. Nothing about any
     /// particular gateway is compiled in: Settings takes an address and asks it for the rest.
-    init(profile: VPNProfile? = nil) {
+    /// `isPreview` is passed in rather than set afterwards: `adoptRunningTunnel` runs from here,
+    /// and a flag set after `init` returned was still false while it ran, so the playground's
+    /// controller adopted whatever tunnel the machine really had.
+    init(profile: VPNProfile? = nil, isPreview: Bool = false) {
+        self.isPreview = isPreview
+
         let store = VPNSettingsStore()
 
         if let profile {
@@ -204,6 +229,15 @@ final class VPNController: ObservableObject {
             userHasConnected = true
             phase = .connected(tunnel)
             startClock()
+
+            // Everything a connect would have started, because an adopted tunnel has none of it:
+            // no runner watching its output, no renewal scheduled, no wake handling. Without this
+            // it sat on "Connected" for as long as the app stayed open, however long ago its
+            // session ended, which is exactly what a countdown reading "expired" beside a green
+            // dot was showing.
+            startNetworkMonitorIfNeeded()
+            startSleepWakeObservers()
+            if autoReconnect { scheduleRenewal() }
         }
     }
 
@@ -268,8 +302,7 @@ final class VPNController: ObservableObject {
         referenceDate: Date = Date()
     ) -> VPNController {
         // Pass the profile explicitly so a preview never picks up saved settings.
-        let controller = VPNController(profile: profile)
-        controller.isPreview = true
+        let controller = VPNController(profile: profile, isPreview: true)
         controller.phase = phase
         controller.now = referenceDate
         return controller
@@ -360,34 +393,52 @@ final class VPNController: ObservableObject {
         startNetworkMonitorIfNeeded()
         startSleepWakeObservers()
 
+        connectGeneration += 1
+        let generation = connectGeneration
+
         connectTask = Task { [weak self] in
             // The sign-in window takes focus, which would otherwise dismiss the transient panel
             // before the user could see the result.
             await PanelPin.pinned {
-                await self?.runConnectSequence()
+                await self?.runConnectSequence(generation: generation)
             }
-            self?.connectTask = nil
+            // Only when it is still ours. A renewal cancels this task and starts another, and
+            // clearing the handle blindly left the controller believing nothing was in flight,
+            // which is a second connect one click away.
+            guard let self, generation == self.connectGeneration else { return }
+            self.connectTask = nil
         }
     }
 
-    private func runConnectSequence() async {
+    /// Moves the phase on behalf of one connect sequence, and drops anything a superseded sequence
+    /// still has to say.
+    private func report(_ next: Phase, generation: Int) {
+        guard generation == connectGeneration else { return }
+        phase = next
+    }
+
+    private func runConnectSequence(generation: Int) async {
         // However this ends, the login is over. Held while it runs so a disconnect can close its
         // window; left behind on a failure it would be a window nobody can close from outside.
-        defer { login = nil }
+        //
+        // Guarded on the generation for the same reason as `report`: a sequence that has been
+        // superseded must not clear the login window belonging to the one that replaced it, which
+        // would leave that one waiting on a continuation nothing can resume.
+        defer { if generation == connectGeneration { login = nil } }
 
         do {
             DiagnosticLog.startSession()
             try OpenConnectRunner.verifyBinary(at: profile.openconnectPath)
 
             // Step 1.
-            phase = .contactingGateway
+            report(.contactingGateway, generation: generation)
             clearStaleGatewayRoute()
 
             let client = GatewayClient(profile: profile)
             let authRequest = try await client.requestAuthentication()
 
             // Step 2.
-            phase = .awaitingLogin
+            report(.awaitingLogin, generation: generation)
             let login = SAMLLoginController(
                 authRequest: authRequest,
                 profile: profile,
@@ -404,7 +455,7 @@ final class VPNController: ObservableObject {
             }
 
             // Step 3.
-            phase = .exchangingToken
+            report(.exchangingToken, generation: generation)
             let complete = try await client.completeAuthentication(
                 authRequest: authRequest,
                 ssoToken: ssoToken
@@ -415,14 +466,21 @@ final class VPNController: ObservableObject {
             if let pinned = profile.normalizedCertificateSHA1,
                complete.serverCertHash.uppercased() != pinned
             {
-                phase = .failed(
-                    "The gateway reported certificate \(complete.serverCertHash), "
-                        + "which does not match the pinned fingerprint. Refusing to connect."
+                report(
+                    .failed(
+                        "The gateway reported certificate \(complete.serverCertHash), "
+                            + "which does not match the pinned fingerprint. Refusing to connect."
+                    ),
+                    generation: generation
                 )
                 return
             }
 
-            phase = .startingTunnel
+            // Nothing below this line should start a process on behalf of a sequence that has
+            // already been replaced: that is how two openconnects end up racing for one tunnel.
+            guard generation == connectGeneration else { return }
+
+            report(.startingTunnel, generation: generation)
             try startTunnel(
                 sessionToken: complete.sessionToken,
                 serverCertHash: complete.serverCertHash
@@ -430,25 +488,29 @@ final class VPNController: ObservableObject {
         } catch let error as SAMLLoginController.LoginError {
             // Backing out of the login window is not a failure worth shouting about.
             if case .cancelled = error {
-                phase = .idle
+                report(.idle, generation: generation)
             } else {
-                phase = .failed(error.errorDescription ?? "\(error)")
+                report(.failed(error.errorDescription ?? "\(error)"), generation: generation)
             }
         } catch let error as GatewayClient.ClientError {
             // A stale route makes the gateway unreachable, and the symptom is a timeout. Say what
             // is actually wrong, and exactly how to fix it, rather than blaming the network.
             if let hint = staleRouteHint {
-                phase = .failed(
-                    "The gateway could not be reached because a leftover route from a previous "
-                        + "session points at a gateway that no longer exists. Clear it with:\n\(hint)"
+                report(
+                    .failed(
+                        "The gateway could not be reached because a leftover route from a previous "
+                            + "session points at a gateway that no longer exists. Clear it "
+                            + "with:\n\(hint)"
+                    ),
+                    generation: generation
                 )
             } else {
-                phase = .failed(error.description)
+                report(.failed(error.description), generation: generation)
             }
         } catch let error as OpenConnectRunner.RunnerError {
-            phase = .failed(error.description)
+            report(.failed(error.description), generation: generation)
         } catch {
-            phase = .failed(error.localizedDescription)
+            report(.failed(error.localizedDescription), generation: generation)
         }
     }
 
@@ -539,16 +601,25 @@ final class VPNController: ObservableObject {
         let runner = OpenConnectRunner(profile: profile)
         self.runner = runner
 
+        runnerGeneration += 1
+        let generation = runnerGeneration
+
         runner.onStateChange = { [weak self] state in
             Task { @MainActor in
-                self?.apply(runnerState: state)
+                self?.apply(runnerState: state, generation: generation)
             }
         }
 
         try runner.connect(sessionToken: sessionToken, serverCertHash: serverCertHash)
     }
 
-    private func apply(runnerState state: OpenConnectRunner.State) {
+    private func apply(runnerState state: OpenConnectRunner.State, generation: Int) {
+        // An abandoned openconnect keeps printing until it dies, and its output handler is still
+        // holding this callback. Anything but the current runner is ignored: without this, the tail
+        // of a torn-down tunnel reported itself over the connect that replaced it, so a renewal
+        // that was still authenticating showed, and announced, "Connected".
+        guard generation == runnerGeneration else { return }
+
         switch state {
         case .disconnected:
             phase = .idle
@@ -592,12 +663,12 @@ final class VPNController: ObservableObject {
         case .wait, .giveUp:
             return
         case .reconnectNow:
-            renew()
+            renew(reason: Self.expiringReason)
         case .reconnect(let delay):
             renewalTask = Task { [weak self] in
                 try? await Task.sleep(for: .seconds(delay))
                 guard !Task.isCancelled else { return }
-                self?.renew()
+                self?.renew(reason: Self.expiringReason)
             }
         }
     }
@@ -616,24 +687,155 @@ final class VPNController: ObservableObject {
             renewalTask = Task { [weak self] in
                 try? await Task.sleep(for: .seconds(delay))
                 guard !Task.isCancelled else { return }
-                self?.renew()
+                self?.renew(reason: Self.droppedReason)
             }
         case .wait, .reconnectNow:
-            renew()
+            renew(reason: Self.droppedReason)
         }
     }
 
     /// Tears down and reconnects. The IdP cookie usually survives in the webview's persistent
     /// store, so this often completes without any typing.
-    private func renew() {
+    ///
+    /// `reason` is what the panel and the banner both say. A renewal used to pass in silence, on
+    /// the grounds that nothing about the connection had changed; it had, for the seconds the
+    /// rebuild takes, and a gap nobody was told about reads as a fault.
+    private func renew(reason: String? = nil) {
         guard autoReconnect, userHasConnected else { return }
 
         isRenewing = true
-        runner?.disconnect()
-        runner = nil
+        cancelRenewal()
+
+        // The phase has to leave `.connected` before the connect starts, because `connect()`
+        // refuses to run while the app believes a tunnel is up. During a renewal it still did:
+        // that guard is what made a renewal kill the tunnel and then not rebuild it, leaving the
+        // machine with no connection until some later failure happened to schedule a retry.
+        if case .connected(let live) = phase {
+            phase = .reconnecting(live, reason: reason)
+        }
+
+        teardownTunnelProcess()
+
         connectTask?.cancel()
         connectTask = nil
         connect()
+    }
+
+    /// Forgets the current runner, so nothing it says afterwards is acted on.
+    private func discardRunner() {
+        runnerGeneration += 1
+        runner = nil
+    }
+
+    /// Stops whatever openconnect this app is responsible for, whether it started it or adopted it
+    /// from a previous launch, and forgets it.
+    ///
+    /// The adopted case is the one that was missing: an adopted tunnel has no child process to
+    /// signal, so a renewal that only told the runner to stop left the old openconnect running and
+    /// started a second one beside it.
+    private func teardownTunnelProcess() {
+        if let runner {
+            runner.disconnect()
+        } else if adoptedPID != nil {
+            // No child process to signal, so stop it the way the runner would: by its pid-file
+            // marker, which only this app's openconnect carries.
+            OpenConnectRunner.shutdownAdopted()
+        }
+
+        discardRunner()
+        adoptedPID = nil
+        TunnelAdoption.forget()
+        TunnelAdoption.cleanUp(pidFilePath: OpenConnectRunner.pidFilePath)
+    }
+
+    // MARK: - Watchdog
+
+    /// Re-examines a tunnel that claims to be connected, once per heartbeat.
+    ///
+    /// The renewal timer alone is not enough to trust a twelve-hour session to. The machine sleeps,
+    /// a timer that long fires late or not at all, and a tunnel adopted at launch never had one
+    /// scheduled. Asking the question on every tick instead means the worst case is one interval
+    /// late rather than never, which is the whole difference between a session that renews itself
+    /// and one that sits on "Connected" beside a countdown reading "expired".
+    private func checkTunnelHealth() {
+        guard !isPreview, case .connected(let live) = phase else { return }
+
+        switch policy.evaluateHealth(
+            expiry: live.sessionExpiry,
+            now: Date(),
+            isProcessAlive: isTunnelProcessAlive
+        ) {
+        case .healthy:
+            break
+
+        case .renewDue:
+            // Nothing to do without permission to dial. The countdown says how long is left, and
+            // the user can renew by hand.
+            guard autoReconnect else { return }
+            renew(reason: Self.expiringReason)
+
+        case .expired:
+            sessionExpired()
+
+        case .processGone:
+            tunnelProcessVanished()
+        }
+    }
+
+    /// True while this app's own connect sequence is running, so nothing schedules a second one
+    /// over it.
+    ///
+    /// The sequence, not the phase: openconnect's own retries also leave the phase working, and
+    /// taking over from those on a network change is deliberate and older than this. What must not
+    /// happen is a renewal restarting itself, which its own teardown otherwise causes: bringing a
+    /// tunnel down is a network change too.
+    private var isAttemptInFlight: Bool { connectTask != nil }
+
+    /// Whether the openconnect this app is responsible for is still alive.
+    private var isTunnelProcessAlive: Bool {
+        if let runner { return runner.isRunning }
+        if let adoptedPID { return TunnelAdoption.isRunning(pid: adoptedPID) }
+        // Neither: nothing is holding a tunnel up, whatever the phase says.
+        return false
+    }
+
+    /// The gateway's session is over, however healthy the device looks.
+    ///
+    /// The tunnel is torn down either way. Leaving it up is worse than closing it: it still holds
+    /// the routes, including the default one, so every packet goes into a session the gateway has
+    /// already dropped and the machine has no working network at all. That is the state this was
+    /// reported from: "Connected", an assigned address, and nothing getting through.
+    private func sessionExpired() {
+        DiagnosticLog.write("watchdog: session expired")
+
+        guard autoReconnect, userHasConnected else {
+            teardownTunnelProcess()
+            stopClock()
+            phase = .failed(
+                "The gateway session expired, so the tunnel was closed. Connect again to start a "
+                    + "new session."
+            )
+            return
+        }
+
+        // The phase is left to `renew`, which moves it off `.connected` itself. Setting it here
+        // first would change it before `isRenewing` was up, and the banner would call a renewal a
+        // drop.
+        renew(reason: Self.expiredReason)
+    }
+
+    /// openconnect is gone, so there is no tunnel behind the state.
+    ///
+    /// Nothing reports this on its own for an adopted tunnel: there is no child process and no
+    /// output handler, so the phase would stay `.connected` until the app was restarted.
+    private func tunnelProcessVanished() {
+        DiagnosticLog.write("watchdog: openconnect is no longer running")
+
+        teardownTunnelProcess()
+        stopClock()
+        phase = .failed("The tunnel is gone: openconnect is no longer running.")
+
+        if autoReconnect, userHasConnected { scheduleRetryAfterFailure() }
     }
 
     private func cancelRenewal() {
@@ -664,7 +866,7 @@ final class VPNController: ObservableObject {
     /// After waking, a tunnel that looks connected may be carrying nothing. Verify the interface
     /// is really there before trusting the state, and recover if it is not.
     private func handleWake() {
-        guard autoReconnect, userHasConnected else { return }
+        guard autoReconnect, userHasConnected, !isAttemptInFlight else { return }
 
         // Give the network a moment to come back before judging it.
         Task { @MainActor in
@@ -709,7 +911,8 @@ final class VPNController: ObservableObject {
                 let shouldReconnect = self.policy.shouldReconnectOnNetworkChange(
                     isNetworkAvailable: path.status == .satisfied,
                     isTunnelUp: self.isConnected,
-                    wasConnectedBefore: self.userHasConnected
+                    wasConnectedBefore: self.userHasConnected,
+                    isAttemptInFlight: self.isAttemptInFlight
                 )
                 if shouldReconnect, self.autoReconnect { self.scheduleRetryAfterFailure() }
             }
@@ -745,18 +948,7 @@ final class VPNController: ObservableObject {
         connectTask?.cancel()
         connectTask = nil
 
-        if let runner {
-            runner.disconnect()
-        } else if adoptedPID != nil {
-            // An adopted tunnel has no child process to signal, so stop it the same way the
-            // runner would: by its pid-file marker, which only this app's openconnect carries.
-            OpenConnectRunner.shutdownAdopted()
-        }
-
-        runner = nil
-        adoptedPID = nil
-        TunnelAdoption.forget()
-        TunnelAdoption.cleanUp(pidFilePath: OpenConnectRunner.pidFilePath)
+        teardownTunnelProcess()
         stopClock()
         phase = .idle
     }
@@ -767,13 +959,15 @@ final class VPNController: ObservableObject {
 
     // MARK: - Clock
 
+    /// Redraws the countdown, and asks the watchdog whether the tunnel behind it is still real.
     private func startClock() {
         guard clockTask == nil else { return }
         clockTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(30))
-                guard !Task.isCancelled else { return }
-                self?.now = Date()
+                try? await Task.sleep(for: .seconds(Self.heartbeat))
+                guard !Task.isCancelled, let self else { return }
+                self.now = Date()
+                self.checkTunnelHealth()
             }
         }
     }

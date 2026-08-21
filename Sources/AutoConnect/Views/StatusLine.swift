@@ -59,6 +59,10 @@ struct StatusLine: View {
 /// states in well under a second, which flashes a status past unread and leaves no time for the
 /// shimmer to travel. Values are queued and released no faster than the floor, and the queue
 /// always drains, so the row still ends on the truth.
+///
+/// The floor applies to one change at a time. A queue shares a single dwell between everything in
+/// it, so the row can fall at most about one dwell behind the truth however fast the real phases
+/// move: paced enough to read, never so paced that it describes a state the app has left.
 @MainActor
 @Observable
 final class StatusPacer<Value: Equatable> {
@@ -127,10 +131,20 @@ final class StatusPacer<Value: Equatable> {
 
         drain = Task { [weak self] in
             while let self, let next = pending.first {
+                // The floor is per value, but the budget is for the whole queue: with several
+                // waiting, each takes an equal share of one dwell rather than a dwell of its own.
+                //
+                // Without that the row narrates a story that is already over. Four steps of a
+                // connect that really took a second replayed for eleven, so the panel still read
+                // "Authenticating..." while the tunnel was up and the banner announcing it had
+                // already been posted, which reads as the app announcing a connection it did not
+                // have. A single change still gets the full floor, which is what the dwell is for.
+                let dwell = minimumDwell / Double(pending.count)
+
                 // Only the part of the dwell the current value has not served yet, so every one
                 // gets the same floor whether it arrived in a burst or on its own.
-                let elapsed = shownAt.map { Date().timeIntervalSince($0) } ?? minimumDwell
-                let remaining = minimumDwell - elapsed
+                let elapsed = shownAt.map { Date().timeIntervalSince($0) } ?? dwell
+                let remaining = dwell - elapsed
 
                 if remaining > 0 {
                     do { try await Task.sleep(for: .seconds(remaining)) } catch { break }

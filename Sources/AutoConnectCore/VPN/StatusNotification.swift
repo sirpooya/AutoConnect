@@ -12,6 +12,13 @@ public enum VPNStatusEvent: String, Equatable, Sendable, CaseIterable {
     case connected
     case disconnected
     case reconnecting
+    /// The app is rebuilding the session on purpose, because the gateway's twelve hours are up.
+    ///
+    /// Distinct from `reconnecting`, which is a tunnel that dropped on its own. This one is the
+    /// app's own decision, and it used to pass in silence on the grounds that nothing about the
+    /// connection had changed. It had: the tunnel really is down for the seconds a renewal takes,
+    /// and a gap nobody was told about reads as a fault rather than as maintenance.
+    case renewing
     case failed
 }
 
@@ -19,9 +26,9 @@ public enum VPNStatusEvent: String, Equatable, Sendable, CaseIterable {
 ///
 /// One switch, off by default. An app that starts posting banners the first time it is launched
 /// is an app people turn off, and the menu bar icon already carries the state for anyone who
-/// wants to look. There is no switch per kind: the three moments this covers (up, down, in
-/// trouble) are the same question asked three times, and nobody wants to be told about two of
-/// them and not the third.
+/// wants to look. There is no switch per kind: the moments this covers (up, down, in trouble, and
+/// the session being rebuilt) are the same question asked several times, and nobody wants to be
+/// told about some of them and not the rest.
 public struct NotificationPreferences: Equatable, Sendable {
     /// The only switch. With this off nothing is posted and no authorization is ever requested.
     public var isEnabled: Bool
@@ -107,6 +114,14 @@ public enum StatusNotificationPolicy {
                 title: "VPN reconnecting",
                 body: reason.map { "\($0) Reconnecting to \(named)." }
                     ?? "The tunnel dropped. Reconnecting to \(named)."
+            )
+
+        case .renewing:
+            return StatusNotification(
+                event: current,
+                title: "VPN session renewing",
+                body: reason.map { "\($0) Renewing the session on \(named)." }
+                    ?? "The session on \(named) is expiring. Renewing it now."
             )
 
         case .failed:

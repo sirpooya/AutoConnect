@@ -79,17 +79,12 @@ final class VPNStatusNotifier: NSObject, ObservableObject {
     /// Feeds one phase change in. Called for every phase, including the ones that are progress
     /// rather than news; those are dropped here.
     ///
-    /// `isRenewing` is the tunnel coming down on purpose so it can go straight back up. It is
-    /// dropped for the same reason the connect steps are: it is not a change in whether the
-    /// machine is on the VPN, which is the only thing these banners are about.
+    /// `isRenewing` is the tunnel coming down on purpose so it can go straight back up. Its steps
+    /// are still dropped, for the same reason a first connect's are, but the renewal itself is
+    /// announced: for those seconds the machine really is off the VPN, and a gap nobody was told
+    /// about reads as a fault rather than as the session being rebuilt.
     func record(phase: VPNController.Phase, gateway: String, isRenewing: Bool = false) {
-        if isRenewing {
-            // With one exception: a renewal that ends in a failure means the tunnel did not come
-            // back, which is the whole reason someone turns these on.
-            guard case .failed = phase else { return }
-        }
-
-        guard let (event, detail) = Self.event(for: phase) else { return }
+        guard let (event, detail) = Self.event(for: phase, isRenewing: isRenewing) else { return }
 
         let banner = StatusNotificationPolicy.notification(
             from: lastEvent,
@@ -109,7 +104,27 @@ final class VPNStatusNotifier: NSObject, ObservableObject {
 
     /// The notifiable event behind a phase, or nil when the phase is one step of a connect in
     /// progress. Four banners for one Connect click is not a status report.
-    private static func event(for phase: VPNController.Phase) -> (VPNStatusEvent, String?)? {
+    private static func event(
+        for phase: VPNController.Phase,
+        isRenewing: Bool
+    ) -> (VPNStatusEvent, String?)? {
+        // A deliberate teardown reads differently. `reconnecting` here is the app's own decision,
+        // not a tunnel that dropped, so it is announced as a renewal and says why; the tunnel
+        // coming back afterwards is announced as a connect, which is what it is.
+        if isRenewing {
+            switch phase {
+            case .reconnecting(_, let reason):
+                return (.renewing, reason)
+            case .connected(let tunnel):
+                return (.connected, tunnel.assignedIP)
+            case .failed(let message):
+                return (.failed, message)
+            // The steps of the rebuild, and the moment between the two tunnels: progress, not news.
+            case .idle, .contactingGateway, .awaitingLogin, .exchangingToken, .startingTunnel:
+                return nil
+            }
+        }
+
         switch phase {
         case .idle:
             return (.disconnected, nil)

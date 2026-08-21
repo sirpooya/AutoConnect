@@ -49,7 +49,7 @@ bundle a menu-bar app needs. **Anything worth testing belongs in `AutoConnectCor
 
 ```
 Sources/
-├── AutoConnectCore/                      # pure logic, no UI, 224 tests
+├── AutoConnectCore/                      # pure logic, no UI, 235 tests
 │   ├── Crypto/
 │   │   ├── Base32.swift              # RFC 4648 decode + encode
 │   │   └── TOTP.swift                # RFC 6238 / RFC 4226 truncation
@@ -69,7 +69,7 @@ Sources/
 │       ├── OpenConnectRunner.swift    # process spawn, output parsing, state machine
 │       ├── OpenConnectVersion.swift   # asks the installed binary what version it is
 │       ├── PinnedCertificate.swift    # what the pinned cert says: names, issuer, expiry
-│       ├── ReconnectPolicy.swift      # when to renew, back off, or give up
+│       ├── ReconnectPolicy.swift      # when to renew, back off, give up, or distrust "connected"
 │       ├── SetupCommands.swift        # install and sudo lines the user copies, built from the same constants
 │       ├── StatusNotification.swift   # which status changes earn a banner, and what it says
 │       └── TunnelStats.swift          # netstat counters, rates, byte formatting
@@ -228,14 +228,33 @@ section 4 and section 3. Summary of the behavior contract:
 - Connected state shows the assigned tunnel IP and a live countdown to session expiry, parsed
   from openconnect's `Session authentication will expire at ...` line.
 - Notifications are opt-in and cover state, not progress. The icon serves whoever is looking at
-  the menu bar; a banner is for whoever is not, so only connect, disconnect and trouble are
-  announced. One switch covers all three: they are the same question asked three times, and the
-  footnote under it names the moments, which is all a row per kind ever really said. The steps of a connect are not, the same event twice running says so once, the
-  launch state is never announced, and a renewal, which drops the tunnel to rebuild it, is
-  silent unless it fails (`VPNController.isRenewing`). The decision lives in
+  the menu bar; a banner is for whoever is not, so connect, disconnect, trouble and the session
+  being rebuilt are announced. One switch covers all of them: they are the same question asked
+  several times, and the footnote under it names the moments, which is all a row per kind ever
+  really said. The steps of a connect are not announced, the same event twice running says so
+  once, and the launch state is never announced.
+  **A renewal announces itself** (`VPNStatusEvent.renewing`, "VPN session renewing"), which
+  reverses the original rule that it was silent unless it failed. It was reported as a bug, and
+  rightly: for the seconds a renewal takes the machine really is off the VPN, so a gap nobody was
+  told about reads as a fault. `isRenewing` still silences the steps in between, which is now all
+  it does. The decision lives in
   `StatusNotificationPolicy`; `VPNStatusNotifier` only asks permission and posts. Every call into
   `UNUserNotificationCenter` is gated on the process being a real `.app`, since it traps in a
   bare executable, which is how `swift run` runs the app.
+- **"Connected" is checked, not assumed.** openconnect's claim goes stale two ways, and neither
+  reports itself: its process can be gone (a tunnel adopted from a previous launch has no output
+  handler watching it), and its session can expire under a device that is still up, which is the
+  state that read "Connected" beside a countdown saying "expired" while nothing got through. The
+  heartbeat that redraws the countdown also asks `ReconnectPolicy.evaluateHealth`, so the worst
+  case is one interval late rather than never. An expired session is torn down either way: left
+  up it still holds the routes, including the default one, so the machine has no working network
+  at all. A single long `Task.sleep` to the renewal lead is the optimisation, never the guarantee.
+- **Only the current attempt may report.** A connect sequence and a runner each carry a
+  generation, and anything stamped with an older one is dropped (`VPNController.report`,
+  `apply(runnerState:generation:)`). An abandoned openconnect keeps printing until it dies and a
+  cancelled sequence still unwinds through its catch blocks, so without this the tail of a
+  torn-down tunnel set the phase behind the connect that replaced it: a renewal still on
+  "Authenticating..." showed, and announced, "Connected".
 - Connect flow: gateway init, `WKWebView` SAML login, auth-reply, spawn openconnect with
   `--cookie-on-stdin --servercert <pin>` and write the session token to stdin.
 - Autofill injects email, password and TOTP into the IdP page from the Keychain.
@@ -385,11 +404,22 @@ VPN connector:
 - [x] Status notifications, off by default, behind one switch that covers connect, disconnect
       and reconnect. Which transitions are news is pure and tested.
 - [x] Nothing about any gateway is compiled in: Detect reads its groups and pins its cert.
-- [x] Reconnect decisions are pure and tested (renewal lead, backoff, give-up, network change).
-- [ ] **Connects end to end and brings up a working tunnel with corporate DNS.** Not yet run.
-- [ ] Autofill completes a connect with zero typing, falling back to the visible window.
-- [ ] Disconnect tears down the tunnel and restores routing.
-- [ ] Auto-reconnect near expiry works in practice.
+- [x] Reconnect decisions are pure and tested (renewal lead, backoff, give-up, network change,
+      and the health of a tunnel that claims to be connected).
+- [x] **Connects end to end and brings up a working tunnel with corporate DNS.** Verified live on
+      2026-08-21: `utun6` at `10.250.232.17`, default route through it, nameservers `172.30.6.21`
+      and `172.30.6.22`. The four steps, the pin check and the sudo spawn all hold against the
+      real gateway.
+- [x] Autofill completes a connect with zero typing: username, password and OTP all injected, the
+      token captured, and no field touched by hand.
+- [x] Falls back to the visible window when a selector does not match. The rule is still fail-open,
+      and the window is already on screen with the field waiting.
+- [x] Adopts a tunnel left running by a previous launch, and now starts the renewal, the network
+      monitor and the wake observers for it, which it did not before.
+- [x] Disconnect tears down the tunnel and restores routing. Verified live.
+- [~] Auto-reconnect near expiry. `ReconnectPolicy.evaluateHealth` answers the two ways
+      "connected" goes stale (process gone, session expired) and is unit-tested; the live work is
+      being finished in a separate session.
 
 Updates:
 - [x] Sparkle embedded, signed inside out, and verified for both architectures by the build script.
@@ -399,7 +429,10 @@ Updates:
 - [ ] **An update installs end to end**, meaning a real release is offered to an older copy and
       replaces it. Needs two releases to exist and `SPARKLE_PRIVATE_KEY` to be set on the repo.
 
-**Everything unchecked needs a live connect, and the user must be asked first.** See below.
+**The one thing left is B6, the privileged helper, and it is optional.** Everything else in the
+connector has now been run live: connect, zero-typing autofill, and disconnect. Root still comes
+from the sudoers rule. A live connect or disconnect still needs asking first, because the session
+at risk is the one the user is working over.
 
 ## Working Style for Claude Code
 - **Read `plan.md` first.** Follow its phase order. It exists so the gateway protocol and the
