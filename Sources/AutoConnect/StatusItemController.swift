@@ -172,6 +172,14 @@ final class StatusItemController: NSObject, NSApplicationDelegate {
         if CommandLine.arguments.contains("--playground") {
             PlaygroundWindow.shared.show()
         }
+
+        // Same reasoning as the playground flag, and it has to exist for the same reason: a
+        // popover in an accessory app is invisible to accessibility, so the camera path cannot be
+        // reached by UI scripting and cannot be exercised without a human clicking the menu.
+        //   build/AutoConnect.app/Contents/MacOS/AutoConnect --camera-scan
+        if CommandLine.arguments.contains("--camera-scan") {
+            state.scanCamera()
+        }
         #endif
 
         // Switching to another app should put the panel away. A popover left open while the app

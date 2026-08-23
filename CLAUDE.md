@@ -23,7 +23,11 @@ Keep it minimal and dependency-light. No cloud sync, no accounts, no analytics.
 - **Language:** Swift 5.9+
 - **UI:** SwiftUI views hosted by AppKit: `NSStatusItem` + `NSPopover`, not `MenuBarExtra`
 - **Min target:** macOS 14 (Sonoma)
-- **QR decode:** `Vision` (`VNDetectBarcodesRequest`) for screen-capture images; `AVFoundation` if using the camera
+- **QR decode:** `Vision` (`VNDetectBarcodesRequest`) for every path, images and camera alike.
+  For the camera that means `AVCaptureVideoDataOutput` frames fed to Vision, **not**
+  `AVCaptureMetadataOutput`: barcode symbologies are an iOS capability, and on macOS that
+  output's `availableMetadataObjectTypes` is empty at every stage, so setting `.qr` on it
+  throws an uncatchable Objective-C exception and aborts the process.
 - **Crypto / TOTP:** `CryptoKit` (`HMAC<Insecure.SHA1>`, plus SHA256/SHA512 support)
 - **Storage:** macOS **Keychain** via the Security framework (never plist/UserDefaults for secrets)
 - **Clipboard:** `NSPasteboard`
@@ -83,7 +87,7 @@ Sources/
     ├── LaunchAtLogin.swift            # SMAppService login item
     ├── QR/
     │   ├── QRScanner.swift            # Vision barcode detection, and the one payload parser
-    │   ├── CameraQRScanner.swift      # AVCaptureMetadataOutput session, permission, one result
+    │   ├── CameraQRScanner.swift      # capture session, Vision per frame, permission, one result
     │   └── CameraScanWindow.swift     # app-owned NSWindow for the live preview
     ├── Notifications/
     │   └── VPNStatusNotifier.swift    # permission and delivery for the status banners
@@ -352,6 +356,23 @@ has the Check Now button and the automatic-checks switch; `UpdateController` own
 ## Build / Run
 - Prefer a Swift Package (`swift build` / `swift run`) or a minimal Xcode project. Pick one and document it in README.
 - Provide a README with build steps and how to sign for local run.
+- **The camera needs an entitlement as well as a purpose string, and the entitlement is the one
+  that fails silently.** A real signing identity means `codesign --options runtime`, and the
+  hardened runtime refuses the camera outright unless the app carries
+  `com.apple.security.device.camera` (`Scripts/AutoConnect.entitlements`, applied by `sign_app` to
+  the app only, never to Sparkle's nested programs). The App Sandbox is off, so this is the
+  Hardened Runtime capability, not a sandbox exception. The refusal happens **below TCC**:
+  `requestAccess` returns false immediately, no prompt is drawn, and tccd never logs a request, so
+  it presents as a permission the user denied and there is nothing in System Settings to switch
+  on. `make-app.sh` fails the build if the entitlement did not apply, because nothing else notices
+  until someone opens the scanner. Keep the entitlements file free of XML comments: AMFI parses it
+  with a stricter reader than `plutil` and rejects them with "AMFIUnserializeXML: syntax error".
+- **Ask for camera permission before the scan window exists, never after.** macOS draws the prompt
+  as an app-modal alert, and `CameraScanWindow` orders itself front regardless of activation so it
+  survives a full-screen app in front, which buries the prompt behind it. The user then sees a
+  black rectangle that will never do anything and the request is never answered.
+  `CameraQRScanner.resolveAuthorization` is awaited first and its answer handed to `start(_:)`, so
+  the scanner never asks a question of its own.
 - **`NSCameraUsageDescription` is required, not documentation.** TCC reads it out of the bundle
   and refuses the camera outright when it is missing, so camera scanning cannot work without
   it. `make-app.sh` writes it; `CameraQRScanner` gates on being bundled at all, the same

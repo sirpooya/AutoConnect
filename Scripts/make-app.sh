@@ -261,6 +261,26 @@ PLIST
 
 printf 'APPL????' > "${APP_DIR}/Contents/PkgInfo"
 
+# The entitlements the app is signed with. Currently one: the Hardened Runtime's Camera
+# capability, which camera QR scanning cannot work without. The App Sandbox is off, so this is not
+# a sandbox exception. A real signing identity means `codesign --options runtime`, and the hardened
+# runtime refuses the camera outright unless the binary carries this entitlement. That refusal
+# happens below TCC: requestAccess returns false at once, no prompt is drawn, and tccd never logs
+# a request, so it presents as a permission the user denied and cannot grant in System Settings.
+# NSCameraUsageDescription is the other half and does not substitute for it; both are required.
+#
+# Keep the file free of XML comments. AMFI parses entitlements with a stricter reader than plutil
+# and rejects them outright with "AMFIUnserializeXML: syntax error", which fails the signature
+# rather than the lint.
+#
+# Absolute, for the same reason actool needs absolute paths: the tool resolves a relative one
+# against its own working directory rather than the shell's.
+ENTITLEMENTS="${PWD}/Scripts/AutoConnect.entitlements"
+if [[ ! -f "${ENTITLEMENTS}" ]]; then
+    echo "missing ${ENTITLEMENTS}" >&2
+    exit 1
+fi
+
 # A stable signing identity matters: re-signing with a different one makes macOS re-prompt for
 # Keychain access. Prefer a real Apple Development certificate, fall back to ad-hoc.
 if [[ -z "${SIGN_IDENTITY:-}" ]]; then
@@ -302,6 +322,16 @@ sign_item() {
         --sign "${SIGN_IDENTITY}" "$1" 2>&1 | sed 's/^/    /'
 }
 
+# The app itself, and only the app, carries the entitlements. The hardened runtime blocks the
+# camera without com.apple.security.device.camera, below TCC and with no prompt drawn, which reads
+# as a permission the user refused and cannot be granted in System Settings. Sparkle's nested
+# programs neither need it nor should have it.
+sign_app() {
+    codesign --force "${RUNTIME_FLAGS[@]+"${RUNTIME_FLAGS[@]}"}" "${TIMESTAMP_FLAG}" \
+        --entitlements "${ENTITLEMENTS}" \
+        --sign "${SIGN_IDENTITY}" "$1" 2>&1 | sed 's/^/    /'
+}
+
 echo "==> Signing with: ${SIGN_IDENTITY}"
 # Inside out, and the order is not a preference: signing the app seals whatever is nested in it, so
 # anything signed afterwards invalidates the outer signature. Sparkle brings four nested programs
@@ -321,10 +351,22 @@ if [[ -d "${SPARKLE_VERSION_DIR}/Updater.app" ]]; then
     sign_item "${SPARKLE_VERSION_DIR}/Updater.app"
 fi
 sign_item "${SPARKLE_FRAMEWORK}"
-sign_item "${APP_DIR}"
+sign_app "${APP_DIR}"
 
 echo "==> Verifying"
 codesign --verify --deep --strict "${APP_DIR}" && echo "    signature OK"
+
+# Checked, not assumed. This entitlement failing to apply is invisible at runtime until someone
+# opens the camera scanner and is told the camera is blocked, with nothing in System Settings to
+# turn on. Captured first, then matched: `codesign ... | grep -q` under `set -o pipefail` reports
+# failure when grep exits early on a match, which is the trap the rpath checks already fell into.
+APP_ENTITLEMENTS="$(codesign -d --entitlements - --xml "${APP_DIR}" 2>/dev/null || true)"
+if [[ "${APP_ENTITLEMENTS}" == *"com.apple.security.device.camera"* ]]; then
+    echo "    camera entitlement present"
+else
+    echo "the camera entitlement did not apply, so camera scanning will be blocked" >&2
+    exit 1
+fi
 
 echo "    architectures: $(lipo -archs "${APP_DIR}/Contents/MacOS/${APP_NAME}")"
 

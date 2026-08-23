@@ -16,13 +16,15 @@ final class CameraScanWindow: NSObject, NSWindowDelegate {
     private var window: NSWindow?
     private var scanner: CameraQRScanner?
     private var completion: ((Result<QRScanner.ScanResult, Error>) -> Void)?
+    /// True across the permission round trip, before there is a window to guard against.
+    private var isStarting = false
 
     /// Opens the scanner. `completion` is called exactly once, whether the camera reads a code,
     /// fails, or the user closes the window.
     func show(completion: @escaping (Result<QRScanner.ScanResult, Error>) -> Void) {
         // A second request while one is already scanning is answered by the window that is
         // already up. Cancelling the newcomer at once keeps its caller's pin balanced.
-        guard window == nil else {
+        guard window == nil, !isStarting else {
             WindowActivation.claim()
             if let window { present(window) }
             completion(.failure(QRScanner.ScanError.cancelled))
@@ -30,11 +32,31 @@ final class CameraScanWindow: NSObject, NSWindowDelegate {
         }
 
         self.completion = completion
+        isStarting = true
 
         // A menu-bar-only app is `.accessory` and cannot take key focus, so Escape and the close
-        // button would not answer. WindowActivation switches to `.regular` and back.
+        // button would not answer. WindowActivation switches to `.regular` and back. Claiming it
+        // *before* the permission prompt also brings the app forward, so the prompt is not
+        // drawn behind whatever the user was looking at.
         WindowActivation.claim()
 
+        // Permission is settled before any window exists. The scan window is ordered front
+        // regardless of activation, so opening it first would bury the system's camera prompt
+        // behind it and leave the user staring at a black rectangle.
+        Task { @MainActor in
+            let authorization = await CameraQRScanner.resolveAuthorization()
+            self.isStarting = false
+
+            // The caller gave up while the prompt was on screen.
+            guard self.completion != nil else {
+                WindowActivation.release()
+                return
+            }
+            self.openWindow(authorization)
+        }
+    }
+
+    private func openWindow(_ authorization: CameraQRScanner.Authorization) {
         let scanner = CameraQRScanner { [weak self] result in
             self?.finish(result)
         }
@@ -55,7 +77,7 @@ final class CameraScanWindow: NSObject, NSWindowDelegate {
         self.window = window
 
         present(window)
-        scanner.start()
+        scanner.start(authorization)
     }
 
     /// Brings the window up wherever the user actually is. Without `canJoinAllSpaces` and
@@ -73,6 +95,7 @@ final class CameraScanWindow: NSObject, NSWindowDelegate {
         guard let completion else { return }
         self.completion = nil
 
+        isStarting = false
         scanner?.cancel()
         scanner = nil
 

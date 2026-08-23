@@ -1,7 +1,9 @@
 import AVFoundation
 import AppKit
 import AutoConnectCore
+import CoreVideo
 import Foundation
+import Vision
 
 /// Reads authenticator QR codes from a live camera feed.
 ///
@@ -9,10 +11,15 @@ import Foundation
 /// get an answer back at once. A camera is not one-shot. It runs until it sees something, so this
 /// owns a session, publishes what it is doing, and calls back exactly once when it is done.
 ///
-/// `AVCaptureMetadataOutput` does the decoding rather than `Vision`. Vision wants an image, and
-/// building one per frame to hand it would be work the capture stack already does for free. What
-/// the payload *means* is still `QRScanner.entries`, so a camera scan reads an export QR code and
-/// its caveats exactly the way an opened image does.
+/// **Decoding is `Vision`, on frames from `AVCaptureVideoDataOutput`, not `AVCaptureMetadataOutput`.**
+/// The metadata output is the obvious API and it does not work here: barcode symbologies are an
+/// iOS capability, and on macOS `availableMetadataObjectTypes` comes back empty at every stage of
+/// setup, including after `startRunning`. Assigning `.qr` to it then throws an Objective-C
+/// exception that Swift cannot catch, which aborts the process rather than failing a call. Vision
+/// is also what `QRScanner` already uses, so every add path now decodes the same way.
+///
+/// What the payload *means* is still `QRScanner.entries`, so a camera scan reads an export QR code
+/// and its caveats exactly the way an opened image does.
 @MainActor
 final class CameraQRScanner: NSObject, ObservableObject {
 
@@ -33,8 +40,9 @@ final class CameraQRScanner: NSObject, ObservableObject {
     /// Read by the preview layer. Only ever configured on `sessionQueue`.
     let session = AVCaptureSession()
 
-    private let output = AVCaptureMetadataOutput()
+    private let output = AVCaptureVideoDataOutput()
     private let sessionQueue = DispatchQueue(label: "com.sirpooya.autoconnect.camera")
+    private var decoder: FrameDecoder?
     private var onResult: ((Result<QRScanner.ScanResult, Error>) -> Void)?
     private var hintResetTask: Task<Void, Never>?
 
@@ -43,33 +51,50 @@ final class CameraQRScanner: NSObject, ObservableObject {
         super.init()
     }
 
-    // MARK: - Lifecycle
+    // MARK: - Authorization
 
-    func start() {
+    /// The answer to "may this app use the camera", resolved before anything is on screen.
+    enum Authorization {
+        case authorized
+        case refused(String, canOpenPrivacySettings: Bool)
+    }
+
+    /// **Must be awaited before the scan window is opened, not after.**
+    ///
+    /// macOS draws the camera prompt as an app-modal alert, and the scan window is ordered front
+    /// regardless of activation so it survives a full-screen app in front. Opening that window
+    /// first therefore buries the prompt behind it: the user sees a black rectangle that will
+    /// never do anything, and the request sits unanswered forever. Asking first costs nothing,
+    /// because the prompt only ever appears on the very first scan.
+    static func resolveAuthorization() async -> Authorization {
         // Same gate as the notifier, for the same class of reason: TCC identifies an app by its
         // bundle, and reads the purpose string out of its Info.plist. A bare executable has
         // neither, so asking either fails silently or kills the process.
-        guard Self.isBundled else {
-            state = .failed(Self.unbundledNote, canOpenPrivacySettings: false)
-            return
-        }
+        guard isBundled else { return .refused(unbundledNote, canOpenPrivacySettings: false) }
 
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
-            configureAndRun()
+            return .authorized
         case .notDetermined:
-            AVCaptureDevice.requestAccess(for: .video) { granted in
-                Task { @MainActor [weak self] in
-                    guard let self else { return }
-                    if granted {
-                        self.configureAndRun()
-                    } else {
-                        self.state = .failed(Self.deniedNote, canOpenPrivacySettings: true)
-                    }
-                }
+            let granted = await withCheckedContinuation { continuation in
+                AVCaptureDevice.requestAccess(for: .video) { continuation.resume(returning: $0) }
             }
+            return granted ? .authorized : .refused(deniedNote, canOpenPrivacySettings: true)
         default:
-            state = .failed(Self.deniedNote, canOpenPrivacySettings: true)
+            return .refused(deniedNote, canOpenPrivacySettings: true)
+        }
+    }
+
+    // MARK: - Lifecycle
+
+    /// Takes the answer rather than asking for it, so the prompt cannot end up behind the window
+    /// this scanner is being shown in.
+    func start(_ authorization: Authorization) {
+        switch authorization {
+        case .authorized:
+            configureAndRun()
+        case .refused(let message, let canOpenPrivacySettings):
+            state = .failed(message, canOpenPrivacySettings: canOpenPrivacySettings)
         }
     }
 
@@ -81,21 +106,39 @@ final class CameraQRScanner: NSObject, ObservableObject {
     // MARK: - Session
 
     private func configureAndRun() {
+        // Frames are decoded on the session queue and reduced to strings there, so nothing from
+        // the capture stack ever reaches the main actor.
+        let decoder = FrameDecoder { [weak self] payloads in
+            Task { @MainActor [weak self] in
+                self?.handle(payloads: payloads)
+            }
+        }
+        self.decoder = decoder
+
         let session = session
         let output = output
-        let delegate = self
         let queue = sessionQueue
 
-        queue.async {
+        queue.async { [weak self] in
             guard let device = Self.preferredDevice() else {
-                Task { @MainActor [weak delegate] in
-                    delegate?.state = .failed(Self.noCameraNote, canOpenPrivacySettings: false)
+                Task { @MainActor [weak self] in
+                    self?.state = .failed(Self.noCameraNote, canOpenPrivacySettings: false)
                 }
                 return
             }
 
             do {
                 let input = try AVCaptureDeviceInput(device: device)
+
+                // Vision wants a pixel buffer it can read directly; 32BGRA is the format it and
+                // Core Image both take without a conversion in between.
+                output.videoSettings = [
+                    kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
+                ]
+                // A QR code that was in frame is still in frame a moment later, so a backlog of
+                // stale frames buys nothing and costs memory.
+                output.alwaysDiscardsLateVideoFrames = true
+                output.setSampleBufferDelegate(decoder, queue: queue)
 
                 session.beginConfiguration()
                 guard session.canAddInput(input), session.canAddOutput(output) else {
@@ -106,19 +149,14 @@ final class CameraQRScanner: NSObject, ObservableObject {
                 session.addOutput(output)
                 session.commitConfiguration()
 
-                // Only valid once the output belongs to a session, which is why this is not up
-                // with the rest of the setup.
-                output.setMetadataObjectsDelegate(delegate, queue: queue)
-                output.metadataObjectTypes = [.qr]
-
                 session.startRunning()
 
-                Task { @MainActor [weak delegate] in
-                    delegate?.state = .running
+                Task { @MainActor [weak self] in
+                    self?.state = .running
                 }
             } catch {
-                Task { @MainActor [weak delegate] in
-                    delegate?.state = .failed(
+                Task { @MainActor [weak self] in
+                    self?.state = .failed(
                         error.localizedDescription,
                         canOpenPrivacySettings: false
                     )
@@ -173,11 +211,17 @@ final class CameraQRScanner: NSObject, ObservableObject {
         guard let onResult else { return }
         self.onResult = nil
         hintResetTask?.cancel()
+        decoder?.stop()
+        decoder = nil
 
         // Stopping blocks until the last frame is through, so it does not belong on the main
         // thread. Nothing here reads the session again.
         let session = session
-        sessionQueue.async { if session.isRunning { session.stopRunning() } }
+        let output = output
+        sessionQueue.async {
+            output.setSampleBufferDelegate(nil, queue: nil)
+            if session.isRunning { session.stopRunning() }
+        }
 
         onResult(result)
     }
@@ -198,23 +242,55 @@ final class CameraQRScanner: NSObject, ObservableObject {
     }()
 }
 
-extension CameraQRScanner: AVCaptureMetadataOutputObjectsDelegate {
+/// Runs Vision over camera frames and reports any QR payloads it finds.
+///
+/// Deliberately not the `@MainActor` scanner itself: the delegate callback arrives on the session
+/// queue many times a second, and this way the frame never has to cross an actor boundary to be
+/// looked at. Every member is touched only on that one serial queue.
+private final class FrameDecoder: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
 
-    /// Called on `sessionQueue` for every frame that contains a barcode.
-    nonisolated func metadataOutput(
-        _ output: AVCaptureMetadataOutput,
-        didOutput metadataObjects: [AVMetadataObject],
+    /// Cameras deliver 30 frames a second and a QR code does not appear and vanish between them.
+    /// Decoding every frame just heats the machine up.
+    private static let minimumInterval: UInt64 = 100_000_000  // 100ms
+
+    private let onPayloads: ([String]) -> Void
+    private var lastRun: UInt64 = 0
+    private var isStopped = false
+
+    init(onPayloads: @escaping ([String]) -> Void) {
+        self.onPayloads = onPayloads
+        super.init()
+    }
+
+    /// Called on the session queue, so it cannot race a decode in progress.
+    func stop() { isStopped = true }
+
+    func captureOutput(
+        _ output: AVCaptureOutput,
+        didOutput sampleBuffer: CMSampleBuffer,
         from connection: AVCaptureConnection
     ) {
-        // Reduced to strings here so nothing from the capture stack crosses to the main actor.
-        let payloads = metadataObjects
-            .compactMap { $0 as? AVMetadataMachineReadableCodeObject }
-            .compactMap(\.stringValue)
+        guard !isStopped else { return }
 
+        let now = DispatchTime.now().uptimeNanoseconds
+        guard now &- lastRun >= Self.minimumInterval else { return }
+        lastRun = now
+
+        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+
+        let request = VNDetectBarcodesRequest()
+        request.symbologies = [.qr]
+
+        do {
+            try VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:]).perform([request])
+        } catch {
+            // One unreadable frame is not worth reporting; the next one is along in 100ms.
+            return
+        }
+
+        let payloads = (request.results ?? []).compactMap(\.payloadStringValue)
         guard !payloads.isEmpty else { return }
 
-        Task { @MainActor [weak self] in
-            self?.handle(payloads: payloads)
-        }
+        onPayloads(payloads)
     }
 }
