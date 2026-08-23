@@ -20,7 +20,7 @@ cd "$(dirname "$0")/.."
 CONFIG="${CONFIG:-release}"
 APP_NAME="AutoConnect"
 BUNDLE_ID="com.pooya.AutoConnect"
-VERSION="${VERSION:-1.4.0}"
+VERSION="${VERSION:-1.4.1}"
 BUILD_NUMBER="${BUILD_NUMBER:-1}"
 APP_DIR="build/${APP_NAME}.app"
 
@@ -200,7 +200,13 @@ ${ICON_KEYS}
       Camera QR scanning. TCC reads this string out of the bundle and shows it in the prompt, and
       refuses the camera outright if it is missing, so this is not documentation: without it the
       Scan with Camera path cannot work at all. CameraQRScanner gates on being bundled for the
-      same reason, since `swift run` has no Info.plist to read this from.
+      same reason, since a bare swift run has no Info.plist to read this from.
+
+      Keep backticks and command substitutions out of this heredoc, comments included. It is
+      unquoted so the version and bundle id placeholders expand, which means the shell also runs
+      anything that looks like a command substitution: a backticked "swift run" written here as
+      prose really did launch the app mid-build and hang the release workflow until it was
+      cancelled.
     -->
     <key>NSCameraUsageDescription</key>
     <string>AutoConnect uses the camera to read authenticator QR codes. Nothing is recorded or sent anywhere.</string>
