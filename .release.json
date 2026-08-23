@@ -1,0 +1,8 @@
+{
+  "changelog": "CHANGELOG.md",
+  "devRepo": "sirpooya/AutoConnect",
+  "releaseRepo": "sirpooya/AutoConnect",
+  "updater": "sparkle",
+  "releaseCommand": "git push origin v{version}",
+  "push": true
+}

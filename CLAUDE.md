@@ -466,6 +466,20 @@ Root still comes from the sudoers rule, which Settings installs, detects and rem
 item, not for a helper. A live connect or disconnect still needs asking first, because the session
 at risk is the one the user is working over.
 
+## Changelog
+
+After any user-visible or behavioral change, log it:
+
+```bash
+python3 ~/Documents/GitHub/claude-skills/skills/release/changelog.py add <type> "<entry>"
+```
+
+Types: added, changed, deprecated, removed, fixed, security. Write the entry for someone reading
+release notes, not a commit message. Skip pure refactors, formatting, and doc-only edits. Releases
+are cut with the `release` skill, which moves `[Unreleased]` into a versioned section; `.release.json`
+records that this repo publishes through Sparkle and that pushing a `v*` tag is what starts a
+release.
+
 ## Working Style for Claude Code
 - **Read `plan.md` first.** Follow its phase order. It exists so the gateway protocol and the
   discovered facts are not rediscovered every session.
