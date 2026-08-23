@@ -10,6 +10,8 @@ section when a release is cut.
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-08-23
+
 ### Changed
 - Automatic retries now allow six attempts, backing off 30s, 1m, 2m, 4m and 8m, so a recovery window of about a quarter of an hour outlasts a Wi-Fi handover or a captive portal. Attempts made while there is no network at all are held rather than counted.
 
