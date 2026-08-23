@@ -52,10 +52,56 @@ final class ReconnectPolicyTests: XCTestCase {
 
     /// The point of a cap: a gateway that is down must not be retried forever.
     func testGivesUpAfterRepeatedFailures() {
-        guard case .giveUp(let reason) = policy.decideAfterFailure(consecutiveFailures: 3) else {
+        let decision = policy.decideAfterFailure(
+            consecutiveFailures: policy.maxConsecutiveFailures
+        )
+        guard case .giveUp(let reason) = decision else {
             return XCTFail("expected giveUp")
         }
         XCTAssertTrue(reason.contains("Connect manually"), reason)
+    }
+
+    /// The budget was three attempts, which the doubling backoff spent in ninety seconds: shorter
+    /// than the outage that prompted this. Every rung up to the last must still be a retry.
+    func testTheLadderIsWideEnoughToOutlastABriefOutage() {
+        let delays: [TimeInterval] = (1..<policy.maxConsecutiveFailures).map { failures in
+            guard case .reconnect(let delay) =
+                policy.decideAfterFailure(consecutiveFailures: failures)
+            else {
+                XCTFail("attempt \(failures) should still retry")
+                return 0
+            }
+            return delay
+        }
+
+        XCTAssertEqual(delays, [30, 60, 120, 240, 480])
+        // The whole ladder, which is what has to outlast a Wi-Fi handover or a captive portal.
+        XCTAssertGreaterThan(delays.reduce(0, +), 15 * 60)
+    }
+
+    /// An attempt with no path to make it over says nothing about the gateway, so it must not spend
+    /// a rung. This is the reported bug: a half-minute drop used the entire budget while the
+    /// network was still down, and automatic retries had stopped by the time it came back.
+    func testAFailureWithNoNetworkHoldsTheLadderWhereItIs() {
+        XCTAssertEqual(
+            policy.decideAfterFailure(consecutiveFailures: 1, isNetworkAvailable: false),
+            .wait
+        )
+        // Even on the rung that would otherwise give up.
+        XCTAssertEqual(
+            policy.decideAfterFailure(
+                consecutiveFailures: policy.maxConsecutiveFailures,
+                isNetworkAvailable: false
+            ),
+            .wait
+        )
+    }
+
+    func testAFailureWithNetworkStillCounts() {
+        XCTAssertEqual(
+            policy.decideAfterFailure(consecutiveFailures: 1, isNetworkAvailable: true),
+            .reconnect(after: 30)
+        )
     }
 
     func testBackoffIsCapped() {
@@ -174,6 +220,20 @@ final class ReconnectPolicyTests: XCTestCase {
                 isTunnelUp: false,
                 wasConnectedBefore: true,
                 isAttemptInFlight: true
+            )
+        )
+    }
+
+    /// openconnect retries on its own, and those retries keep the session. Reading its recovery as
+    /// "no tunnel, and the network just changed" is what raised a give-up message over a tunnel it
+    /// restored seconds later, having made no attempt of our own at all.
+    func testDoesNotTakeOverWhileOpenConnectIsRecoveringItself() {
+        XCTAssertFalse(
+            policy.shouldReconnectOnNetworkChange(
+                isNetworkAvailable: true,
+                isTunnelUp: false,
+                wasConnectedBefore: true,
+                isTunnelSelfHealing: true
             )
         )
     }

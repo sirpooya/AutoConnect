@@ -125,6 +125,18 @@ final class VPNController: ObservableObject {
     /// a tunnel they asked for without ever starting one they did not.
     private var userHasConnected = false
 
+    /// What the path monitor last saw. Optimistic until it reports, because the first update takes
+    /// a moment to arrive and a connect must not be held up waiting to be told the network works.
+    private var isNetworkAvailable = true
+
+    /// True while an attempt is already queued.
+    ///
+    /// A queued retry *is* the retry. Without this, every trigger cancelled the attempt the last
+    /// one had queued and moved the ladder up a rung, so a burst of them spent the whole budget
+    /// without a single attempt ever running: the give-up message named three failures that had
+    /// never been attempted.
+    private var isRetryScheduled = false
+
     /// Which connect sequence is the current one, and which runner is the current one.
     ///
     /// Both exist because a renewal abandons work that has not finished talking. A cancelled
@@ -417,6 +429,21 @@ final class VPNController: ObservableObject {
         phase = next
     }
 
+    /// Reports a failed attempt, and lets the retry ladder decide whether to try another.
+    ///
+    /// The plain `report` stays for failures no retry can clear, such as a certificate that does
+    /// not hash to the pin: dialling that again only repeats the alarm. These are the ones a retry
+    /// genuinely can clear, a gateway that timed out being the ordinary case, and until now none of
+    /// them scheduled anything at all. An attempt that died reaching the gateway simply stopped,
+    /// which is the other half of "it should have kept trying": the ladder existed but only a
+    /// tunnel that had already been built could get onto it.
+    private func reportFailure(_ message: String, generation: Int) {
+        guard generation == connectGeneration else { return }
+
+        phase = .failed(message)
+        if autoReconnect, userHasConnected { scheduleRetryAfterFailure() }
+    }
+
     private func runConnectSequence(generation: Int) async {
         // However this ends, the login is over. Held while it runs so a disconnect can close its
         // window; left behind on a failure it would be a window nobody can close from outside.
@@ -490,27 +517,25 @@ final class VPNController: ObservableObject {
             if case .cancelled = error {
                 report(.idle, generation: generation)
             } else {
-                report(.failed(error.errorDescription ?? "\(error)"), generation: generation)
+                reportFailure(error.errorDescription ?? "\(error)", generation: generation)
             }
         } catch let error as GatewayClient.ClientError {
             // A stale route makes the gateway unreachable, and the symptom is a timeout. Say what
             // is actually wrong, and exactly how to fix it, rather than blaming the network.
             if let hint = staleRouteHint {
-                report(
-                    .failed(
-                        "The gateway could not be reached because a leftover route from a previous "
-                            + "session points at a gateway that no longer exists. Clear it "
-                            + "with:\n\(hint)"
-                    ),
+                reportFailure(
+                    "The gateway could not be reached because a leftover route from a previous "
+                        + "session points at a gateway that no longer exists. Clear it "
+                        + "with:\n\(hint)",
                     generation: generation
                 )
             } else {
-                report(.failed(error.description), generation: generation)
+                reportFailure(error.description, generation: generation)
             }
         } catch let error as OpenConnectRunner.RunnerError {
-            report(.failed(error.description), generation: generation)
+            reportFailure(error.description, generation: generation)
         } catch {
-            report(.failed(error.localizedDescription), generation: generation)
+            reportFailure(error.localizedDescription, generation: generation)
         }
     }
 
@@ -634,6 +659,8 @@ final class VPNController: ObservableObject {
         case .connected(let tunnel):
             phase = .connected(tunnel)
             consecutiveFailures = 0
+            // Anything queued is moot, including a retry that openconnect's own recovery beat.
+            cancelRenewal()
             startClock()
             rememberLiveTunnel(tunnel)
             if autoReconnect { scheduleRenewal() }
@@ -673,24 +700,62 @@ final class VPNController: ObservableObject {
         }
     }
 
+    /// Queues another attempt after one that really was made and really did fail.
+    ///
+    /// Only a completed attempt belongs here. A trigger, meaning the network coming back or the
+    /// machine waking, goes through `triggerReconnect` instead, because it is not evidence that the
+    /// gateway is unwilling. Counting triggers is what stopped automatic retries during a
+    /// half-minute network drop: a recovering network is reported several times over, and each
+    /// report both spent a rung of the ladder and cancelled the retry the previous one had queued,
+    /// so the budget ran out having never once let an attempt run.
     private func scheduleRetryAfterFailure() {
-        cancelRenewal()
-        guard !isPreview else { return }
+        guard !isPreview, !isRetryScheduled else { return }
 
+        // Asked before the count moves, so a decision to hold can leave the count alone.
+        let decision = policy.decideAfterFailure(
+            consecutiveFailures: consecutiveFailures + 1,
+            isNetworkAvailable: isNetworkAvailable
+        )
+
+        // No path to attempt over. The ladder stays whole for when the network is back, and the
+        // monitor is what starts the next attempt.
+        if case .wait = decision { return }
+
+        cancelRenewal()
         consecutiveFailures += 1
 
-        switch policy.decideAfterFailure(consecutiveFailures: consecutiveFailures) {
+        switch decision {
         case .giveUp(let reason):
             phase = .failed(reason)
             consecutiveFailures = 0
         case .reconnect(let delay):
-            renewalTask = Task { [weak self] in
-                try? await Task.sleep(for: .seconds(delay))
-                guard !Task.isCancelled else { return }
-                self?.renew(reason: Self.droppedReason)
-            }
+            scheduleRetry(after: delay)
         case .wait, .reconnectNow:
             renew(reason: Self.droppedReason)
+        }
+    }
+
+    /// Starts an attempt because the situation changed, not because one failed: the network came
+    /// back, or the machine woke to find the tunnel device gone.
+    ///
+    /// Deliberately outside the failure ladder. The attempt this queues will spend a rung itself if
+    /// it fails, so charging the trigger as well punished the network for recovering. Delayed by
+    /// `networkSettleDelay` so a network that returns in pieces produces one attempt, not five.
+    private func triggerReconnect() {
+        guard !isPreview, autoReconnect, userHasConnected, !isRetryScheduled else { return }
+
+        cancelRenewal()
+        scheduleRetry(after: policy.networkSettleDelay)
+    }
+
+    /// Queues exactly one attempt, and marks it queued so nothing replaces it.
+    private func scheduleRetry(after delay: TimeInterval) {
+        isRetryScheduled = true
+        renewalTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard let self, !Task.isCancelled else { return }
+            self.isRetryScheduled = false
+            self.renew(reason: Self.droppedReason)
         }
     }
 
@@ -791,6 +856,18 @@ final class VPNController: ObservableObject {
     /// tunnel down is a network change too.
     private var isAttemptInFlight: Bool { connectTask != nil }
 
+    /// True while openconnect is rebuilding the tunnel on its own.
+    ///
+    /// Its own retries are worth waiting out: they usually succeed, and they keep the session
+    /// rather than sending the user back through the identity provider. This is the state that read
+    /// as "no tunnel, and the network just changed" on every report from a recovering network,
+    /// which is how a give-up message appeared over a tunnel openconnect restored eight seconds
+    /// later without any attempt of ours being made at all.
+    private var isTunnelSelfHealing: Bool {
+        if case .reconnecting = phase { return true }
+        return false
+    }
+
     /// Whether the openconnect this app is responsible for is still alive.
     private var isTunnelProcessAlive: Bool {
         if let runner { return runner.isRunning }
@@ -841,6 +918,7 @@ final class VPNController: ObservableObject {
     private func cancelRenewal() {
         renewalTask?.cancel()
         renewalTask = nil
+        isRetryScheduled = false
     }
 
     /// Watches for sleep and wake.
@@ -877,7 +955,7 @@ final class VPNController: ObservableObject {
 
             // No interface means openconnect is gone or its device was torn down.
             guard let interface, Self.interfaceExists(interface) else {
-                scheduleRetryAfterFailure()
+                triggerReconnect()
                 return
             }
 
@@ -908,13 +986,18 @@ final class VPNController: ObservableObject {
         monitor.pathUpdateHandler = { [weak self] path in
             Task { @MainActor in
                 guard let self else { return }
+                // Recorded whatever the decision below is: the retry ladder reads this to tell an
+                // outage apart from a gateway that is refusing.
+                self.isNetworkAvailable = path.status == .satisfied
+
                 let shouldReconnect = self.policy.shouldReconnectOnNetworkChange(
-                    isNetworkAvailable: path.status == .satisfied,
+                    isNetworkAvailable: self.isNetworkAvailable,
                     isTunnelUp: self.isConnected,
                     wasConnectedBefore: self.userHasConnected,
-                    isAttemptInFlight: self.isAttemptInFlight
+                    isAttemptInFlight: self.isAttemptInFlight,
+                    isTunnelSelfHealing: self.isTunnelSelfHealing
                 )
-                if shouldReconnect, self.autoReconnect { self.scheduleRetryAfterFailure() }
+                if shouldReconnect, self.autoReconnect { self.triggerReconnect() }
             }
         }
         monitor.start(queue: DispatchQueue(label: "autoconnect.network"))

@@ -10,6 +10,14 @@ section when a release is cut.
 
 ## [Unreleased]
 
+### Changed
+- Automatic retries now allow six attempts, backing off 30s, 1m, 2m, 4m and 8m, so a recovery window of about a quarter of an hour outlasts a Wi-Fi handover or a captive portal. Attempts made while there is no network at all are held rather than counted.
+
+### Fixed
+- Automatic reconnection no longer gives up during a brief network outage. A recovering network is reported several times over, and each report was counted as a failed retry while also cancelling the retry the previous one had queued, so the budget ran out after roughly ninety seconds without a single attempt having been made. Only an attempt that was really made and really did fail now counts.
+- The app no longer declares a connection failed while openconnect is recovering the tunnel on its own. Its own retries keep the session and usually succeed, so they are now waited out rather than taken over.
+- A connect attempt that fails before the tunnel starts, a gateway that times out being the ordinary case, now schedules a retry instead of simply stopping.
+
 ## [1.4.2] - 2026-08-23
 
 ### Fixed
