@@ -115,14 +115,25 @@ final class AppState: ObservableObject {
 
     // MARK: - Writing
 
-    func add(_ parsed: OTPAuthURI.Parsed) {
-        do {
-            try store.add(parsed.account, secret: parsed.secret)
-            reload()
-            route = .list
-        } catch {
-            errorMessage = describe(error)
+    /// Stores everything one scan produced. A Google Authenticator export is many accounts at
+    /// once, so this takes a list: an entry that fails to store is reported, but the ones
+    /// already written stay written rather than being rolled back out of the Keychain.
+    func add(_ result: QRScanner.ScanResult) {
+        var failure: String?
+
+        for entry in result.entries {
+            do {
+                try store.add(entry.account, secret: entry.secret)
+            } catch {
+                failure = describe(error)
+                break
+            }
         }
+
+        reload()
+        route = .list
+        // The note is only the export's own caveats, so a real failure outranks it.
+        errorMessage = failure ?? result.note
     }
 
     func delete(_ account: Account) {
@@ -166,7 +177,29 @@ final class AppState: ObservableObject {
         performScan { try QRScanner.parse(imageAt: url) }
     }
 
-    private func performScan(_ scan: () throws -> OTPAuthURI.Parsed) {
+    /// Opens the camera scanner. The odd one out: the other paths block until they have an
+    /// answer, while a camera runs until it sees something, so the pin is taken here and given
+    /// back when the window is done rather than around a single call.
+    func scanCamera() {
+        PanelPin.acquire()
+
+        CameraScanWindow.shared.show { [weak self] result in
+            PanelPin.release()
+            guard let self else { return }
+
+            switch result {
+            case .success(let scan):
+                self.add(scan)
+            case .failure(QRScanner.ScanError.cancelled):
+                // Closing the window is not an error worth reporting.
+                break
+            case .failure(let error):
+                self.errorMessage = self.describe(error)
+            }
+        }
+    }
+
+    private func performScan(_ scan: () throws -> QRScanner.ScanResult) {
         do {
             // Pinned because the picker and the capture overlay would otherwise dismiss the
             // panel, hiding the account the scan just added.

@@ -197,6 +197,14 @@ ${ICON_KEYS}
     <key>LSUIElement</key>
     <true/>
     <!--
+      Camera QR scanning. TCC reads this string out of the bundle and shows it in the prompt, and
+      refuses the camera outright if it is missing, so this is not documentation: without it the
+      Scan with Camera path cannot work at all. CameraQRScanner gates on being bundled for the
+      same reason, since `swift run` has no Info.plist to read this from.
+    -->
+    <key>NSCameraUsageDescription</key>
+    <string>AutoConnect uses the camera to read authenticator QR codes. Nothing is recorded or sent anywhere.</string>
+    <!--
       Sparkle. The feed is the appcast.xml committed at the root of the repo and served raw by
       GitHub; each entry in it points at the zip attached to that tag's release.
 

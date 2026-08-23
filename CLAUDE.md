@@ -81,7 +81,10 @@ Sources/
     ├── PanelPin.swift                 # keeps the popover up across system windows
     ├── WindowActivation.swift         # counted .regular/.accessory policy switching
     ├── LaunchAtLogin.swift            # SMAppService login item
-    ├── QR/QRScanner.swift             # Vision barcode detection
+    ├── QR/
+    │   ├── QRScanner.swift            # Vision barcode detection, and the one payload parser
+    │   ├── CameraQRScanner.swift      # AVCaptureMetadataOutput session, permission, one result
+    │   └── CameraScanWindow.swift     # app-owned NSWindow for the live preview
     ├── Notifications/
     │   └── VPNStatusNotifier.swift    # permission and delivery for the status banners
     ├── Updates/
@@ -349,7 +352,11 @@ has the Check Now button and the automatic-checks switch; `UpdateController` own
 ## Build / Run
 - Prefer a Swift Package (`swift build` / `swift run`) or a minimal Xcode project. Pick one and document it in README.
 - Provide a README with build steps and how to sign for local run.
-- If camera QR is used, add `NSCameraUsageDescription` to Info.plist.
+- **`NSCameraUsageDescription` is required, not documentation.** TCC reads it out of the bundle
+  and refuses the camera outright when it is missing, so camera scanning cannot work without
+  it. `make-app.sh` writes it; `CameraQRScanner` gates on being bundled at all, the same
+  `isBundled` test as `VPNStatusNotifier`, because `swift run` has no Info.plist to read it
+  from and asking anyway fails with no way to tell why.
 - Keep one signing identity. Re-signing with a different identity can lock the app out of its
   own Keychain items.
 - **The bundle identifier, the two Keychain services, and the `autoconnect.` defaults prefix are
@@ -384,8 +391,10 @@ has the Check Now button and the automatic-checks switch; `UpdateController` own
 Authenticator (done, verified against the user's live accounts):
 - [x] TOTP unit tests pass against all RFC 6238 Appendix B vectors (SHA1/256/512).
 - [x] Base32 decoder handles padding, lowercase, spaces, hyphens, impossible lengths.
-- [x] Can add an account by scanning the screen, by image, or by pasted link. Every path reads
-      the issuer's QR code; typing a Base32 seed by hand was offered and removed.
+- [x] Can add an account by scanning the screen, by camera, by image, or by pasted link. Every
+      path reads the issuer's QR code; typing a Base32 seed by hand was offered and removed.
+      All four end in `QRScanner.entries`, so an export QR code and its caveats read the same
+      whichever way the bytes arrived.
 - [x] Live code + per-account countdown render in the panel.
 - [x] One-click copy with visual confirmation.
 - [x] Secrets persist across launches via Keychain; delete removes them.

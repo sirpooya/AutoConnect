@@ -195,6 +195,10 @@ all and About says so rather than offering a button that does nothing.
 - *Scan Region of Screen* drags a selection box over an on-screen QR code. This shells out to
   `/usr/sbin/screencapture -i`, which the system draws itself, so the app never needs Screen
   Recording permission.
+- *Scan with Camera* opens a live preview and reads a code held up to the Mac's camera, which is
+  the path for a code on someone else's screen or on paper. macOS asks for camera permission the
+  first time; if it is refused, the window says so and offers a button through to the right pane
+  of System Settings. The camera runs only while that window is open.
 - *Open QR Image* picks a saved screenshot or enrollment image.
 - *Paste otpauth:// Link* reads a URI from the clipboard.
 

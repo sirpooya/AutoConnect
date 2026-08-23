@@ -35,6 +35,7 @@ struct MenuPanel: View {
 /// rejected, with nothing on screen to say why.
 enum AddMethod: String, CaseIterable, Identifiable {
     case scanScreen
+    case scanCamera
     case openImage
     case pasteLink
 
@@ -44,6 +45,7 @@ enum AddMethod: String, CaseIterable, Identifiable {
     var menuTitle: String {
         switch self {
         case .scanScreen: "Scan QR Code"
+        case .scanCamera: "Scan with Camera"
         case .openImage: "Open QR Image..."
         case .pasteLink: "Paste otpauth:// Link"
         }
@@ -53,6 +55,7 @@ enum AddMethod: String, CaseIterable, Identifiable {
     func run(_ state: AppState) {
         switch self {
         case .scanScreen: state.scanScreenRegion()
+        case .scanCamera: state.scanCamera()
         case .openImage: state.scanImageFile()
         case .pasteLink: state.scanClipboard()
         }
