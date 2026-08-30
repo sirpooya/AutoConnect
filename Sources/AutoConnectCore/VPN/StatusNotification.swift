@@ -61,6 +61,28 @@ public struct StatusNotification: Equatable, Sendable {
 /// Decides which transitions deserve a banner, and what it says.
 public enum StatusNotificationPolicy {
 
+    /// How long a `reconnecting` waits before it is worth saying out loud.
+    ///
+    /// openconnect's own dead-peer detection can drop and rebuild a tunnel in under half a
+    /// second. Both halves of that pair are banners, and every banner is posted under one
+    /// identifier so the newest replaces the last, so the connect overwrote the reconnect before
+    /// it had finished sliding onto the screen: what the user saw was "VPN connected" out of
+    /// nowhere, with nothing on screen to say what it had reconnected from. A drop the tunnel
+    /// settles by itself inside this window is not news either way, so neither half is announced.
+    ///
+    /// Long enough to cover a self-heal, short enough that a real outage is still reported while
+    /// the user is wondering why nothing loads.
+    public static let reconnectingHold: TimeInterval = 3
+
+    /// How long this event should be held back, in case the tunnel answers it first, or nil to
+    /// announce it at once.
+    ///
+    /// Only `reconnecting` waits. `renewing` is the app's own decision and takes a full sign-in to
+    /// carry out, so there is nothing for a wait to resolve, and the rest are settled states.
+    public static func hold(before event: VPNStatusEvent) -> TimeInterval? {
+        event == .reconnecting ? reconnectingHold : nil
+    }
+
     /// The banner for a transition, or nil when this one should pass in silence.
     ///
     /// - Parameters:

@@ -45,22 +45,22 @@ struct VPNSection: View {
                 errorRow(message)
             }
 
+            // Between automatic attempts. The reason and the attempt count share the row the
+            // reconnecting state already uses, so the block gains no third line.
+            if case .retrying(let status) = shown {
+                detailRow(
+                    icon: "arrow.triangle.2.circlepath",
+                    text: status.detailText
+                )
+            }
+
             // While openconnect retries by itself, say so and say why. The address shown above is
             // the one it is trying to keep, not one that is currently carrying traffic.
             if case .reconnecting = shown {
-                HStack(spacing: 6) {
-                    Image(systemName: "arrow.triangle.2.circlepath")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.secondary)
-
-                    Text(vpn.reconnectReason ?? "The tunnel stopped responding.")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-
-                    Spacer(minLength: 0)
-                }
-                .padding(.top, 2)
+                detailRow(
+                    icon: "arrow.triangle.2.circlepath",
+                    text: vpn.reconnectReason ?? "The tunnel stopped responding."
+                )
             }
         }
         .padding(.horizontal, 12)
@@ -153,10 +153,38 @@ struct VPNSection: View {
                 // the app is waiting on something and nothing else on screen moves; "Not
                 // connected", "Connected" and "Failed" are settled, and a highlight crossing them
                 // says work is under way when none is.
-                StatusLine(text: shown.label, isShimmering: shown.isWorking)
+                StatusLine(text: statusText, isShimmering: shown.isWorking)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// What the status line says.
+    ///
+    /// Every phase but one is a fixed string, and that one counts down. `vpn.now` is the panel's
+    /// existing one second ticker, so reading it here is what redraws the seconds; the phase
+    /// itself stays constant through the wait, which is what keeps `StatusPacer` from being
+    /// handed a new value every second and pacing a countdown.
+    private var statusText: String {
+        guard case .retrying(let status) = shown else { return shown.label }
+        return status.statusText(remaining: vpn.retryDeadline?.timeIntervalSince(vpn.now))
+    }
+
+    /// A secondary line under the status: the reason a tunnel dropped, or the plan for it.
+    private func detailRow(icon: String, text: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 9))
+                .foregroundStyle(.secondary)
+
+            Text(text)
+                .font(.system(size: 9))
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+
+            Spacer(minLength: 0)
+        }
+        .padding(.top, 2)
     }
 
     /// The gateway this connection dials. Not the username: that is the account row below, and
@@ -187,7 +215,7 @@ struct VPNSection: View {
     /// queue; the ones after it are what the dwell exists to pace.
     private var interruptsSequence: Bool {
         switch vpn.phase {
-        case .idle, .contactingGateway, .failed, .reconnecting: true
+        case .idle, .contactingGateway, .failed, .reconnecting, .retrying: true
         default: false
         }
     }

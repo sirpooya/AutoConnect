@@ -57,6 +57,26 @@ final class StatusNotificationTests: XCTestCase {
         XCTAssertEqual(notification(from: nil, to: .connected)?.event, .connected)
     }
 
+    // MARK: - Holding a drop back
+
+    /// openconnect's dead-peer detection can drop and rebuild a tunnel in under half a second, and
+    /// under one identifier the connect overwrites the reconnect before it can be read. A drop
+    /// waits, so a blip that settles itself is never announced at all.
+    func testOnlyReconnectingIsHeldBack() {
+        XCTAssertEqual(StatusNotificationPolicy.hold(before: .reconnecting), 3)
+
+        for event in [VPNStatusEvent.connected, .disconnected, .renewing, .failed] {
+            XCTAssertNil(StatusNotificationPolicy.hold(before: event), "\(event) should not wait")
+        }
+    }
+
+    /// What the notifier relies on to make a settled blip silent: it holds the drop without
+    /// recording it, so the tunnel coming back reads as connected-after-connected, which the
+    /// policy already refuses to repeat.
+    func testASettledBlipNeedsNoRuleOfItsOwn() {
+        XCTAssertNil(notification(from: .connected, to: .connected))
+    }
+
     /// openconnect's own retries pass through reconnecting repeatedly, and a retried connect fails
     /// again. Neither should produce a second banner.
     func testRepeatedEventIsNotRepeated() {

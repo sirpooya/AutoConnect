@@ -10,6 +10,13 @@ section when a release is cut.
 
 ## [Unreleased]
 
+### Added
+- The menu bar panel now shows a live countdown to the next automatic reconnection attempt, with the attempt number and the reason the last one failed. A drop with no internet says "Waiting for network" instead of sitting silently on "Failed".
+
+### Fixed
+- A tunnel that openconnect drops and rebuilds by itself in under a few seconds no longer posts a bare "VPN connected" banner out of nowhere. A drop now waits three seconds before it is announced, so a blip the tunnel settles on its own passes in silence, and a real outage still says it is reconnecting before it says it is back.
+- A tunnel that dropped while automatic retries were queued no longer reads as "Failed". That state is now reserved for the point where the app has really stopped trying, and a transient drop no longer posts a "VPN failed" notification ahead of the reconnection one.
+
 ## [1.5.0] - 2026-08-23
 
 ### Changed

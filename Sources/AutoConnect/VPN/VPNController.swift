@@ -22,12 +22,15 @@ final class VPNController: ObservableObject {
         case connected(OpenConnectRunner.Tunnel)
         /// The tunnel is not carrying traffic and is being re-established.
         case reconnecting(OpenConnectRunner.Tunnel, reason: String?)
+        /// The tunnel is gone and an automatic attempt is queued. Distinct from `failed`, which
+        /// is now only the end of the ladder: `retrying` is a working state and says so.
+        case retrying(RetryStatus)
         case failed(String)
 
         var isWorking: Bool {
             switch self {
             case .contactingGateway, .awaitingLogin, .exchangingToken, .startingTunnel,
-                 .reconnecting:
+                 .reconnecting, .retrying:
                 return true
             default:
                 return false
@@ -43,6 +46,9 @@ final class VPNController: ObservableObject {
             case .startingTunnel: return "Starting tunnel..."
             case .connected: return "Connected"
             case .reconnecting: return "Reconnecting..."
+            // A placeholder. The real line counts down, so it needs `now` and is built by the
+            // view from `retryStatus` and `retryDeadline`.
+            case .retrying(let status): return status.statusText(remaining: nil)
             case .failed: return "Failed"
             }
         }
@@ -121,6 +127,15 @@ final class VPNController: ObservableObject {
     /// Set when this launch adopted a tunnel it did not start, so Disconnect still works.
     private var adoptedPID: Int32?
     private var consecutiveFailures = 0
+
+    /// When the queued attempt fires, for the countdown in the panel. Nil while nothing is
+    /// queued, which with `Phase.retrying` on screen means the app is waiting for a network.
+    ///
+    /// Deliberately not inside the phase. The phase is paced by `StatusPacer` and compared for
+    /// equality on every change; a value that moves every second would either thrash the pacer or
+    /// have to defeat it. The deadline is a fixed date instead, and the panel's existing one
+    /// second ticker redraws the text from it.
+    @Published private(set) var retryDeadline: Date?
     /// True once the user has connected at least once this launch, so a network change can restore
     /// a tunnel they asked for without ever starting one they did not.
     private var userHasConnected = false
@@ -189,6 +204,15 @@ final class VPNController: ObservableObject {
     /// and Disconnect would have nothing to act on.
     private func adoptRunningTunnel() {
         guard !isPreview else { return }
+
+        // A playground launch is a second copy of the app running beside the real one, and the
+        // real one's tunnel is the user's actual network connection. Adopting it would hand a
+        // dev window ownership of a live tunnel it did not start, and quitting that window would
+        // take it down. The playground's own controllers are previews and were always safe; this
+        // is the controller the app builds for itself before the flag is ever read.
+        #if DEBUG
+        guard !CommandLine.arguments.contains("--playground") else { return }
+        #endif
 
         switch TunnelAdoption.decide(marker: OpenConnectRunner.pidFilePath) {
         case .none:
@@ -311,12 +335,14 @@ final class VPNController: ObservableObject {
     static func preview(
         phase: Phase,
         profile: VPNProfile = .example,
-        referenceDate: Date = Date()
+        referenceDate: Date = Date(),
+        retryDeadline: Date? = nil
     ) -> VPNController {
         // Pass the profile explicitly so a preview never picks up saved settings.
         let controller = VPNController(profile: profile, isPreview: true)
         controller.phase = phase
         controller.now = referenceDate
+        controller.retryDeadline = retryDeadline
         return controller
     }
 
@@ -383,7 +409,11 @@ final class VPNController: ObservableObject {
 
     // MARK: - Connect
 
-    func connect() {
+    /// `userInitiated` is false only for `renew`, which drives this from inside the retry ladder.
+    /// A person clicking Connect, or flicking the switch back on during a countdown, is saying to
+    /// try now: the wait is cancelled and the ladder starts over, or a connection that failed six
+    /// times this morning would give up on its second try this afternoon.
+    func connect(userInitiated: Bool = true) {
         // A preview controller must never touch the machine. Without this, Connect in the
         // playground ran the real sequence against the example gateway: a webview sign-in, and
         // then openconnect. The playground gets the request instead, and moves its own state.
@@ -399,6 +429,11 @@ final class VPNController: ObservableObject {
         guard profile.isComplete else {
             phase = .failed("This connection is not set up yet. Add a gateway in Settings.")
             return
+        }
+
+        if userInitiated {
+            cancelRenewal()
+            consecutiveFailures = 0
         }
 
         userHasConnected = true
@@ -440,8 +475,11 @@ final class VPNController: ObservableObject {
     private func reportFailure(_ message: String, generation: Int) {
         guard generation == connectGeneration else { return }
 
+        // The phase is set once, by whichever of these two owns the outcome. Passing through
+        // `.failed` on the way to a queued retry was not free: the notifier reads every phase, so
+        // a transient drop announced "VPN failed" and then, three seconds later, "reconnecting".
+        if autoReconnect, userHasConnected, scheduleRetryAfterFailure(reason: message) { return }
         phase = .failed(message)
-        if autoReconnect, userHasConnected { scheduleRetryAfterFailure() }
     }
 
     private func runConnectSequence(generation: Int) async {
@@ -647,11 +685,14 @@ final class VPNController: ObservableObject {
 
         switch state {
         case .disconnected:
-            phase = .idle
             stopClock()
             TunnelAdoption.forget()
-            // A tunnel that dropped on its own is exactly what auto-reconnect is for.
-            if autoReconnect, userHasConnected { scheduleRetryAfterFailure() }
+            // A tunnel that dropped on its own is exactly what auto-reconnect is for. `.idle`
+            // only when nothing is going to be tried, or the panel says "Not connected" beside a
+            // switch that is still on and a retry that is already counting down.
+            if autoReconnect, userHasConnected,
+               scheduleRetryAfterFailure(reason: Self.droppedReason) { return }
+            phase = .idle
 
         case .connecting:
             phase = .startingTunnel
@@ -672,9 +713,10 @@ final class VPNController: ObservableObject {
             setStatsPolling(false)
 
         case .failed(let message):
-            phase = .failed(message)
             stopClock()
-            if autoReconnect { scheduleRetryAfterFailure() }
+            if autoReconnect, userHasConnected,
+               scheduleRetryAfterFailure(reason: message) { return }
+            phase = .failed(message)
         }
     }
 
@@ -708,8 +750,16 @@ final class VPNController: ObservableObject {
     /// half-minute network drop: a recovering network is reported several times over, and each
     /// report both spent a rung of the ladder and cancelled the retry the previous one had queued,
     /// so the budget ran out having never once let an attempt run.
-    private func scheduleRetryAfterFailure() {
-        guard !isPreview, !isRetryScheduled else { return }
+    /// Returns whether the phase now describes what is going to happen, so the caller does not
+    /// overwrite it with a settled `.failed` that is not true.
+    @discardableResult
+    private func scheduleRetryAfterFailure(reason: String? = nil) -> Bool {
+        guard !isPreview else { return false }
+
+        // A retry is already queued and `phase` is already the `.retrying` that describes it.
+        // Saying so is what stops a second failure arriving behind the first from replacing a
+        // live countdown with "Failed".
+        guard !isRetryScheduled else { return true }
 
         // Asked before the count moves, so a decision to hold can leave the count alone.
         let decision = policy.decideAfterFailure(
@@ -718,21 +768,41 @@ final class VPNController: ObservableObject {
         )
 
         // No path to attempt over. The ladder stays whole for when the network is back, and the
-        // monitor is what starts the next attempt.
-        if case .wait = decision { return }
+        // monitor is what starts the next attempt. It is still shown, because an app quietly
+        // waiting on a network looks exactly like an app that has given up.
+        if case .wait = decision {
+            showRetrying(reason: reason, waitingForNetwork: true, deadline: nil)
+            return true
+        }
 
         cancelRenewal()
         consecutiveFailures += 1
 
         switch decision {
-        case .giveUp(let reason):
-            phase = .failed(reason)
+        case .giveUp(let giveUpReason):
+            phase = .failed(giveUpReason)
             consecutiveFailures = 0
+            return true
         case .reconnect(let delay):
-            scheduleRetry(after: delay)
+            scheduleRetry(after: delay, reason: reason)
+            return true
         case .wait, .reconnectNow:
             renew(reason: Self.droppedReason)
+            return true
         }
+    }
+
+    /// Puts the panel on the waiting state without changing what is queued.
+    private func showRetrying(reason: String?, waitingForNetwork: Bool, deadline: Date?) {
+        retryDeadline = deadline
+        phase = .retrying(
+            RetryStatus(
+                attempt: consecutiveFailures + 1,
+                maxAttempts: policy.maxConsecutiveFailures,
+                isWaitingForNetwork: waitingForNetwork,
+                reason: reason
+            )
+        )
     }
 
     /// Starts an attempt because the situation changed, not because one failed: the network came
@@ -749,12 +819,18 @@ final class VPNController: ObservableObject {
     }
 
     /// Queues exactly one attempt, and marks it queued so nothing replaces it.
-    private func scheduleRetry(after delay: TimeInterval) {
+    private func scheduleRetry(after delay: TimeInterval, reason: String? = nil) {
         isRetryScheduled = true
+        showRetrying(
+            reason: reason,
+            waitingForNetwork: false,
+            deadline: Date().addingTimeInterval(delay)
+        )
         renewalTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(delay))
             guard let self, !Task.isCancelled else { return }
             self.isRetryScheduled = false
+            self.retryDeadline = nil
             self.renew(reason: Self.droppedReason)
         }
     }
@@ -783,7 +859,7 @@ final class VPNController: ObservableObject {
 
         connectTask?.cancel()
         connectTask = nil
-        connect()
+        connect(userInitiated: false)
     }
 
     /// Forgets the current runner, so nothing it says afterwards is acted on.
@@ -908,17 +984,19 @@ final class VPNController: ObservableObject {
     private func tunnelProcessVanished() {
         DiagnosticLog.write("watchdog: openconnect is no longer running")
 
+        let message = "The tunnel is gone: openconnect is no longer running."
         teardownTunnelProcess()
         stopClock()
-        phase = .failed("The tunnel is gone: openconnect is no longer running.")
 
-        if autoReconnect, userHasConnected { scheduleRetryAfterFailure() }
+        if autoReconnect, userHasConnected, scheduleRetryAfterFailure(reason: message) { return }
+        phase = .failed(message)
     }
 
     private func cancelRenewal() {
         renewalTask?.cancel()
         renewalTask = nil
         isRetryScheduled = false
+        retryDeadline = nil
     }
 
     /// Watches for sleep and wake.
@@ -1036,6 +1114,9 @@ final class VPNController: ObservableObject {
         phase = .idle
     }
 
+    /// Dismisses a settled failure. `.retrying` is deliberately not dismissable: the X would have
+    /// to either lie about what the app is doing or silently cancel the retries, and the switch
+    /// beside it already turns them off honestly.
     func clearError() {
         if case .failed = phase { phase = .idle }
     }

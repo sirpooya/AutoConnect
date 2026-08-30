@@ -99,6 +99,17 @@ final class VPNStatusParams {
     /// Stage-only. Text shown in the failed state. Defaults to a real message the code can emit.
     var errorText: String = "The gateway rejected the session token. Try logging in again."
 
+    /// Stage-only. Which rung of the retry ladder the mock is on.
+    var retryAttempt: Double = 2
+
+    /// Stage-only. Seconds until the queued attempt. The real ladder runs 30s to 600s, and 600
+    /// is the widest the countdown ever gets, which is the thing worth checking against the row.
+    var retrySecondsRemaining: Double = 24
+
+    /// Stage-only. No path to attempt over, so there is no countdown to show. The state the bug
+    /// report was actually in, and the one that used to read as "Failed".
+    var retryWaitingForNetwork: Bool = false
+
     /// Stage-only. How many authenticator rows sit below the VPN row.
     var accountCount: Double = 2
 
@@ -162,6 +173,9 @@ final class VPNStatusParams {
         hoursRemaining = snapshot.hoursRemaining
         usingDTLS = snapshot.usingDTLS
         errorText = snapshot.errorText
+        retryAttempt = snapshot.retryAttempt
+        retrySecondsRemaining = snapshot.retrySecondsRemaining
+        retryWaitingForNetwork = snapshot.retryWaitingForNetwork
         accountCount = snapshot.accountCount
         uptimeHours = snapshot.uptimeHours
         rateExponent = snapshot.rateExponent
@@ -177,6 +191,7 @@ final class VPNStatusParams {
             countdownSize, countdownMarginRight,
             Double(connectionIndex), Double(phaseIndex),
             hoursRemaining, usingDTLS ? 1 : 0, accountCount,
+            retryAttempt, retrySecondsRemaining, retryWaitingForNetwork ? 1 : 0,
             uptimeHours, rateExponent, transferredExponent,
             Double(assignedIP.hashValue & 0xffff), Double(errorText.hashValue & 0xffff),
         ]
@@ -260,14 +275,18 @@ enum PreviewConnection: Int, CaseIterable, Identifiable {
 
 /// The phases the stage can park in, in the order a connect visits them.
 enum PreviewPhase: Int, CaseIterable, Identifiable {
-    case idle
-    case contactingGateway
-    case awaitingLogin
-    case exchangingToken
-    case startingTunnel
-    case connected
-    case reconnecting
-    case failed
+    // Explicit, and out of order on purpose. `phaseIndex` is persisted, so declaring `retrying`
+    // in the place it belongs would have renumbered `failed` and moved a saved selection onto a
+    // different phase. Same rule as `MenuBarIconSet`.
+    case idle = 0
+    case contactingGateway = 1
+    case awaitingLogin = 2
+    case exchangingToken = 3
+    case startingTunnel = 4
+    case connected = 5
+    case reconnecting = 6
+    case retrying = 8
+    case failed = 7
 
     var id: Int { rawValue }
 
@@ -280,6 +299,7 @@ enum PreviewPhase: Int, CaseIterable, Identifiable {
         case .startingTunnel: "Starting"
         case .connected: "Connected"
         case .reconnecting: "Reconnecting"
+        case .retrying: "Retrying"
         case .failed: "Failed"
         }
     }
@@ -308,6 +328,9 @@ struct VPNStatusSnapshot: Codable {
     var hoursRemaining: Double
     var usingDTLS: Bool
     var errorText: String
+    var retryAttempt: Double
+    var retrySecondsRemaining: Double
+    var retryWaitingForNetwork: Bool
     var accountCount: Double
     var uptimeHours: Double
     var rateExponent: Double
@@ -336,6 +359,9 @@ struct VPNStatusSnapshot: Codable {
         hoursRemaining = params.hoursRemaining
         usingDTLS = params.usingDTLS
         errorText = params.errorText
+        retryAttempt = params.retryAttempt
+        retrySecondsRemaining = params.retrySecondsRemaining
+        retryWaitingForNetwork = params.retryWaitingForNetwork
         accountCount = params.accountCount
         uptimeHours = params.uptimeHours
         rateExponent = params.rateExponent
@@ -376,6 +402,9 @@ struct VPNStatusSnapshot: Codable {
             .errorText,
             "The gateway rejected the session token. Try logging in again."
         )
+        retryAttempt = value(.retryAttempt, 2)
+        retrySecondsRemaining = value(.retrySecondsRemaining, 24)
+        retryWaitingForNetwork = value(.retryWaitingForNetwork, false)
         accountCount = value(.accountCount, 2)
         uptimeHours = value(.uptimeHours, 2.2)
         rateExponent = value(.rateExponent, 6.1)
@@ -479,6 +508,23 @@ struct VPNStatusStage: View {
             return .preview(phase: .startingTunnel, referenceDate: reference)
         case .failed:
             return .preview(phase: .failed(params.errorText), referenceDate: reference)
+
+        case .retrying:
+            // The state that had no home before: the tunnel is gone and the ladder has queued
+            // another attempt. The countdown is live, so this is also where its widest string
+            // (10:00, the top of the backoff) can be checked against the row.
+            return .preview(
+                phase: .retrying(
+                    RetryStatus(
+                        attempt: Int(params.retryAttempt),
+                        maxAttempts: ReconnectPolicy().maxConsecutiveFailures,
+                        isWaitingForNetwork: params.retryWaitingForNetwork,
+                        reason: params.errorText
+                    )
+                ),
+                referenceDate: reference,
+                retryDeadline: reference.addingTimeInterval(params.retrySecondsRemaining)
+            )
 
         case .reconnecting:
             // The tunnel details survive so the row can show what it is trying to keep, with an
@@ -774,6 +820,22 @@ struct VPNStatusPlaygroundView: View {
 
                         if params.phaseIndex == PreviewPhase.failed.rawValue {
                             textField("Error", $params.errorText)
+                        }
+
+                        if params.phaseIndex == PreviewPhase.retrying.rawValue {
+                            slider("Attempt", $params.retryAttempt, 2...6)
+                            toggle("Offline", $params.retryWaitingForNetwork)
+                            // Only while there is a countdown to set. Offline queues nothing, so
+                            // a seconds knob under it would be tuning a number nothing reads.
+                            if !params.retryWaitingForNetwork {
+                                slider(
+                                    "Next attempt",
+                                    $params.retrySecondsRemaining,
+                                    0...600,
+                                    "s"
+                                )
+                            }
+                            textField("Reason", $params.errorText)
                         }
                     }
                 }

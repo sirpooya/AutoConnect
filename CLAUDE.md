@@ -248,6 +248,15 @@ section 4 and section 3. Summary of the behavior contract:
   `StatusNotificationPolicy`; `VPNStatusNotifier` only asks permission and posts. Every call into
   `UNUserNotificationCenter` is gated on the process being a real `.app`, since it traps in a
   bare executable, which is how `swift run` runs the app.
+  **A drop waits three seconds before it is announced** (`StatusNotificationPolicy.hold`). Every
+  banner is posted under one identifier so the newest replaces the last, and openconnect's own
+  dead-peer detection can drop and rebuild a tunnel in 400ms, so the connect overwrote the
+  reconnect before it had finished sliding onto the screen: what was reported was "VPN connected"
+  arriving out of nowhere with nothing to say what it had reconnected from. The notifier holds the
+  drop **without recording it**, so a blip the tunnel settles by itself reaches the policy as
+  connected-after-connected, which the same-event rule already refuses to repeat. That is why a
+  settled blip needs no rule of its own, and why `lastEvent` must not be moved when an event is
+  held.
 - **"Connected" is checked, not assumed.** openconnect's claim goes stale two ways, and neither
   reports itself: its process can be gone (a tunnel adopted from a previous launch has no output
   handler watching it), and its session can expire under a device that is still up, which is the

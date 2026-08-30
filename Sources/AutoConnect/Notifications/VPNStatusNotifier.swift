@@ -42,6 +42,10 @@ final class VPNStatusNotifier: NSObject, ObservableObject {
     /// is never announced at all.
     private var lastEvent: VPNStatusEvent?
 
+    /// A drop waiting out `StatusNotificationPolicy.hold`, so a tunnel that heals itself in half a
+    /// second is never announced as having dropped at all.
+    private var holdTask: Task<Void, Never>?
+
     /// True for the playground's copy. It reads and writes the same preference, so the switch
     /// looks real, but it never registers with the notification centre and never posts: a mock
     /// must not be able to put a banner about a tunnel on screen.
@@ -86,6 +90,22 @@ final class VPNStatusNotifier: NSObject, ObservableObject {
     func record(phase: VPNController.Phase, gateway: String, isRenewing: Bool = false) {
         guard let (event, detail) = Self.event(for: phase, isRenewing: isRenewing) else { return }
 
+        // Anything arriving while a drop is being held answers it, so the held one is dropped
+        // rather than posted first. Posting both would put two banners under one identifier
+        // milliseconds apart, and the second overwrites the first before it can be read, which
+        // is the very thing the hold exists to prevent.
+        cancelHold()
+
+        if let delay = StatusNotificationPolicy.hold(before: event) {
+            hold(event, gateway: gateway, detail: detail, for: delay)
+            return
+        }
+
+        announce(event, gateway: gateway, detail: detail)
+    }
+
+    /// Posts an event, or decides it is not news, and remembers it either way.
+    private func announce(_ event: VPNStatusEvent, gateway: String, detail: String?) {
         let banner = StatusNotificationPolicy.notification(
             from: lastEvent,
             to: event,
@@ -100,6 +120,30 @@ final class VPNStatusNotifier: NSObject, ObservableObject {
 
         guard let banner else { return }
         post(banner)
+    }
+
+    /// Waits before announcing an event, in case the tunnel settles it first.
+    ///
+    /// `lastEvent` is deliberately left alone until the wait is over. A self-heal that finishes
+    /// inside it therefore arrives at `announce` as connected-after-connected, which the policy
+    /// already knows is not news, so the blip passes in silence without needing a rule of its own.
+    private func hold(
+        _ event: VPNStatusEvent,
+        gateway: String,
+        detail: String?,
+        for delay: TimeInterval
+    ) {
+        holdTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled else { return }
+            self?.holdTask = nil
+            self?.announce(event, gateway: gateway, detail: detail)
+        }
+    }
+
+    private func cancelHold() {
+        holdTask?.cancel()
+        holdTask = nil
     }
 
     /// The notifiable event behind a phase, or nil when the phase is one step of a connect in
@@ -119,6 +163,10 @@ final class VPNStatusNotifier: NSObject, ObservableObject {
                 return (.connected, tunnel.assignedIP)
             case .failed(let message):
                 return (.failed, message)
+            // A rebuild that has stalled and is now on the retry ladder. Not a step of it: the
+            // renewal said it would take seconds, and this says it is taking minutes.
+            case .retrying(let status):
+                return (.reconnecting, status.reason)
             // The steps of the rebuild, and the moment between the two tunnels: progress, not news.
             case .idle, .contactingGateway, .awaitingLogin, .exchangingToken, .startingTunnel:
                 return nil
@@ -132,6 +180,12 @@ final class VPNStatusNotifier: NSObject, ObservableObject {
             return (.connected, tunnel.assignedIP)
         case .reconnecting(_, let reason):
             return (.reconnecting, reason)
+        // The same news as `reconnecting`, and held for the same reason: openconnect's own
+        // recovery often beats the first rung of the ladder, and a drop it settles inside the
+        // hold is not worth two banners. `failed` is now only the end of the ladder, so it keeps
+        // its immediate banner: by then the app really has stopped.
+        case .retrying(let status):
+            return (.reconnecting, status.reason)
         case .failed(let message):
             return (.failed, message)
         case .contactingGateway, .awaitingLogin, .exchangingToken, .startingTunnel:
