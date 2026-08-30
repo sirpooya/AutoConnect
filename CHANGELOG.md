@@ -10,6 +10,8 @@ section when a release is cut.
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-08-30
+
 ### Added
 - The menu bar panel now shows a live countdown to the next automatic reconnection attempt, with the attempt number and the reason the last one failed. A drop with no internet says "Waiting for network" instead of sitting silently on "Failed".
 
