@@ -554,6 +554,12 @@ final class VPNController: ObservableObject {
             // Backing out of the login window is not a failure worth shouting about.
             if case .cancelled = error {
                 report(.idle, generation: generation)
+            } else if error.isTerminal {
+                // Rejected credentials and a bad certificate are the login half of the rule the
+                // pin check below already follows: dialling again only repeats the alarm, and here
+                // it also spends the corporate account's lockout budget on a password the gateway
+                // has already refused.
+                report(.failed(error.errorDescription ?? "\(error)"), generation: generation)
             } else {
                 reportFailure(error.errorDescription ?? "\(error)", generation: generation)
             }

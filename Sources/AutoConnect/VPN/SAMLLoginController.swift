@@ -22,6 +22,21 @@ final class SAMLLoginController: NSObject {
         case certificateRejected(expected: String, actual: String?)
         case navigationFailed(String)
 
+        /// True for the failures another identical attempt cannot clear.
+        ///
+        /// A gateway that rejected the credentials will reject the same ones again, and every
+        /// redial spends one of the corporate account's lockout attempts on a password already
+        /// known to be wrong. Retrying it also builds a fresh `WKWebView` per attempt, which is
+        /// what pushed WebKit into critical memory pressure on the main thread and hung the app.
+        var isTerminal: Bool {
+            switch self {
+            case .gatewayReportedError, .certificateRejected:
+                return true
+            case .cancelled, .timedOut, .tokenMissing, .navigationFailed:
+                return false
+            }
+        }
+
         var errorDescription: String? {
             switch self {
             case .cancelled:
@@ -193,7 +208,17 @@ final class SAMLLoginController: NSObject {
         window?.delegate = nil
         window?.orderOut(nil)
         window = nil
+
+        // Stop the page before dropping the reference. Releasing a WKWebView does not promptly
+        // end its WebContent process: this app has no
+        // `com.apple.runningboard.assertions.webkit` entitlement, so WebKit cannot take the
+        // termination watchdog assertion and a still-loading webview lingers about thirty
+        // seconds. Across a run of retries they overlap, and ten of them at ~140MB each is what
+        // drove WebKit into critical memory pressure on the main thread.
         webView?.navigationDelegate = nil
+        webView?.stopLoading()
+        webView?.load(URLRequest(url: URL(string: "about:blank")!))
+        webView?.removeFromSuperview()
         webView = nil
         // Hand back the claim taken when the window opened.
         WindowActivation.release()

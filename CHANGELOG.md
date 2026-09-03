@@ -10,6 +10,10 @@ section when a release is cut.
 
 ## [Unreleased]
 
+### Fixed
+- A rejected sign-in is no longer retried. Wrong credentials or an unexpected certificate now stop the connect and say so, instead of being redialled, which spent the account's lockout attempts on a password the gateway had already refused.
+- The sign-in window's web process is now torn down when the window closes. Repeated sign-in attempts left their web processes alive for about half a minute each, and enough of them overlapping drove the app into memory pressure and froze it.
+
 ## [1.6.0] - 2026-08-30
 
 ### Added
