@@ -10,9 +10,15 @@ import WebKit
 /// is best-effort; if a field cannot be found the window simply stays open for the user to finish
 /// by hand. Autofill is a convenience layered on a working manual path, never a replacement.
 ///
-/// **Never type a secret into an unexpected page.** The password is only ever sent to an origin
-/// reached by following redirects from the gateway's own login URL, over HTTPS. If the flow lands
-/// somewhere unrecognised, filling stops rather than guessing.
+/// **Never type a secret into an unexpected page.** The password is only ever sent, over HTTPS, to
+/// the gateway or to the identity provider it handed off to. `LoginOriginPolicy` owns that
+/// decision and holds it to two anchors; if the flow lands anywhere else, filling stops rather
+/// than guessing.
+///
+/// The scanner and filler run in `WKContentWorld.defaultClient`, not in the page's own JavaScript
+/// world. The page shares the DOM with that world but not its globals, so it cannot reach
+/// `window.__autoconnect` or redefine the setter the fill goes through. Running in the page's
+/// world meant the password was passed as an argument to a function the page itself could replace.
 @MainActor
 final class LoginFormFiller {
 
@@ -41,10 +47,15 @@ final class LoginFormFiller {
     }
 
     private let credentials: Credentials
-    /// Origins the password may be typed into, accumulated from the redirect chain.
-    private var trustedHosts: Set<String>
+    /// Which origins a secret may be typed into. Two anchors, not a growing set: see
+    /// `LoginOriginPolicy`.
+    private var origins: LoginOriginPolicy
     /// Steps already attempted, so a page that does not advance is not filled in a loop.
     private var attempts: [Step: Int] = [:]
+
+    /// The world the injected script lives in. Isolated from the page, so a hostile or merely
+    /// compromised page in the sign-in chain cannot replace `fill` and read what it is handed.
+    static let contentWorld: WKContentWorld = .defaultClient
 
     /// Maximum tries per step before giving up and leaving it to the user.
     private let maxAttemptsPerStep = 2
@@ -71,19 +82,22 @@ final class LoginFormFiller {
 
     init(credentials: Credentials, initialHost: String?) {
         self.credentials = credentials
-        self.trustedHosts = Set([initialHost].compactMap { $0 })
+        self.origins = LoginOriginPolicy(gatewayHost: initialHost)
     }
 
-    /// Records a host as part of the login flow. Called for each navigation that begins at the
-    /// gateway's login URL, so the IdP's own domain becomes trusted without being hardcoded.
+    /// Records a host the flow has reached, so the identity provider's own domain becomes
+    /// trusted without being hardcoded.
+    ///
+    /// Learning is deliberately one-shot. Every host reached used to be added to a set that only
+    /// grew, and `isTrusted` was then asked about the host that had *just* been added, so the
+    /// check could never fail: a single open redirect anywhere in the chain was enough to have
+    /// the password typed into the page it pointed at.
     func trust(host: String?) {
-        guard let host, !host.isEmpty else { return }
-        trustedHosts.insert(host.lowercased())
+        origins.observe(host: host)
     }
 
     func isTrusted(host: String?) -> Bool {
-        guard let host = host?.lowercased() else { return false }
-        return trustedHosts.contains(host)
+        origins.allows(host: host)
     }
 
     // MARK: - Driving the form
@@ -95,6 +109,10 @@ final class LoginFormFiller {
     func advance(in webView: WKWebView) async {
         guard let url = webView.url, url.scheme == "https" else { return }
         guard isTrusted(host: url.host) else {
+            DiagnosticLog.write(
+                "autofill: \(url.host ?? "an unknown host") is outside the sign-in "
+                    + "(\(origins.anchors.joined(separator: ", "))), so nothing was typed"
+            )
             onGiveUp?("Sign-in moved to \(url.host ?? "an unknown host"), so autofill stopped.")
             return
         }
@@ -165,16 +183,31 @@ final class LoginFormFiller {
         guard let encoded = Self.jsonString(value) else { return }
 
         let script = "window.__autoconnect.fill(\(Self.jsonString(step.rawValue) ?? "\"\"\"\""), \(encoded))"
-        _ = try? await webView.evaluateJavaScript(script)
+        _ = await evaluate(script, in: webView)
     }
 
     private func scan(_ webView: WKWebView) async -> FormShape? {
-        let raw = try? await webView.evaluateJavaScript(
-            "JSON.stringify(window.__autoconnect ? window.__autoconnect.scan() : null)"
+        let raw = await evaluate(
+            "JSON.stringify(window.__autoconnect ? window.__autoconnect.scan() : null)",
+            in: webView
         )
 
         guard let json = raw as? String, let data = json.data(using: .utf8) else { return nil }
         return try? JSONDecoder().decode(FormShape.self, from: data)
+    }
+
+    /// Runs one expression in the world the script was injected into.
+    ///
+    /// The completion-handler form on purpose. Its world-taking counterpart takes the handler as a
+    /// defaulted argument, so `await webView.evaluateJavaScript(script, in: nil, in: world)` binds
+    /// to *that* overload and returns `Void` immediately rather than the value: the scan then
+    /// decodes nothing and autofill silently stops working. Naming the handler removes the choice.
+    private func evaluate(_ script: String, in webView: WKWebView) async -> Any? {
+        await withCheckedContinuation { continuation in
+            webView.evaluateJavaScript(script, in: nil, in: Self.contentWorld) { result in
+                continuation.resume(returning: try? result.get())
+            }
+        }
     }
 
     private static func jsonString(_ value: String) -> String? {

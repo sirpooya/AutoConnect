@@ -132,11 +132,17 @@ final class SAMLLoginController: NSObject {
             // Injected at document end on every frame, since IdPs commonly render the form inside
             // one. The script only reads shape and applies values it is handed; it carries no
             // secret of its own.
+            //
+            // In a client world rather than the page's own. The two share the DOM, which is all
+            // the script needs, but not their globals: the page cannot see `window.__autoconnect`
+            // and cannot replace `fill`. In the page world it could, and since Swift passes the
+            // password to that function as an argument, replacing it was enough to read it.
             configuration.userContentController.addUserScript(
                 WKUserScript(
                     source: LoginFormFiller.userScript,
                     injectionTime: .atDocumentEnd,
-                    forMainFrameOnly: false
+                    forMainFrameOnly: false,
+                    in: LoginFormFiller.contentWorld
                 )
             )
         }
@@ -332,6 +338,7 @@ extension SAMLLoginController: WKNavigationDelegate {
         DiagnosticLog.write(
             "login: navigating to \(DiagnosticLog.redact(navigationAction.request.url))"
         )
+
         decisionHandler(.allow)
     }
 
