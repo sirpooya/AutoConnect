@@ -339,6 +339,21 @@ extension SAMLLoginController: WKNavigationDelegate {
             "login: navigating to \(DiagnosticLog.redact(navigationAction.request.url))"
         )
 
+        // The app relaxes App Transport Security wholesale, because no gateway is known ahead of
+        // time and the ones this exists for negotiate suites ATS refuses. That relaxation applies
+        // to this webview too, so without a check here the sign-in would follow a plaintext hop
+        // quite happily, and the token cookie the whole flow exists to collect would go on the
+        // wire in the clear. The gateway is HTTPS and so is every identity provider; a redirect
+        // to http:// is not a step of a sign-in worth completing.
+        if navigationAction.request.url?.scheme?.lowercased() == "http" {
+            decisionHandler(.cancel)
+            finish(with: .failure(LoginError.navigationFailed(
+                "The sign-in tried to continue over an unencrypted http:// connection, which "
+                    + "would expose the session token. It was stopped."
+            )))
+            return
+        }
+
         decisionHandler(.allow)
     }
 
