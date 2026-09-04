@@ -95,12 +95,32 @@ public enum TunnelAdoption {
         kill(pid, 0) == 0 || errno == EPERM
     }
 
+    /// Parses `ps -o uid= -p <pid>` output.
+    public static func parseUID(_ output: String) -> UInt32? {
+        UInt32(output.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    /// Whether a process is running as root.
+    ///
+    /// The marker below is matched against a command line, and a command line is not a credential:
+    /// anything running on this Mac can put that string in its own `argv` and be adopted as this
+    /// app's tunnel. That is worth closing because of what adoption then claims — a green dot and
+    /// "Connected" in the menu bar, with no tunnel behind it, which is the most misleading thing a
+    /// VPN indicator can say. openconnect needs root to make the `utun` device, so a real tunnel is
+    /// always root-owned, and an unprivileged process cannot pretend to be.
+    public static func isRootOwned(pid: Int32) -> Bool {
+        guard let output = shell("/bin/ps", ["-o", "uid=", "-p", String(pid)]) else { return false }
+        return parseUID(output) == 0
+    }
+
     /// The live tunnel this app started, if it is still running.
     ///
     /// Found by matching the marker in the process's command line, not by reading a pid file:
     /// openconnect writes `--pid-file` only when it daemonizes with `-b`, and this app runs it in
     /// the foreground so it can read its output. The marker is in `argv` either way, which is also
     /// exactly what shutdown matches on, so finding and stopping a tunnel use the same handle.
+    ///
+    /// The match is then confirmed against the one thing `argv` cannot fake: see `isRootOwned`.
     public static func runningPID(marker: String) -> Int32? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
@@ -118,7 +138,8 @@ public enum TunnelAdoption {
         guard process.terminationStatus == 0,
               let text = String(data: data, encoding: .utf8),
               let pid = parsePID(text),
-              isRunning(pid: pid)
+              isRunning(pid: pid),
+              isRootOwned(pid: pid)
         else {
             return nil
         }

@@ -103,6 +103,11 @@ final class AppState: ObservableObject {
 
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(code, forType: .string)
+        // Declared concealed, the way a password manager declares a password. Clipboard managers
+        // that honour the convention leave it out of their history, which matters more here than
+        // it looks: the code is good for thirty seconds, and a history entry outlives it by
+        // however long the history is kept.
+        NSPasteboard.general.setString("", forType: .init("org.nspasteboard.ConcealedType"))
 
         copiedAccountID = account.id
         copyResetTask?.cancel()
