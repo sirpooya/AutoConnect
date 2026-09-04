@@ -191,4 +191,35 @@ final class TunnelAdoptionTests: XCTestCase {
         XCTAssertTrue(arguments.contains(OpenConnectRunner.pidFilePath))
         XCTAssertFalse(arguments.contains("openconnect"))
     }
+
+    // MARK: - Confirming an adopted process
+
+    /// The marker is matched against a command line, which anything running on this Mac can put
+    /// in its own `argv`. A real tunnel is root-owned, because openconnect needs root to make the
+    /// device, so the uid is the part of the claim that cannot be faked.
+    func testParsesTheUIDPSReports() {
+        XCTAssertEqual(TunnelAdoption.parseUID("    0\n"), 0)
+        XCTAssertEqual(TunnelAdoption.parseUID("501"), 501)
+    }
+
+    func testRejectsUnreadableUIDOutput() {
+        XCTAssertNil(TunnelAdoption.parseUID(""))
+        XCTAssertNil(TunnelAdoption.parseUID("\n"))
+        XCTAssertNil(TunnelAdoption.parseUID("root"))
+        // ps prints nothing at all for a pid that has gone.
+        XCTAssertNil(TunnelAdoption.parseUID("  UID\n"))
+    }
+
+    /// This process is not root, so it stands in for the unprivileged impostor: a process
+    /// carrying the marker in its command line must not be adoptable as a live tunnel.
+    func testAProcessRunningAsThisUserIsNotTakenForATunnel() throws {
+        try XCTSkipIf(getuid() == 0, "Meaningless when the tests themselves run as root.")
+
+        XCTAssertFalse(TunnelAdoption.isRootOwned(pid: getpid()))
+    }
+
+    /// launchd is pid 1 and is always root, which is the positive half of the same check.
+    func testARootProcessIsRecognised() {
+        XCTAssertTrue(TunnelAdoption.isRootOwned(pid: 1))
+    }
 }
