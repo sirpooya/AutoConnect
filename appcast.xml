@@ -14,6 +14,27 @@
         <description>Most recent changes to AutoConnect.</description>
         <language>en</language>
         <item>
+            <title>1.6.1</title>
+            <pubDate>Fri, 11 Sep 2026 06:38:13 +0000</pubDate>
+            <sparkle:version>13</sparkle:version>
+            <sparkle:shortVersionString>1.6.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## What's Changed
+* Confine autofill to the sign-in's own origins, isolate its script, and four smaller fixes by @DariushStony in https://github.com/sirpooya/AutoConnect/pull/1
+
+## New Contributors
+* @DariushStony made their first contribution in https://github.com/sirpooya/AutoConnect/pull/1
+
+**Full Changelog**: https://github.com/sirpooya/AutoConnect/compare/v1.6.0...v1.6.1
+            ]]></description>
+            <enclosure
+                url="https://github.com/sirpooya/AutoConnect/releases/download/v1.6.1/AutoConnect-1.6.1.zip"
+                length="4398011"
+                type="application/octet-stream"
+                sparkle:edSignature="s9fblZbBw8KUQ04/xmQZwFI/GKEXX75iriKj9CwHk6oBcqZ34qowwqIgAYjSuC38tRDzys68zna8592eV0fPAw==" />
+        </item>
+        <item>
             <title>1.6.0</title>
             <pubDate>Sun, 30 Aug 2026 15:34:45 +0000</pubDate>
             <sparkle:version>12</sparkle:version>
