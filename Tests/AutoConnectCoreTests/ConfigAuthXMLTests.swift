@@ -22,10 +22,10 @@ final class ConfigAuthXMLTests: XCTestCase {
     <title>Login</title>
     <message>Please complete the authentication process in the AnyConnect Login window.</message>
     <banner></banner>
-    <sso-v2-login>https://mfa-vpn.dkservices.ir:28015/+CSCOE+/saml/sp/login?tgname=MFA-VPN_Profile&#x26;acsamlcap=v2</sso-v2-login>
-    <sso-v2-login-final>https://mfa-vpn.dkservices.ir:28015/+CSCOE+/saml_ac_login.html</sso-v2-login-final>
-    <sso-v2-logout>https://mfa-vpn.dkservices.ir:28015/+CSCOE+/saml/sp/logout</sso-v2-logout>
-    <sso-v2-logout-final>https://mfa-vpn.dkservices.ir:28015/+CSCOE+/saml_ac_login.html</sso-v2-logout-final>
+    <sso-v2-login>https://mfa-vpn.example.com:28015/+CSCOE+/saml/sp/login?tgname=MFA-VPN_Profile&#x26;acsamlcap=v2</sso-v2-login>
+    <sso-v2-login-final>https://mfa-vpn.example.com:28015/+CSCOE+/saml_ac_login.html</sso-v2-login-final>
+    <sso-v2-logout>https://mfa-vpn.example.com:28015/+CSCOE+/saml/sp/logout</sso-v2-logout>
+    <sso-v2-logout-final>https://mfa-vpn.example.com:28015/+CSCOE+/saml_ac_login.html</sso-v2-logout-final>
     <sso-v2-token-cookie-name>acSamlv2Token</sso-v2-token-cookie-name>
     <sso-v2-error-cookie-name>acSamlv2Error</sso-v2-error-cookie-name>
     <form>
@@ -99,7 +99,7 @@ final class ConfigAuthXMLTests: XCTestCase {
         XCTAssertEqual(request.tunnelGroup, "MFA-VPN_Profile")
         XCTAssertEqual(
             request.loginFinalURL.absoluteString,
-            "https://mfa-vpn.dkservices.ir:28015/+CSCOE+/saml_ac_login.html"
+            "https://mfa-vpn.example.com:28015/+CSCOE+/saml_ac_login.html"
         )
     }
 
@@ -113,7 +113,7 @@ final class ConfigAuthXMLTests: XCTestCase {
 
         XCTAssertEqual(
             request.loginURL.absoluteString,
-            "https://mfa-vpn.dkservices.ir:28015/+CSCOE+/saml/sp/login"
+            "https://mfa-vpn.example.com:28015/+CSCOE+/saml/sp/login"
                 + "?tgname=MFA-VPN_Profile&acsamlcap=v2"
         )
         XCTAssertFalse(request.loginURL.absoluteString.contains("&#x26;"))
@@ -228,14 +228,14 @@ final class ConfigAuthXMLTests: XCTestCase {
     func testInitRequestNamesTheTunnelGroupAndAdvertisesSAML() throws {
         let xml = ConfigAuth.initRequest(
             groupSelect: "MFA-VPN",
-            groupAccess: "https://mfa-vpn.dkservices.ir:28015"
+            groupAccess: "https://mfa-vpn.example.com:28015"
         )
 
         XCTAssertTrue(xml.contains("type=\"init\""))
         XCTAssertTrue(xml.contains("<group-select>MFA-VPN</group-select>"))
         XCTAssertTrue(xml.contains("<auth-method>single-sign-on-v2</auth-method>"))
         XCTAssertTrue(
-            xml.contains("<group-access>https://mfa-vpn.dkservices.ir:28015</group-access>")
+            xml.contains("<group-access>https://mfa-vpn.example.com:28015</group-access>")
         )
         // Must be well formed, since the gateway is strict.
         XCTAssertNoThrow(try XMLDocument(data: Data(xml.utf8)))

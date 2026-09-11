@@ -26,8 +26,7 @@ to `openconnect`, showing live status, the assigned IP, and a countdown to expir
 authenticator is a full RFC 6238 TOTP client, and it feeds its own code into that login: the name
 is the point, a connect takes no typing.
 
-Secrets live in the Keychain. There is no account, no sync, and no telemetry of any kind. See
-[plan.md](plan.md) for the gateway protocol and for why AnyConnect itself cannot be automated.
+Secrets live in the Keychain. There is no account, no sync, and no telemetry of any kind. The gateway protocol is documented in the Connecting section below.
 
 ## Download
 
@@ -317,7 +316,7 @@ Settings (Cmd+comma, or the footer button) configures everything; nothing is har
 
 Connecting runs four steps: ask the gateway how to authenticate, log in through a `WKWebView` this
 app owns, trade the resulting SAML token for a session token, then hand that to `openconnect` over
-stdin. The full protocol is documented in [plan.md](plan.md) section 4.
+stdin.
 
 While connected the panel shows the gateway, the assigned address, a countdown to session expiry,
 and behind a disclosure a throughput chart plus traffic, transferred, uptime, transport, interface

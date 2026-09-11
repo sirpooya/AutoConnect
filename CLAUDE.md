@@ -14,9 +14,6 @@ session expiry. Auto-reconnect.
 generate live RFC 6238 codes with a countdown, and copy to clipboard in one click. The VPN half
 consumes codes internally rather than via the clipboard.
 
-**Read `plan.md` before writing any code.** It records the gateway protocol, the discovered
-gateway facts, the phase order, and the open questions. Do not re-derive them.
-
 Keep it minimal and dependency-light. No cloud sync, no accounts, no analytics.
 
 ## Tech Stack (Apple frameworks, plus Sparkle for updates)
@@ -228,8 +225,7 @@ otpauth://totp/Issuer:account@example.com?secret=BASE32SECRET&issuer=Issuer&algo
 Parse with `URLComponents`. `secret` is required. Strip padding/whitespace before Base32 decode.
 
 ## VPN Connector Spec
-The full four-step protocol, the discovered gateway values, and the cert pin live in `plan.md`
-section 4 and section 3. Summary of the behavior contract:
+Summary of the behavior contract:
 
 - Menu bar icon reflects state: disconnected, connecting, connected, reconnecting, error.
 - Connected state shows the assigned tunnel IP and a live countdown to session expiry, parsed
@@ -490,8 +486,6 @@ records that this repo publishes through Sparkle and that pushing a `v*` tag is 
 release.
 
 ## Working Style for Claude Code
-- **Read `plan.md` first.** Follow its phase order. It exists so the gateway protocol and the
-  discovered facts are not rediscovered every session.
 - **Never connect, disconnect, or kill a VPN process without explicit permission.** The user
   routinely has their own openconnect running and depends on it; taking it down loses their work.
   Read-only inspection (`netstat`, `ifconfig`, `scutil --dns`, `pgrep`) is fine.

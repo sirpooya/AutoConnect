@@ -78,7 +78,7 @@ final class OpenConnectRunnerTests: XCTestCase {
         // endpoint. See OpenConnectDetailParsingTests.
         let noise = [
             "POST https://MFA-VPN.DKservices.ir:28015/",
-            "SSL negotiation with mfa-vpn.dkservices.ir",
+            "SSL negotiation with mfa-vpn.example.com",
             "Got CONNECT response: HTTP/1.1 200 OK",
             " is not a recognized network service.",
             "** Error: The parameters were not valid.",
@@ -179,12 +179,12 @@ final class OpenConnectRunnerTests: XCTestCase {
     func testParsesFailedReconnectAttemptWithReason() {
         XCTAssertEqual(
             Event.parse(
-                line: "Failed to reconnect to host mfa-vpn.dkservices.ir: Can't assign requested address"
+                line: "Failed to reconnect to host mfa-vpn.example.com: Can't assign requested address"
             ),
             .reconnectAttemptFailed("Can't assign requested address")
         )
         XCTAssertEqual(
-            Event.parse(line: "Failed to reconnect to host mfa-vpn.dkservices.ir: Invalid argument"),
+            Event.parse(line: "Failed to reconnect to host mfa-vpn.example.com: Invalid argument"),
             .reconnectAttemptFailed("Invalid argument")
         )
     }

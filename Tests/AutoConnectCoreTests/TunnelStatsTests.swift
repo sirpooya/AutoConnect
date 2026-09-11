@@ -97,11 +97,11 @@ final class OpenConnectDetailParsingTests: XCTestCase {
 
     /// The HTTPS line starts the same way but describes the handshake, not the endpoint.
     func testDoesNotMistakeHTTPSLineForAnEndpoint() {
-        let line = "Connected to HTTPS on mfa-vpn.dkservices.ir with ciphersuite "
+        let line = "Connected to HTTPS on mfa-vpn.example.com with ciphersuite "
             + "(TLS1.2)-(DHE-CUSTOM2048)-(RSA-SHA512)-(AES-256-CBC)-(SHA256)"
         XCTAssertNotEqual(
             Event.parse(line: line),
-            .gatewayEndpoint("HTTPS on mfa-vpn.dkservices.ir")
+            .gatewayEndpoint("HTTPS on mfa-vpn.example.com")
         )
     }
 
@@ -114,7 +114,7 @@ final class OpenConnectDetailParsingTests: XCTestCase {
     }
 
     func testParsesTLSCiphersuiteFromHandshakeLine() {
-        let line = "Connected to HTTPS on mfa-vpn.dkservices.ir with ciphersuite "
+        let line = "Connected to HTTPS on mfa-vpn.example.com with ciphersuite "
             + "(TLS1.2)-(DHE-CUSTOM2048)-(RSA-SHA512)-(AES-256-CBC)-(SHA256)"
 
         // Lowercase "ciphersuite" in this line, so it is not matched; the DTLS line supplies the
