@@ -10,6 +10,14 @@ section when a release is cut.
 
 ## [Unreleased]
 
+### Security
+- Autofill now types the password and one-time code only into the gateway or the identity provider it hands off to. Every host the sign-in passed through used to be trusted, and the check was made against a host that had just been added to that set, so it could never refuse: a single open redirect anywhere in the chain was enough to have the credentials typed into the page it pointed at.
+- The injected form scanner now runs in an isolated JavaScript world. It shared the page's world before, so a hostile or compromised page in the sign-in chain could replace the function the password is passed to and read it.
+- The sign-in window now refuses to continue over plain `http://`. App Transport Security is relaxed for the whole app, because gateway certificates are privately signed, and that relaxation applied to the sign-in webview as well.
+- A tunnel is adopted only when the process behind it is running as root. Adoption matched on a command line, which anything on this Mac can put a marker string into, so an unprivileged process could make the menu bar show a connected VPN with no tunnel behind it.
+- A malformed account-export QR code no longer crashes the app. A length field larger than `Int` can hold reached a conversion that traps rather than throws, so a crafted QR code killed the process instead of being reported as unreadable.
+- Copied one-time codes are marked concealed, so clipboard managers that honour the convention keep them out of their history.
+
 ### Fixed
 - A rejected sign-in is no longer retried. Wrong credentials or an unexpected certificate now stop the connect and say so, instead of being redialled, which spent the account's lockout attempts on a password the gateway had already refused.
 - The sign-in window's web process is now torn down when the window closes. Repeated sign-in attempts left their web processes alive for about half a minute each, and enough of them overlapping drove the app into memory pressure and froze it.

@@ -148,4 +148,71 @@ final class MigrationURITests: XCTestCase {
     func testPlainParserDoesNotClaimAnExportLink() {
         XCTAssertNil(OTPAuthURI.firstURI(in: twoAccounts))
     }
+
+    // MARK: - Hostile payloads
+
+    /// A QR code is a picture, from a screen or a camera, so the bytes behind it are not trusted
+    /// input. A length field larger than `Int` can hold used to reach `Int(_:)`, which traps
+    /// rather than throwing: the app died instead of reporting an unreadable export.
+    func testOversizedLengthIsReportedRatherThanTrapping() {
+        let payload = Data([0x0A]) + Self.varint(UInt64.max)
+
+        XCTAssertThrowsError(try OTPMigrationURI.parse(Self.migrationURI(payload))) { error in
+            XCTAssertEqual(error as? OTPMigrationURI.ParseError, .malformedPayload)
+        }
+    }
+
+    /// The same trap, one field along: a length that fits in `Int` but runs off the end of the
+    /// payload was already handled, and must stay handled.
+    func testLengthPastTheEndOfThePayloadIsReported() {
+        let payload = Data([0x0A]) + Self.varint(4096)
+
+        XCTAssertThrowsError(try OTPMigrationURI.parse(Self.migrationURI(payload))) { error in
+            XCTAssertEqual(error as? OTPMigrationURI.ParseError, .malformedPayload)
+        }
+    }
+
+    /// A batch counter this app cannot represent is not a reason to lose the account beside it.
+    func testOversizedBatchCounterFallsBackWithoutLosingTheEntry() throws {
+        let payload = Data([0x0A, 0x21]) + Self.minimalEntry
+            + Data([0x18]) + Self.varint(UInt64.max)
+
+        let batch = try OTPMigrationURI.parse(Self.migrationURI(payload))
+
+        XCTAssertEqual(batch.entries.count, 1)
+        XCTAssertEqual(batch.entries[0].account.label, "octocat")
+        XCTAssertEqual(batch.batchSize, 1)
+        XCTAssertFalse(batch.isPartialExport)
+    }
+
+    // MARK: - Fixture building
+
+    /// One `OtpParameters`: the RFC secret, the name `octocat`, and `type = TOTP`. 33 bytes, so
+    /// the callers above can prefix it with its own length directly.
+    private static let minimalEntry: Data =
+        Data([0x0A, 0x14]) + Data("12345678901234567890".utf8)
+        + Data([0x12, 0x07]) + Data("octocat".utf8)
+        + Data([0x30, 0x02])
+
+    private static func varint(_ value: UInt64) -> Data {
+        var remaining = value
+        var bytes = Data()
+        repeat {
+            var byte = UInt8(remaining & 0x7F)
+            remaining >>= 7
+            if remaining != 0 { byte |= 0x80 }
+            bytes.append(byte)
+        } while remaining != 0
+        return bytes
+    }
+
+    /// Wraps a raw payload as an export link, in the URL-safe base64 the parser already accepts,
+    /// so nothing here needs percent-encoding.
+    private static func migrationURI(_ payload: Data) -> String {
+        let encoded = payload.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+        return "otpauth-migration://offline?data=\(encoded)"
+    }
 }

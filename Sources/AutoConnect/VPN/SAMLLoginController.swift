@@ -132,11 +132,17 @@ final class SAMLLoginController: NSObject {
             // Injected at document end on every frame, since IdPs commonly render the form inside
             // one. The script only reads shape and applies values it is handed; it carries no
             // secret of its own.
+            //
+            // In a client world rather than the page's own. The two share the DOM, which is all
+            // the script needs, but not their globals: the page cannot see `window.__autoconnect`
+            // and cannot replace `fill`. In the page world it could, and since Swift passes the
+            // password to that function as an argument, replacing it was enough to read it.
             configuration.userContentController.addUserScript(
                 WKUserScript(
                     source: LoginFormFiller.userScript,
                     injectionTime: .atDocumentEnd,
-                    forMainFrameOnly: false
+                    forMainFrameOnly: false,
+                    in: LoginFormFiller.contentWorld
                 )
             )
         }
@@ -332,6 +338,22 @@ extension SAMLLoginController: WKNavigationDelegate {
         DiagnosticLog.write(
             "login: navigating to \(DiagnosticLog.redact(navigationAction.request.url))"
         )
+
+        // The app relaxes App Transport Security wholesale, because no gateway is known ahead of
+        // time and the ones this exists for negotiate suites ATS refuses. That relaxation applies
+        // to this webview too, so without a check here the sign-in would follow a plaintext hop
+        // quite happily, and the token cookie the whole flow exists to collect would go on the
+        // wire in the clear. The gateway is HTTPS and so is every identity provider; a redirect
+        // to http:// is not a step of a sign-in worth completing.
+        if navigationAction.request.url?.scheme?.lowercased() == "http" {
+            decisionHandler(.cancel)
+            finish(with: .failure(LoginError.navigationFailed(
+                "The sign-in tried to continue over an unencrypted http:// connection, which "
+                    + "would expose the session token. It was stopped."
+            )))
+            return
+        }
+
         decisionHandler(.allow)
     }
 

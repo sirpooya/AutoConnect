@@ -185,10 +185,12 @@ public enum OTPMigrationURI {
                 } else {
                     skipped += 1
                 }
+            // Both fall back rather than throwing, for the same reason the entries do: a batch
+            // counter this app cannot represent is not a reason to lose the accounts beside it.
             case (3, .varint):
-                batchSize = Int(try reader.readVarint())
+                batchSize = Int(exactly: try reader.readVarint()) ?? 1
             case (4, .varint):
-                batchIndex = Int(try reader.readVarint())
+                batchIndex = Int(exactly: try reader.readVarint()) ?? 0
             default:
                 try reader.skip(field.wireType)
             }
@@ -336,8 +338,11 @@ private struct ProtobufReader {
     }
 
     mutating func readBytes() throws -> Data {
-        let length = Int(try readVarint())
-        guard length >= 0, bytes.count - index >= length else {
+        // `Int(_:)` traps on a value too large to represent, and this length is whatever the
+        // payload said it was. A QR code carrying a varint above `Int.max` therefore killed the
+        // process outright rather than being reported as the malformed export it is, and a QR
+        // code is not a trusted input: it is a picture, scanned from a screen or a camera.
+        guard let length = Int(exactly: try readVarint()), bytes.count - index >= length else {
             throw OTPMigrationURI.ParseError.malformedPayload
         }
         defer { index += length }
