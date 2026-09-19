@@ -104,12 +104,12 @@ struct AboutTab: View {
 
         SettingsCard {
             SettingsRow(title: "Made by Sirpooya") {
-                Link("View on GitHub", destination: Self.repository)
+                Link("View on GitHub", destination: AppLinks.repository)
                     .font(.system(size: 12))
             }
             SettingsDivider()
             SettingsRow(title: "Something wrong?") {
-                Link("Report an issue", destination: Self.issues)
+                Link("Report an issue", destination: AppLinks.issues)
                     .font(.system(size: 12))
             }
         }
@@ -117,10 +117,6 @@ struct AboutTab: View {
 
     // MARK: - What to show
 
-    /// The repo the README sends people to for releases. The `osx-auth-qr` name it was pushed
-    /// under first is gone, so nothing here should point at it.
-    private static let repository = URL(string: "https://github.com/sirpooya/AutoConnect")!
-    private static let issues = URL(string: "https://github.com/sirpooya/AutoConnect/issues")!
 
     /// Read from the bundle rather than compiled in, so `make-app.sh` stamping a version is the
     /// single place a version number lives. `swift run` has no Info.plist at all, and saying so

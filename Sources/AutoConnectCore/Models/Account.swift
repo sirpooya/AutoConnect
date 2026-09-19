@@ -109,12 +109,14 @@ public enum OTPAuthURI {
             throw ParseError.notAnOTPAuthURI
         }
 
-        let query = Dictionary(
-            (components.queryItems ?? []).compactMap { item -> (String, String)? in
-                guard let value = item.value, !value.isEmpty else { return nil }
-                return (item.name.lowercased(), value)
-            },
-            uniquingKeysWith: { first, _ in first }
+        let query = expandingEncodedSeparators(
+            Dictionary(
+                (components.queryItems ?? []).compactMap { item -> (String, String)? in
+                    guard let value = item.value, !value.isEmpty else { return nil }
+                    return (item.name.lowercased(), value)
+                },
+                uniquingKeysWith: { first, _ in first }
+            )
         )
 
         guard let rawSecret = query["secret"] else { throw ParseError.missingSecret }
@@ -161,6 +163,60 @@ public enum OTPAuthURI {
         )
 
         return Parsed(account: account, secret: secret)
+    }
+
+    /// The parameters this scheme defines. Only these are folded back out of a mangled value,
+    /// so an issuer that legitimately contains an ampersand is left exactly as it was written.
+    private static let knownParameters: Set<String> = [
+        "secret", "issuer", "algorithm", "digits", "period", "counter", "image",
+    ]
+
+    /// Repairs a URI whose parameter separators were percent-encoded.
+    ///
+    /// Some enrollment pages escape the whole query string when they build the QR payload, so
+    /// `&` arrives as `%26` and `=` as `%3D`. `URLComponents` then sees a single parameter
+    /// carrying the rest of the query inside its value, and the issuer reads
+    /// `Example&algorithm=SHA1&digits=6&period=30` everywhere it is shown. The trailing values
+    /// are usually the defaults, so the codes are still correct and only the name looks wrong,
+    /// which is what lets a QR code like this reach a user before anyone notices. When the
+    /// secret is the parameter that swallowed the tail the account cannot be added at all,
+    /// since the tail goes into the Base32 decoder.
+    ///
+    /// A value is split only when every trailing piece is a `name=value` pair naming a
+    /// parameter above, and a parameter written properly always wins over one recovered from
+    /// inside a value.
+    private static func expandingEncodedSeparators(
+        _ query: [String: String]
+    ) -> [String: String] {
+        var expanded = query
+
+        for (name, value) in query where value.contains("&") {
+            let pieces = value.components(separatedBy: "&")
+            guard let head = pieces.first, pieces.count > 1 else { continue }
+
+            var recovered: [(name: String, value: String)] = []
+            for piece in pieces.dropFirst() {
+                guard let separator = piece.firstIndex(of: "="),
+                      case let key = String(piece[piece.startIndex..<separator]).lowercased(),
+                      knownParameters.contains(key),
+                      case let trailing = String(piece[piece.index(after: separator)...]),
+                      !trailing.isEmpty
+                else {
+                    recovered = []
+                    break
+                }
+                recovered.append((key, trailing))
+            }
+
+            guard !recovered.isEmpty else { continue }
+
+            expanded[name] = head
+            for pair in recovered where expanded[pair.name] == nil {
+                expanded[pair.name] = pair.value
+            }
+        }
+
+        return expanded
     }
 
     /// Finds the first `otpauth://` URI in arbitrary text, so a QR payload with surrounding

@@ -61,6 +61,47 @@ final class ReconnectPolicyTests: XCTestCase {
         XCTAssertTrue(reason.contains("Connect manually"), reason)
     }
 
+    /// The cause leads the give-up message. Reported from a user whose connects failed six times
+    /// over and whose only evidence was "Reconnecting failed 6 times": the sentence that could
+    /// have told them what to fix was replaced by a count of how often it had not been told.
+    func testGivingUpLeadsWithTheCauseWhenThereIsOne() {
+        let decision = policy.decideAfterFailure(
+            consecutiveFailures: policy.maxConsecutiveFailures,
+            lastFailure: "sudo refused: no passwordless rule covers /opt/homebrew/bin/openconnect."
+        )
+        guard case .giveUp(let reason) = decision else {
+            return XCTFail("expected giveUp")
+        }
+        XCTAssertTrue(reason.hasPrefix("sudo refused"), reason)
+        XCTAssertTrue(reason.contains("stopped after \(policy.maxConsecutiveFailures)"), reason)
+    }
+
+    /// A cause that does not end in a full stop still reads as a sentence.
+    func testGivingUpPunctuatesACauseThatDoesNotEndItself() {
+        let decision = policy.decideAfterFailure(
+            consecutiveFailures: policy.maxConsecutiveFailures,
+            lastFailure: "The gateway could not be reached"
+        )
+        guard case .giveUp(let reason) = decision else {
+            return XCTFail("expected giveUp")
+        }
+        XCTAssertTrue(reason.hasPrefix("The gateway could not be reached. Automatic"), reason)
+    }
+
+    /// A blank cause is not a cause. The original wording stands rather than a stray full stop
+    /// being printed where a sentence was expected.
+    func testGivingUpFallsBackWhenThereIsNoCause() {
+        for blank in [nil, "", "   \n "] as [String?] {
+            guard case .giveUp(let reason) = policy.decideAfterFailure(
+                consecutiveFailures: policy.maxConsecutiveFailures,
+                lastFailure: blank
+            ) else {
+                return XCTFail("expected giveUp")
+            }
+            XCTAssertTrue(reason.contains("Connect manually"), reason)
+        }
+    }
+
     /// The budget was three attempts, which the doubling backoff spent in ninety seconds: shorter
     /// than the outage that prompted this. Every rung up to the last must still be a retry.
     func testTheLadderIsWideEnoughToOutlastABriefOutage() {

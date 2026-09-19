@@ -10,6 +10,16 @@ section when a release is cut.
 
 ## [Unreleased]
 
+### Added
+- Copy Log and Report Issue, next to the error in the VPN row. Report Issue opens a GitHub issue with the log, the app version and the macOS version already filled in.
+
+### Changed
+- The diagnostic log now records why an attempt failed, which gateway it was dialling and which openconnect binary it used. It previously recorded only the sequence of states, which said no more than the panel already showed.
+
+### Fixed
+- Authenticator accounts added from a QR code whose enrollment page escaped its own query string are now named correctly, instead of showing the issuer as "Example&algorithm=SHA1&digits=6&period=30". A code whose secret swallowed the query this way can now be added at all.
+- A connect that fails before a tunnel has ever come up now shows what went wrong, instead of silently retrying. Asking to connect was being treated as having connected, so a first attempt that failed on something settled, such as a missing sudo rule, went onto the automatic retry ladder rather than onto the screen. When retries do run out, the message now leads with the cause rather than only the number of attempts.
+
 ## [1.6.1] - 2026-09-11
 
 ### Fixed

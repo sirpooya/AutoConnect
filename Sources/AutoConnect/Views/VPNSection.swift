@@ -25,6 +25,10 @@ struct VPNSection: View {
     /// The phase the row is describing, which trails the real one by at most the dwell.
     private var shown: VPNController.Phase { pacer.shown ?? vpn.phase }
 
+    /// Briefly true after the log is copied. Tints the button rather than relabelling it, the
+    /// same confirmation an account code gives, so nothing in the row changes width.
+    @State private var didCopyLog = false
+
     var body: some View {
         VStack(spacing: 6) {
             HStack(spacing: 8) {
@@ -341,27 +345,64 @@ struct VPNSection: View {
     // MARK: - Failure
 
     private func errorRow(_ message: String) -> some View {
-        HStack(alignment: .top, spacing: 6) {
-            // Neutral, not a coloured alert glyph. The text already says what went wrong, and the
-            // status dot is the one thing in this panel that carries state as colour.
-            Image(systemName: "exclamationmark.circle")
-                .font(.system(size: 9))
-                .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .top, spacing: 6) {
+                // Neutral, not a coloured alert glyph. The text already says what went wrong, and
+                // the status dot is the one thing in this panel that carries state as colour.
+                Image(systemName: "exclamationmark.circle")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
 
-            Text(message)
-                .font(.system(size: 9))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+                Text(message)
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
 
-            Spacer(minLength: 0)
+                Spacer(minLength: 0)
 
-            Button(action: { vpn.clearError() }) {
-                Image(systemName: "xmark").font(.system(size: 8, weight: .semibold))
+                Button(action: { vpn.clearError() }) {
+                    Image(systemName: "xmark").font(.system(size: 8, weight: .semibold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.tertiary)
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(.tertiary)
+
+            logActions
         }
         .padding(.top, 2)
+    }
+
+    /// The two ways out of a failure, offered where the failure is rather than in About.
+    ///
+    /// A log nobody knows about is the same as no log: every cause of a failed connect is already
+    /// written to `~/Library/Logs/AutoConnect.log`, and reports still arrived saying only that it
+    /// did not work. This puts the log one click from the message it explains, which is the one
+    /// moment anyone wants it.
+    @ViewBuilder
+    private var logActions: some View {
+        HStack(spacing: 10) {
+            Button("Copy Log") {
+                DiagnosticLog.copyReport()
+                didCopyLog = true
+                Task {
+                    try? await Task.sleep(for: .seconds(1.5))
+                    didCopyLog = false
+                }
+            }
+            .buttonStyle(.link)
+            .font(.system(size: 9))
+            // Green is what a copied account code does. The label is left alone so the row
+            // cannot change width under the pointer.
+            .foregroundStyle(didCopyLog ? Color.green : Color.secondary)
+
+            Link("Report Issue", destination: DiagnosticLog.issueURL())
+                .font(.system(size: 9))
+                .foregroundStyle(.secondary)
+
+            Spacer(minLength: 0)
+        }
+        // Indented under the message, past the glyph, so it reads as belonging to it.
+        .padding(.leading, 15)
     }
 
     // MARK: - Status dot

@@ -113,6 +113,58 @@ final class AccountTests: XCTestCase {
         XCTAssertNil(OTPAuthURI.firstURI(in: "https://example.com"))
     }
 
+    /// Reported from a real enrollment QR code: the page escaped the whole query string, so
+    /// every separator arrived as `%26` / `%3D` and the issuer read
+    /// "DigikalaMFA&algorithm=SHA1&digits=6&period=30" in the panel, Settings and details.
+    func testRepairsPercentEncodedSeparators() throws {
+        let parsed = try OTPAuthURI.parse(
+            "otpauth://totp/p.kamel@digikala.com?secret=MZXW6YTB"
+                + "&issuer=DigikalaMFA%26algorithm%3DSHA1%26digits%3D6%26period%3D30"
+        )
+
+        XCTAssertEqual(parsed.account.issuer, "DigikalaMFA")
+        XCTAssertEqual(parsed.account.label, "p.kamel@digikala.com")
+        XCTAssertEqual(parsed.account.algorithm, .sha1)
+        XCTAssertEqual(parsed.account.digits, 6)
+        XCTAssertEqual(parsed.account.period, 30)
+    }
+
+    /// The worse version of the same fault: the secret is what swallowed the tail, so the
+    /// account could not be added at all rather than merely being named wrongly.
+    func testRepairsASecretThatSwallowedTheQuery() throws {
+        let parsed = try OTPAuthURI.parse(
+            "otpauth://totp/alice@example.com"
+                + "?secret=MZXW6YTB%26issuer%3DExample%26digits%3D8%26period%3D60"
+        )
+
+        XCTAssertEqual(parsed.account.issuer, "Example")
+        XCTAssertEqual(parsed.account.digits, 8)
+        XCTAssertEqual(parsed.account.period, 60)
+        XCTAssertEqual(parsed.secret, Data("fooba".utf8))
+    }
+
+    /// A parameter that was written properly is the one the gateway meant, so it is never
+    /// replaced by one recovered from inside another value.
+    func testProperParameterWinsOverARecoveredOne() throws {
+        let parsed = try OTPAuthURI.parse(
+            "otpauth://totp/alice@example.com?secret=MZXW6YTB"
+                + "&issuer=Example%26digits%3D8&digits=7"
+        )
+
+        XCTAssertEqual(parsed.account.issuer, "Example")
+        XCTAssertEqual(parsed.account.digits, 7)
+    }
+
+    /// An issuer really can contain an ampersand, and nothing after it parses as a parameter
+    /// of this scheme, so the name is left exactly as it was written.
+    func testLeavesAGenuineAmpersandAlone() throws {
+        let parsed = try OTPAuthURI.parse(
+            "otpauth://totp/alice@example.com?secret=MZXW6YTB&issuer=Tom%20%26%20Jerry"
+        )
+
+        XCTAssertEqual(parsed.account.issuer, "Tom & Jerry")
+    }
+
     func testDisplayStrings() {
         let withIssuer = Account(issuer: "DigikalaMFA", label: "p.kamel@digikala.com")
         XCTAssertEqual(withIssuer.displayTitle, "DigikalaMFA")

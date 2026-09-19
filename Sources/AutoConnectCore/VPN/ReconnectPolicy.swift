@@ -99,16 +99,29 @@ public struct ReconnectPolicy {
     /// path this answers `.wait`: hold the count where it is, and let the network monitor start the
     /// next attempt once there is something to attempt over. Counting those is how a half-minute
     /// drop in the network exhausted every retry before the network was even back.
+    /// `lastFailure` is what the attempt that spent the final rung actually said. It leads the
+    /// give-up message, because the count is not something anyone can act on and the cause is:
+    /// a message that said only how many times it had failed is how a missing sudo rule spent
+    /// six attempts and then reported nothing about sudo.
     public func decideAfterFailure(
         consecutiveFailures: Int,
-        isNetworkAvailable: Bool = true
+        isNetworkAvailable: Bool = true,
+        lastFailure: String? = nil
     ) -> Decision {
         guard isNetworkAvailable else { return .wait }
 
         guard consecutiveFailures < maxConsecutiveFailures else {
+            let cause = lastFailure?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !cause.isEmpty else {
+                return .giveUp(
+                    reason: "Reconnecting failed \(consecutiveFailures) times, so automatic "
+                        + "retries have stopped. Connect manually when ready."
+                )
+            }
+
             return .giveUp(
-                reason: "Reconnecting failed \(consecutiveFailures) times, so automatic retries "
-                    + "have stopped. Connect manually when ready."
+                reason: cause + (cause.hasSuffix(".") ? " " : ". ")
+                    + "Automatic retries stopped after \(consecutiveFailures) attempts."
             )
         }
 

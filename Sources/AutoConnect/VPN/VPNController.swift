@@ -52,11 +52,31 @@ final class VPNController: ObservableObject {
             case .failed: return "Failed"
             }
         }
+
+        /// What the diagnostic log records.
+        ///
+        /// `label` is written for the panel, where the cause gets a row of its own underneath.
+        /// A log has no second row, so a phase carrying a reason has to say it here or lose it,
+        /// and losing it is exactly what happened: the first log anyone sent back was twenty
+        /// lines of "Contacting gateway... / Retrying soon" and not one word about why, which
+        /// is no more than the user could already see on screen.
+        var logLine: String {
+            switch self {
+            case .failed(let message):
+                return "Failed: \(message)"
+            case .retrying(let status):
+                return "\(status.statusText(remaining: nil)) (\(status.detailText))"
+            case .reconnecting(_, let reason):
+                return "Reconnecting: \(reason ?? "no reason given")"
+            default:
+                return label
+            }
+        }
     }
 
     @Published private(set) var phase: Phase = .idle {
         didSet {
-            if phase != oldValue { DiagnosticLog.write("phase: \(phase.label)") }
+            if phase != oldValue { DiagnosticLog.write("phase: \(phase.logLine)") }
             // A renewal ends the moment it has an answer, either way. `didSet` rather than a
             // line in each of the places that reach these phases, because missing one leaves
             // the flag stuck on and the next real drop silently unreported.
@@ -436,7 +456,11 @@ final class VPNController: ObservableObject {
             consecutiveFailures = 0
         }
 
-        userHasConnected = true
+        // Deliberately not `userHasConnected` here. It gates the retry ladder, and set at the
+        // top of an attempt it made asking to connect indistinguishable from having connected,
+        // so a first connect that failed on something settled went onto the ladder instead of
+        // onto the screen. That is how a missing sudo rule presented as nothing but "Retrying":
+        // `.failed` is the only phase with an error row, and the ladder never reached it.
         startNetworkMonitorIfNeeded()
         startSleepWakeObservers()
 
@@ -493,6 +517,13 @@ final class VPNController: ObservableObject {
 
         do {
             DiagnosticLog.startSession()
+            // The target, because "could not reach the gateway" means nothing without knowing
+            // which gateway, over which binary. No username and no password source: neither
+            // helps read a failure, and a log is a file people paste into public issues.
+            DiagnosticLog.write(
+                "target: \(profile.host), group \(profile.tunnelGroup.isEmpty ? "(none)" : profile.tunnelGroup)"
+            )
+            DiagnosticLog.write("openconnect: \(profile.openconnectPath)")
             try OpenConnectRunner.verifyBinary(at: profile.openconnectPath)
 
             // Step 1.
@@ -551,6 +582,7 @@ final class VPNController: ObservableObject {
                 serverCertHash: complete.serverCertHash
             )
         } catch let error as SAMLLoginController.LoginError {
+            DiagnosticLog.write("login error: \(error)")
             // Backing out of the login window is not a failure worth shouting about.
             if case .cancelled = error {
                 report(.idle, generation: generation)
@@ -564,6 +596,7 @@ final class VPNController: ObservableObject {
                 reportFailure(error.errorDescription ?? "\(error)", generation: generation)
             }
         } catch let error as GatewayClient.ClientError {
+            DiagnosticLog.write("gateway error: \(error)")
             // A stale route makes the gateway unreachable, and the symptom is a timeout. Say what
             // is actually wrong, and exactly how to fix it, rather than blaming the network.
             if let hint = staleRouteHint {
@@ -577,8 +610,12 @@ final class VPNController: ObservableObject {
                 reportFailure(error.description, generation: generation)
             }
         } catch let error as OpenConnectRunner.RunnerError {
+            DiagnosticLog.write("openconnect error: \(error)")
             reportFailure(error.description, generation: generation)
         } catch {
+            // The type as well as the text: an unclassified error is the one case where the
+            // sentence shown to the user is the least informative thing available.
+            DiagnosticLog.write("error: \(type(of: error)) \(error)")
             reportFailure(error.localizedDescription, generation: generation)
         }
     }
@@ -706,6 +743,9 @@ final class VPNController: ObservableObject {
         case .connected(let tunnel):
             phase = .connected(tunnel)
             consecutiveFailures = 0
+            // A tunnel that came up is the evidence the retry ladder waits for. Anything that
+            // drops from here is worth dialling again, because it worked once.
+            userHasConnected = true
             // Anything queued is moot, including a retry that openconnect's own recovery beat.
             cancelRenewal()
             startClock()
@@ -770,7 +810,8 @@ final class VPNController: ObservableObject {
         // Asked before the count moves, so a decision to hold can leave the count alone.
         let decision = policy.decideAfterFailure(
             consecutiveFailures: consecutiveFailures + 1,
-            isNetworkAvailable: isNetworkAvailable
+            isNetworkAvailable: isNetworkAvailable,
+            lastFailure: reason
         )
 
         // No path to attempt over. The ladder stays whole for when the network is back, and the
