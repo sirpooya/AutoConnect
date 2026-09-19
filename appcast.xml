@@ -14,6 +14,31 @@
         <description>Most recent changes to AutoConnect.</description>
         <language>en</language>
         <item>
+            <title>1.8.0</title>
+            <pubDate>Sat, 19 Sep 2026 14:59:11 +0000</pubDate>
+            <sparkle:version>15</sparkle:version>
+            <sparkle:shortVersionString>1.8.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+<h3>Added</h3>
+<ul>
+<li>Copy Log and Report with log in Settings &gt; About, so the log can be handed over at any time rather than only while a failure is on screen.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>The update dialog now shows what changed. It was showing a raw "<strong>Full Changelog</strong>: https://..." link, because releases published GitHub's generated notes and Sparkle renders that field as HTML rather than markdown. Release notes now come from the changelog and are converted to HTML.</li>
+<li>Detect now picks a tunnel group that can actually sign in. It took whichever group the gateway listed first, so on a gateway whose first entry is a password group every new connection was pointed at a group this app can never connect to, and nothing said so until a connect failed later. Each group is now asked how it signs in, and the one that uses the browser is kept.</li>
+<li>The tunnel group can be changed after setup. The picker only appeared immediately after a Detect and turned back into plain text when the window was reopened, which left anyone on the wrong group with no way off it. The group list is now saved with the connection.</li>
+<li>A gateway that refuses for a reason the app understands now says so. Failures like a tunnel group that does not offer browser sign-in were reaching the screen as "The operation couldn't be completed. (ConfigAuth.ParseError error 2.)", because the written explanation was invisible to the system's error text.</li>
+</ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/sirpooya/AutoConnect/releases/download/v1.8.0/AutoConnect-1.8.0.zip"
+                length="4449161"
+                type="application/octet-stream"
+                sparkle:edSignature="47MoQAwi45E75D6nWe7jvTiNbOU+H6BYcDRTFnbhcdwqu4gV5n6LZ3unr99zEtM7rEUL1oiHwICyIhahN4kfAw==" />
+        </item>
+        <item>
             <title>1.7.0</title>
             <pubDate>Sat, 19 Sep 2026 14:44:21 +0000</pubDate>
             <sparkle:version>14</sparkle:version>
