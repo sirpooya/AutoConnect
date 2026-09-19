@@ -10,8 +10,14 @@ section when a release is cut.
 
 ## [Unreleased]
 
+### Added
+- Copy Log and Report with log in Settings > About, so the log can be handed over at any time rather than only while a failure is on screen.
+
 ### Fixed
 - The update dialog now shows what changed. It was showing a raw "**Full Changelog**: https://..." link, because releases published GitHub's generated notes and Sparkle renders that field as HTML rather than markdown. Release notes now come from the changelog and are converted to HTML.
+- Detect now picks a tunnel group that can actually sign in. It took whichever group the gateway listed first, so on a gateway whose first entry is a password group every new connection was pointed at a group this app can never connect to, and nothing said so until a connect failed later. Each group is now asked how it signs in, and the one that uses the browser is kept.
+- The tunnel group can be changed after setup. The picker only appeared immediately after a Detect and turned back into plain text when the window was reopened, which left anyone on the wrong group with no way off it. The group list is now saved with the connection.
+- A gateway that refuses for a reason the app understands now says so. Failures like a tunnel group that does not offer browser sign-in were reaching the screen as "The operation couldn't be completed. (ConfigAuth.ParseError error 2.)", because the written explanation was invisible to the system's error text.
 
 ## [1.7.0] - 2026-09-19
 

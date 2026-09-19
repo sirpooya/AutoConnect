@@ -93,6 +93,52 @@ public final class GatewayClient: NSObject {
         return try ConfigAuth.parseProbe(try await postRaw(body))
     }
 
+    /// What asking every group produced.
+    public enum SSOGroupOutcome: Equatable, Sendable {
+        /// This group answered with a browser sign-in, and is the one to save.
+        case found(String)
+        /// Every group was asked and none of them signs in through the browser.
+        case noneOffered
+    }
+
+    /// Step 0b. Which of the offered tunnel groups actually does browser sign-in.
+    ///
+    /// The probe names the groups but says nothing about how any of them authenticates: a
+    /// password group and a SAML group look identical in the dropdown. The only way to tell is
+    /// to ask each one how to log in and see whether the answer contains a login URL, which is
+    /// one extra request per group that is not the answer.
+    ///
+    /// Ordered so the common cases cost one request: a connection that already names a working
+    /// group re-confirms it and stops.
+    ///
+    /// A group that refuses is skipped, not fatal, since the next one may be the right one.
+    /// Anything else, a dropped connection or a certificate that no longer matches the pin, is
+    /// thrown: those describe the gateway rather than the group, and swallowing them would
+    /// report "no group here signs in through the browser" for what is really a network that
+    /// went away mid-Detect.
+    public func firstGroupOfferingSSO(
+        among groups: [ConfigAuth.TunnelGroupOption],
+        preferring current: String? = nil
+    ) async throws -> SSOGroupOutcome {
+        for group in ConfigAuth.groupsWorthTrying(groups, preferring: current) {
+            let body = ConfigAuth.initRequest(
+                groupSelect: group,
+                groupAccess: profile.groupAccess,
+                clientVersion: clientVersion
+            )
+
+            do {
+                if case .authRequest = try await post(body) { return .found(group) }
+            } catch ConfigAuth.ParseError.ssoNotOffered {
+                continue
+            } catch ConfigAuth.ParseError.gatewayError {
+                continue
+            }
+        }
+
+        return .noneOffered
+    }
+
     /// Step 1. Asks the gateway how to log in to the profile's tunnel group.
     public func requestAuthentication() async throws -> ConfigAuth.AuthRequest {
         let body = ConfigAuth.initRequest(

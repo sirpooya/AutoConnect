@@ -132,6 +132,27 @@ final class VPNSettingsStoreTests: XCTestCase {
         XCTAssertEqual(profile.passwordSource, .stored)
         XCTAssertNil(profile.certificateSHA1)
         XCTAssertEqual(profile.displayName, "vpn.example.com")
+        // Added after this JSON was written. Empty rather than a decode failure, and empty is
+        // also what makes the editor fall back to showing the saved group on its own.
+        XCTAssertEqual(profile.knownGroups, [])
+    }
+
+    /// The group list is persisted, not rediscovered, so the picker is still a picker the next
+    /// time the editor opens.
+    func testKnownGroupsRoundTrip() throws {
+        let profile = VPNProfile(
+            host: "vpn.example.com:443",
+            tunnelGroup: "MFA-VPN",
+            knownGroups: ["HQ-VPN", "MFA-VPN"]
+        )
+
+        let decoded = try JSONDecoder().decode(
+            VPNProfile.self,
+            from: try JSONEncoder().encode(profile)
+        )
+
+        XCTAssertEqual(decoded.knownGroups, ["HQ-VPN", "MFA-VPN"])
+        XCTAssertEqual(decoded.tunnelGroup, "MFA-VPN")
     }
 
     // MARK: - Credentials

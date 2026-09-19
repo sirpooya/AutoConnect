@@ -136,13 +136,83 @@ final class ConfigAuthXMLTests: XCTestCase {
 
     /// A password tunnel group has no sso-v2-login, which must be a clear error rather than a
     /// crash or a bogus URL.
+    ///
+    /// Reported live: a user had saved a password tunnel group, and every attempt failed here.
+    /// What reached the screen was "(AutoConnectCore.ConfigAuth.ParseError error 2.)", so the
+    /// message has to survive `localizedDescription` and has to name the fix, which is choosing
+    /// a different group rather than retrying this one.
     func testPasswordAuthRequestIsRejectedAsNonSAML() {
         XCTAssertThrowsError(try ConfigAuth.parse(Data(passwordAuthRequest.utf8))) { error in
-            XCTAssertEqual(
-                error as? ConfigAuth.ParseError,
-                .missingElement("sso-v2-login")
-            )
+            XCTAssertEqual(error as? ConfigAuth.ParseError, .ssoNotOffered)
+
+            let shown = error.localizedDescription
+            XCTAssertTrue(shown.contains("does not use browser sign-in"), shown)
+            XCTAssertTrue(shown.contains("Detect"), shown)
+            XCTAssertFalse(shown.contains("couldn't be completed"), shown)
         }
+    }
+
+    // MARK: - Choosing a tunnel group
+
+    /// A connection that already names a working group must cost one request and be left alone,
+    /// so the group it has goes first however the gateway orders its dropdown.
+    func testSavedGroupIsTriedFirst() {
+        let groups = [
+            ConfigAuth.TunnelGroupOption(value: "HQ-VPN", label: "HQ-VPN", isDefault: true),
+            ConfigAuth.TunnelGroupOption(value: "MFA-VPN", label: "MFA-VPN"),
+        ]
+
+        XCTAssertEqual(
+            ConfigAuth.groupsWorthTrying(groups, preferring: "MFA-VPN"),
+            ["MFA-VPN", "HQ-VPN"]
+        )
+    }
+
+    /// With nothing saved, the gateway's own preselection is the best guess available, but it is
+    /// only a starting point: every other group is still tried after it.
+    func testPreselectedGroupLeadsWhenNothingIsSaved() {
+        let groups = [
+            ConfigAuth.TunnelGroupOption(value: "HQ-VPN", label: "HQ-VPN"),
+            ConfigAuth.TunnelGroupOption(value: "MFA-VPN", label: "MFA-VPN", isDefault: true),
+            ConfigAuth.TunnelGroupOption(value: "LAB", label: "LAB"),
+        ]
+
+        XCTAssertEqual(
+            ConfigAuth.groupsWorthTrying(groups),
+            ["MFA-VPN", "HQ-VPN", "LAB"]
+        )
+    }
+
+    /// The reported case: nothing is marked selected, so the only ordering the gateway gives is
+    /// the dropdown's, and the first entry is a password group. Every group still gets asked,
+    /// which is what stops Detect settling on the first one.
+    func testEveryGroupIsTriedWhenTheGatewayPrefersNone() {
+        let groups = [
+            ConfigAuth.TunnelGroupOption(value: "HQ-VPN", label: "HQ-VPN"),
+            ConfigAuth.TunnelGroupOption(value: "MFA-VPN", label: "MFA-VPN"),
+        ]
+
+        XCTAssertEqual(ConfigAuth.groupsWorthTrying(groups), ["HQ-VPN", "MFA-VPN"])
+    }
+
+    /// A saved group the gateway no longer offers is not worth a request of its own.
+    func testASavedGroupTheGatewayDroppedIsNotTried() {
+        let groups = [ConfigAuth.TunnelGroupOption(value: "MFA-VPN", label: "MFA-VPN")]
+
+        XCTAssertEqual(ConfigAuth.groupsWorthTrying(groups, preferring: "GONE"), ["MFA-VPN"])
+    }
+
+    /// No group is asked twice, however many of the orderings name it.
+    func testNoGroupIsAskedTwice() {
+        let groups = [
+            ConfigAuth.TunnelGroupOption(value: "MFA-VPN", label: "MFA-VPN", isDefault: true),
+            ConfigAuth.TunnelGroupOption(value: "HQ-VPN", label: "HQ-VPN"),
+        ]
+
+        XCTAssertEqual(
+            ConfigAuth.groupsWorthTrying(groups, preferring: "MFA-VPN"),
+            ["MFA-VPN", "HQ-VPN"]
+        )
     }
 
     /// A rejection carries an error message and no login URL. Surface the gateway's reason.

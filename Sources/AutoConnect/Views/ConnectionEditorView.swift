@@ -231,6 +231,29 @@ struct ConnectionEditorView: View {
 
     /// The code comes from the account the username belongs to. Choosing the username is
     /// therefore the whole choice, which is why there is no second picker for it.
+    /// The groups this connection can be pointed at.
+    ///
+    /// Read from the profile rather than from the last probe, because `discoveredGroups` is
+    /// `@State` filled by a Detect: reopening the editor emptied it, the row fell back to plain
+    /// text, and the group became something to read rather than something to set. A user on the
+    /// wrong group had no way to move off it.
+    ///
+    /// The saved group is always included, since a picker whose selection matches no tag draws
+    /// blank and looks broken.
+    private var selectableGroups: [ConfigAuth.TunnelGroupOption] {
+        var options = discoveredGroups
+
+        if options.isEmpty {
+            options = profile.knownGroups.map { .init(value: $0, label: $0) }
+        }
+        if !profile.tunnelGroup.isEmpty,
+           !options.contains(where: { $0.value == profile.tunnelGroup }) {
+            options.append(.init(value: profile.tunnelGroup, label: profile.tunnelGroup))
+        }
+
+        return options
+    }
+
     private func syncOTPAccount() {
         if let matched = accountMatchingUsername {
             profile.otpAccountID = matched.id
@@ -341,13 +364,13 @@ struct ConnectionEditorView: View {
     @ViewBuilder
     private var certificateDetails: some View {
         Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 10, verticalSpacing: 5) {
-            if !profile.tunnelGroup.isEmpty || discoveredGroups.count > 1 {
+            if !profile.tunnelGroup.isEmpty || selectableGroups.count > 1 {
                 GridRow {
                     detailLabel("Group")
 
-                    if discoveredGroups.count > 1 {
+                    if selectableGroups.count > 1 {
                         Picker("", selection: $profile.tunnelGroup) {
-                            ForEach(discoveredGroups) { group in
+                            ForEach(selectableGroups) { group in
                                 Text(group.label).tag(group.value)
                             }
                         }
@@ -577,10 +600,9 @@ struct ConnectionEditorView: View {
             do {
                 let probe = try await client.probe()
                 discoveredGroups = probe.groups
+                // Kept on the profile so the picker is still a picker next time this opens.
+                probeProfile.knownGroups = probe.groups.map(\.value)
 
-                if !probe.groups.contains(where: { $0.value == probeProfile.tunnelGroup }) {
-                    probeProfile.tunnelGroup = probe.defaultGroup ?? ""
-                }
                 if probeProfile.normalizedCertificateSHA1 == nil,
                    let learned = client.observedCertificateSHA1 {
                     probeProfile.certificateSHA1 = learned
@@ -597,6 +619,32 @@ struct ConnectionEditorView: View {
                     }
                     probeProfile.certificate = observed
                 }
+
+                // Which group actually signs in through the browser, asked rather than assumed.
+                // The gateway's preselection is only "first in the dropdown" when it marks
+                // nothing as selected, and on a gateway whose first entry is a password group
+                // that silently pointed every new connection at a group this app cannot use.
+                //
+                // Runs after the certificate is recorded, so this client has a pin to check
+                // against rather than learning a second time.
+                let sso = try await GatewayClient(profile: probeProfile)
+                    .firstGroupOfferingSSO(
+                        among: probe.groups,
+                        preferring: probeProfile.tunnelGroup
+                    )
+
+                switch sso {
+                case .found(let group):
+                    probeProfile.tunnelGroup = group
+                case .noneOffered:
+                    // Saved anyway, along with the group list: the address and the pin are still
+                    // worth keeping, and the picker is the thing that lets someone try another.
+                    probeProfile.tunnelGroup = probe.defaultGroup ?? ""
+                    probeError =
+                        "This gateway offers no tunnel group that signs in through the browser. "
+                        + "AutoConnect can only connect to a SAML group."
+                }
+
                 profile = probeProfile
             } catch {
                 probeError = "\(error)"

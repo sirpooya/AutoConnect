@@ -1,3 +1,4 @@
+import AppKit
 import AutoConnectCore
 import SwiftUI
 
@@ -395,9 +396,16 @@ struct VPNSection: View {
             // cannot change width under the pointer.
             .foregroundStyle(didCopyLog ? Color.green : Color.secondary)
 
-            Link("Report Issue", destination: DiagnosticLog.issueURL())
-                .font(.system(size: 9))
-                .foregroundStyle(.secondary)
+            // A Button, not a Link. `Link(destination:)` evaluates its URL every time the row
+            // is laid out, and building that URL reads the log file behind a `queue.sync`, so a
+            // view refresh became a synchronous disk read on the main thread. The click is the
+            // only moment the URL is wanted.
+            Button("Report Issue") {
+                NSWorkspace.shared.open(DiagnosticLog.issueURL())
+            }
+            .buttonStyle(.link)
+            .font(.system(size: 9))
+            .foregroundStyle(.secondary)
 
             Spacer(minLength: 0)
         }

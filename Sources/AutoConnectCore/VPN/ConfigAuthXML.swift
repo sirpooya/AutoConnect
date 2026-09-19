@@ -102,7 +102,13 @@ public enum ConfigAuth {
         }
     }
 
-    public enum ParseError: Error, Equatable, CustomStringConvertible {
+    /// Conforms to `LocalizedError`, not merely `CustomStringConvertible`.
+    ///
+    /// `CustomStringConvertible` alone is invisible to `error.localizedDescription`, which is
+    /// what the last catch in a connect sequence falls back to. Every sentence below was
+    /// therefore written, logged, and then replaced on screen by "The operation couldn't be
+    /// completed. (AutoConnectCore.ConfigAuth.ParseError error 2.)" before anyone read it.
+    public enum ParseError: Error, Equatable, CustomStringConvertible, LocalizedError {
         case notXML
         case missingType(String)
         case unexpectedType(String)
@@ -110,6 +116,13 @@ public enum ConfigAuth {
         case malformedURL(String)
         /// The gateway rejected the attempt and said why.
         case gatewayError(String)
+        /// The gateway answered, and this tunnel group simply does not do browser sign-in.
+        ///
+        /// Distinct from `missingElement`, which reads as a malformed response and sends people
+        /// looking at the network. Nothing is wrong with the gateway here: a password tunnel
+        /// group has no `sso-v2-login` because it has no SAML, and the fix is to pick a
+        /// different group rather than to try again.
+        case ssoNotOffered
 
         public var description: String {
             switch self {
@@ -125,8 +138,14 @@ public enum ConfigAuth {
                 return "The gateway sent an unusable URL: \(value)"
             case .gatewayError(let message):
                 return "The gateway refused the login: \(message)"
+            case .ssoNotOffered:
+                return "This tunnel group does not use browser sign-in, so there is no sign-in "
+                    + "for AutoConnect to complete. Open Settings, run Detect again, and choose "
+                    + "the group that signs in through the browser."
             }
         }
+
+        public var errorDescription: String? { description }
     }
 
     // MARK: - Parsing
@@ -193,6 +212,33 @@ public enum ConfigAuth {
     }
 
     /// Options of the login form's group dropdown, in the order the gateway listed them.
+    /// The order to try tunnel groups in when looking for the one that does browser sign-in.
+    ///
+    /// The group already saved goes first, so a connection that was set up correctly costs one
+    /// request and is left alone. The gateway's own preselection comes next, then everything
+    /// else in the order the gateway listed it.
+    ///
+    /// Needed because the preselection is not a recommendation: on a gateway that marks nothing
+    /// as selected, `defaultGroup` falls back to the first option in the dropdown, and Detect
+    /// silently saved that. Where the first option is a password group, every new connection was
+    /// pointed at a group this app can never sign in to, and nothing said so until a connect
+    /// failed much later.
+    public static func groupsWorthTrying(
+        _ groups: [TunnelGroupOption],
+        preferring current: String? = nil
+    ) -> [String] {
+        var ordered: [String] = []
+
+        if let current, !current.isEmpty, groups.contains(where: { $0.value == current }) {
+            ordered.append(current)
+        }
+        ordered += groups.filter(\.isDefault).map(\.value)
+        ordered += groups.map(\.value)
+
+        var seen = Set<String>()
+        return ordered.filter { seen.insert($0).inserted }
+    }
+
     private static func groupOptions(in root: XMLElement) -> [TunnelGroupOption] {
         guard
             let form = root.firstChild(named: "auth")?.firstChild(named: "form"),
@@ -233,7 +279,7 @@ public enum ConfigAuth {
         // An auth-request carrying an error and no login URL is a rejection, not a challenge.
         guard let rawLogin = auth.childText("sso-v2-login") else {
             if !error.isEmpty { throw ParseError.gatewayError(error) }
-            throw ParseError.missingElement("sso-v2-login")
+            throw ParseError.ssoNotOffered
         }
         guard let loginURL = URL(string: rawLogin) else {
             throw ParseError.malformedURL(rawLogin)

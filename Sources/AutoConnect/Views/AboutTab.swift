@@ -11,6 +11,9 @@ struct AboutTab: View {
     /// itself while a check is running and "Last checked" moves when one finishes.
     @ObservedObject private var updates = UpdateController.shared
 
+    /// Briefly true after the log is copied, so the button confirms without changing width.
+    @State private var didCopyLog = false
+
     var body: some View {
         SettingsTabBody {
             header
@@ -112,7 +115,36 @@ struct AboutTab: View {
                 Link("Report an issue", destination: AppLinks.issues)
                     .font(.system(size: 12))
             }
+            SettingsDivider()
+            SettingsRow(title: "Connection log") {
+                HStack(spacing: 12) {
+                    Button("Copy") {
+                        DiagnosticLog.copyReport()
+                        didCopyLog = true
+                        Task {
+                            try? await Task.sleep(for: .seconds(1.5))
+                            didCopyLog = false
+                        }
+                    }
+                    .foregroundStyle(didCopyLog ? Color.green : Color.accentColor)
+
+                    // Buttons rather than Links: building the URL reads the log from disk, and a
+                    // Link would do that on every layout pass instead of on the click.
+                    Button("Report with log") {
+                        NSWorkspace.shared.open(DiagnosticLog.issueURL())
+                    }
+                }
+                .buttonStyle(.link)
+                .font(.system(size: 12))
+            }
         }
+
+        // Where the file is, because the one thing anyone asked for was a copy of it, and the
+        // buttons above are no use to someone reading a bug report rather than holding the Mac.
+        SettingsFootnote(
+            text: "What each connect attempt did, with passwords and tokens left out. Kept at "
+                + "~/Library/Logs/AutoConnect.log."
+        )
     }
 
     // MARK: - What to show

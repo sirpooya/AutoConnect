@@ -52,6 +52,13 @@ public struct VPNProfile: Codable, Equatable, Identifiable, Sendable {
     public var openconnectPath: String
     /// Absolute path to the vpnc-script openconnect uses to configure routes and DNS.
     public var vpncScriptPath: String?
+    /// Every tunnel group the gateway offered at the last Detect.
+    ///
+    /// Persisted so the group stays changeable. It used to live only in the editor's `@State`,
+    /// filled by a Detect, so reopening the editor turned the picker back into a label and the
+    /// group became something you could read and not set. That is how a user sat on a group this
+    /// app cannot connect to with no way to move off it.
+    public var knownGroups: [String]
 
     public init(
         id: UUID = UUID(),
@@ -67,7 +74,8 @@ public struct VPNProfile: Codable, Equatable, Identifiable, Sendable {
         idpHost: String? = nil,
         otpAccountID: UUID? = nil,
         openconnectPath: String = "/opt/homebrew/bin/openconnect",
-        vpncScriptPath: String? = "/opt/homebrew/etc/vpnc/vpnc-script"
+        vpncScriptPath: String? = "/opt/homebrew/etc/vpnc/vpnc-script",
+        knownGroups: [String] = []
     ) {
         self.id = id
         self.host = host
@@ -83,6 +91,7 @@ public struct VPNProfile: Codable, Equatable, Identifiable, Sendable {
         self.otpAccountID = otpAccountID
         self.openconnectPath = openconnectPath
         self.vpncScriptPath = vpncScriptPath
+        self.knownGroups = knownGroups
     }
 
     /// Decoded key by key with defaults, never by the synthesized initialiser.
@@ -117,6 +126,7 @@ public struct VPNProfile: Codable, Equatable, Identifiable, Sendable {
         openconnectPath = value(.openconnectPath, fallback.openconnectPath)
         vpncScriptPath = (try? container.decodeIfPresent(String.self, forKey: .vpncScriptPath))
             ?? fallback.vpncScriptPath
+        knownGroups = value(.knownGroups, fallback.knownGroups)
     }
 
     /// The gateway root, which is where `config-auth` POSTs go.
