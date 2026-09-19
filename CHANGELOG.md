@@ -10,6 +10,8 @@ section when a release is cut.
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-09-19
+
 ### Added
 - Copy Log and Report Issue, next to the error in the VPN row. Report Issue opens a GitHub issue with the log, the app version and the macOS version already filled in.
 
