@@ -15,12 +15,24 @@
         <language>en</language>
         <item>
             <title>1.7.0</title>
-            <pubDate>Sat, 19 Sep 2026 14:38:56 +0000</pubDate>
+            <pubDate>Sat, 19 Sep 2026 14:44:21 +0000</pubDate>
             <sparkle:version>14</sparkle:version>
             <sparkle:shortVersionString>1.7.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <description><![CDATA[
-**Full Changelog**: https://github.com/sirpooya/AutoConnect/compare/v1.6.1...v1.7.0
+<h3>Added</h3>
+<ul>
+<li>Copy Log and Report Issue, next to the error in the VPN row. Report Issue opens a GitHub issue with the log, the app version and the macOS version already filled in.</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>The diagnostic log now records why an attempt failed, which gateway it was dialling and which openconnect binary it used. It previously recorded only the sequence of states, which said no more than the panel already showed.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Authenticator accounts added from a QR code whose enrollment page escaped its own query string are now named correctly, instead of showing the issuer as "Example&amp;algorithm=SHA1&amp;digits=6&amp;period=30". A code whose secret swallowed the query this way can now be added at all.</li>
+<li>A connect that fails before a tunnel has ever come up now shows what went wrong, instead of silently retrying. Asking to connect was being treated as having connected, so a first attempt that failed on something settled, such as a missing sudo rule, went onto the automatic retry ladder rather than onto the screen. When retries do run out, the message now leads with the cause rather than only the number of attempts.</li>
+</ul>
             ]]></description>
             <enclosure
                 url="https://github.com/sirpooya/AutoConnect/releases/download/v1.7.0/AutoConnect-1.7.0.zip"

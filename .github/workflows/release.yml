@@ -339,18 +339,37 @@ jobs:
 
       # Created if it is not there, because pushing a tag does not create a release: a bare `gh
       # release upload` fails with "release not found", which is how v1.1.0 built, tested, launched
-      # and signed cleanly and then published nothing. Notes come from the commits since the last
-      # tag, and an existing release keeps whatever notes it already has.
+      # and signed cleanly and then published nothing. An existing release keeps whatever notes it
+      # already has, since those may have been edited by hand.
+      #
+      # Notes come from CHANGELOG.md, not from `--generate-notes`. The generated body is a link to
+      # the compare view and nothing else, and it is also what the appcast step reads, so it is
+      # what Sparkle showed every user offered 1.7.0: a bare URL where the release notes belong.
+      # Generated notes remain the fallback, because a release with an empty body is worse than a
+      # release with a thin one.
       - name: Attach to the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           tag="${{ steps.version.outputs.tag }}"
+          version="${{ steps.version.outputs.version }}"
 
           if ! gh release view "${tag}" >/dev/null 2>&1; then
             echo "No release for ${tag} yet; creating it."
-            gh release create "${tag}" --title "AutoConnect ${{ steps.version.outputs.version }}" --generate-notes
+            notes_file="$(mktemp)"
+
+            if python3 Scripts/changelog-section.py "${version}" > "${notes_file}"; then
+              echo "Notes come from CHANGELOG.md."
+              gh release create "${tag}" \
+                --title "AutoConnect ${version}" \
+                --notes-file "${notes_file}"
+            else
+              echo "No changelog section for ${version}; falling back to generated notes." >&2
+              gh release create "${tag}" \
+                --title "AutoConnect ${version}" \
+                --generate-notes
+            fi
           fi
 
           gh release upload "${tag}" "${{ steps.package.outputs.name }}" --clobber

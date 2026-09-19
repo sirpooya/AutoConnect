@@ -10,6 +10,9 @@ section when a release is cut.
 
 ## [Unreleased]
 
+### Fixed
+- The update dialog now shows what changed. It was showing a raw "**Full Changelog**: https://..." link, because releases published GitHub's generated notes and Sparkle renders that field as HTML rather than markdown. Release notes now come from the changelog and are converted to HTML.
+
 ## [1.7.0] - 2026-09-19
 
 ### Added

@@ -25,6 +25,64 @@ from xml.sax.saxutils import escape
 
 APPCAST = "appcast.xml"
 
+
+def inline(text):
+    """Bold, code and links, on text that has already been HTML-escaped."""
+    text = escape(text)
+    text = re.sub(r"\[([^\]]+)\]\(([^)\s]+)\)", r'<a href="\2">\1</a>', text)
+    text = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", text)
+    text = re.sub(r"`([^`]+)`", r"<code>\1</code>", text)
+    return text
+
+
+def markdown_to_html(text):
+    """Turn a changelog section into the HTML Sparkle actually renders.
+
+    Sparkle draws <description> as HTML, not as markdown. Feeding it markdown is not a
+    formatting nicety that degrades gracefully: the update dialog showed a literal
+    `**Full Changelog**: https://...` to every user offered 1.7.0, asterisks and all.
+
+    Deliberately small. The input is a changelog section, so it is headings and bullets with the
+    occasional bold, code span or link, and a real markdown dependency would be a package added
+    to a repo whose whole rule is not to add packages.
+    """
+    html = []
+    in_list = False
+
+    def close_list():
+        nonlocal in_list
+        if in_list:
+            html.append("</ul>")
+            in_list = False
+
+    for raw in text.splitlines():
+        line = raw.strip()
+
+        if not line:
+            close_list()
+            continue
+
+        heading = re.match(r"^(#{1,6})\s+(.*)$", line)
+        if heading:
+            close_list()
+            level = len(heading.group(1))
+            html.append(f"<h{level}>{inline(heading.group(2))}</h{level}>")
+            continue
+
+        bullet = re.match(r"^[-*]\s+(.*)$", line)
+        if bullet:
+            if not in_list:
+                html.append("<ul>")
+                in_list = True
+            html.append(f"<li>{inline(bullet.group(1))}</li>")
+            continue
+
+        close_list()
+        html.append(f"<p>{inline(line)}</p>")
+
+    close_list()
+    return "\n".join(html)
+
 SKELETON = """<?xml version="1.0" encoding="utf-8"?>
 <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
     <channel>
@@ -73,7 +131,9 @@ def main() -> int:
         f"{args.tag}/{args.zip_name}"
     )
 
-    notes = args.notes.strip() or f"AutoConnect {args.short_version}"
+    notes = markdown_to_html(
+        args.notes.strip() or f"AutoConnect {args.short_version}"
+    )
     # A literal ]]> inside the notes would close the CDATA block early and corrupt the feed.
     notes = notes.replace("]]>", "]]&gt;")
 
