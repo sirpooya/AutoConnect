@@ -10,6 +10,8 @@ section when a release is cut.
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-09-19
+
 ### Added
 - Copy Log and Report with log in Settings > About, so the log can be handed over at any time rather than only while a failure is on screen.
 
