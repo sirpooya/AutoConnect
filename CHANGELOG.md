@@ -10,6 +10,11 @@ section when a release is cut.
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-09-21
+
+### Added
+- Autofill now answers the identity provider's authentication-method step, picking password sign-in so a connect still needs no typing when the provider asks how you want to sign in.
+
 ## [1.8.0] - 2026-09-19
 
 ### Added
