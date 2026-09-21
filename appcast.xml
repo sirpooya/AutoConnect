@@ -14,6 +14,24 @@
         <description>Most recent changes to AutoConnect.</description>
         <language>en</language>
         <item>
+            <title>1.9.0</title>
+            <pubDate>Mon, 21 Sep 2026 20:14:39 +0000</pubDate>
+            <sparkle:version>16</sparkle:version>
+            <sparkle:shortVersionString>1.9.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+<h3>Added</h3>
+<ul>
+<li>Autofill now answers the identity provider's authentication-method step, picking password sign-in so a connect still needs no typing when the provider asks how you want to sign in.</li>
+</ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/sirpooya/AutoConnect/releases/download/v1.9.0/AutoConnect-1.9.0.zip"
+                length="4454678"
+                type="application/octet-stream"
+                sparkle:edSignature="nmKzH+XnC7lFkiSD5AiUTbLa5sPCh10eveMR17wRECQK//qA/g2NDk8cSFRmX5e76raq8CGhAhXg7j1D6MvuBQ==" />
+        </item>
+        <item>
             <title>1.8.0</title>
             <pubDate>Sat, 19 Sep 2026 14:59:11 +0000</pubDate>
             <sparkle:version>15</sparkle:version>
