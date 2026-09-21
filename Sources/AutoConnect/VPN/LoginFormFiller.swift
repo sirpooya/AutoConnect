@@ -4,6 +4,10 @@ import WebKit
 
 /// Fills the identity provider's login form: username, then password, then the one-time code.
 ///
+/// Some providers put a step between those that asks for no value at all, offering a list of
+/// authentication methods instead. That is answered with a click on the password option rather
+/// than a fill, and only when the page is asking for nothing else and exactly one option matches.
+///
 /// Two rules shape the whole design.
 ///
 /// **Never fail closed.** The IdP's markup is not ours and can change without notice. Every step
@@ -27,12 +31,16 @@ final class LoginFormFiller {
         var username = false
         var password = false
         var otp = false
+        /// True when the page is not asking for a value at all but offering a choice of
+        /// authentication method, one of which is a password.
+        var chooser = false
         /// True when the page appears to be reporting a rejected credential, so a retry with the
         /// same values would be pointless.
         var error = false
     }
 
     enum Step: String {
+        case chooser
         case username
         case password
         case otp
@@ -123,12 +131,16 @@ final class LoginFormFiller {
         }
         DiagnosticLog.write(
             "autofill: needs username=\(shape.username) password=\(shape.password) "
-                + "otp=\(shape.otp) error=\(shape.error)"
+                + "otp=\(shape.otp) chooser=\(shape.chooser) error=\(shape.error)"
         )
 
         // Decide what the page wants before judging any error on it. OTP first: it is the most
-        // specific, and some identity providers render it as a password field.
-        let target: Step? = shape.otp ? .otp : (shape.password ? .password : (shape.username ? .username : nil))
+        // specific, and some identity providers render it as a password field. The chooser is
+        // last: it only counts when the page is asking for no value at all, so a page that offers
+        // a method list *beside* a filled-in form is still treated as that form.
+        let target: Step? = shape.otp
+            ? .otp
+            : (shape.password ? .password : (shape.username ? .username : (shape.chooser ? .chooser : nil)))
         guard let target else { return }
 
         // An error banner only condemns the step it belongs to. ADFS answers a username-only
@@ -137,6 +149,18 @@ final class LoginFormFiller {
         // Only stop when the step now being asked for is one we already supplied a value for.
         if shape.error, attempts[target, default: 0] > 0 {
             onGiveUp?("The sign-in page rejected the \(target.rawValue), so autofill stopped.")
+            return
+        }
+
+        // The method chooser asks a question rather than for a value, so it is answered by a
+        // click and not by a fill. Some identity providers swap the password form in without a
+        // navigation, and `advance` only runs on `didFinish`, so nothing else would drive the
+        // next step: re-enter here once the click has landed rather than waiting for a navigation
+        // that may never come.
+        if target == .chooser {
+            guard await choosePassword(in: webView) else { return }
+            try? await Task.sleep(for: .milliseconds(350))
+            await advance(in: webView)
             return
         }
 
@@ -165,6 +189,24 @@ final class LoginFormFiller {
             }
             await fill(.username, value: credentials.username, in: webView)
         }
+    }
+
+    /// Clicks the "Password" option on a page that is offering a choice of authentication method.
+    ///
+    /// Returns true when the page reports that something was clicked, which is the only signal to
+    /// re-scan. A false answer is not an error: the page simply stays as it is, visible, for the
+    /// user to choose by hand.
+    private func choosePassword(in webView: WKWebView) async -> Bool {
+        let used = attempts[.chooser, default: 0]
+        guard used < maxAttemptsPerStep else {
+            onGiveUp?("Could not pick the password sign-in option automatically.")
+            return false
+        }
+        attempts[.chooser] = used + 1
+
+        DiagnosticLog.write("autofill: choosing the password sign-in option")
+        let clicked = await evaluate("window.__autoconnect.choose('password')", in: webView)
+        return (clicked as? Bool) ?? false
     }
 
     private func fill(_ step: Step, value: String, in webView: WKWebView) async {
@@ -295,14 +337,66 @@ final class LoginFormFiller {
             return false;
         }
 
+        // A method chooser offers one option per way of signing in. Matching is on the option's
+        // whole visible label, anchored, never a substring: "Sign in using a certificate" and
+        // "Forgot your password?" both contain the word and neither is the password option.
+        const CHOICE_LABEL = /^(use\\s+(a|your)\\s+)?password(\\s+sign.?in)?$/i;
+
+        function clickable() {
+            return Array.from(document.querySelectorAll(
+                'button, a[href], [role=button], [role=listitem], [role=option], li, [data-value]'
+            )).filter(visible);
+        }
+
+        // The label of the element itself, not of everything nested inside it. A list wrapper
+        // carries the text of every option it holds, so reading textContent off an ancestor
+        // matches the whole list and the click then lands on nothing in particular.
+        function ownLabel(el) {
+            const aria = el.getAttribute('aria-label');
+            if (aria && aria.trim()) return aria.trim();
+            const text = (el.textContent || '').trim();
+            if (!text) return '';
+            // Reject a container: if a descendant carries the same text, this is not the leaf.
+            for (const child of el.children) {
+                if ((child.textContent || '').trim() === text) return '';
+            }
+            return text;
+        }
+
+        function passwordChoice() {
+            const matches = clickable().filter(el => CHOICE_LABEL.test(ownLabel(el)));
+            // Exactly one, or the page is not the shape this was written for and a click would
+            // be a guess. The user is looking at the window; let them pick.
+            return matches.length === 1 ? matches[0] : null;
+        }
+
+        // Only a page asking for nothing can be a chooser. A password field already on screen
+        // means the choice has been made, or was never asked.
+        function chooserShown(found) {
+            if (found.username || found.password || found.otp) return false;
+            return passwordChoice() !== null;
+        }
+
+        function choose(kind) {
+            if (kind !== 'password') return false;
+            const target = passwordChoice();
+            if (!target) return false;
+            target.click();
+            return true;
+        }
+
         function scan() {
-            const found = { username: false, password: false, otp: false, error: errorShown() };
+            const found = {
+                username: false, password: false, otp: false,
+                chooser: false, error: errorShown()
+            };
             for (const el of inputs()) {
                 const kind = classify(el);
                 // Only unfilled fields count as something being asked for; a page that carries a
                 // remembered username should not be refilled.
                 if (kind && empty(el)) found[kind] = true;
             }
+            found.chooser = chooserShown(found);
             return found;
         }
 
@@ -353,7 +447,7 @@ final class LoginFormFiller {
             return submitFor(target);
         }
 
-        return { scan: scan, fill: fill };
+        return { scan: scan, fill: fill, choose: choose };
     })();
     """
 }
