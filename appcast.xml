@@ -14,6 +14,24 @@
         <description>Most recent changes to AutoConnect.</description>
         <language>en</language>
         <item>
+            <title>1.9.1</title>
+            <pubDate>Thu, 24 Sep 2026 12:57:59 +0000</pubDate>
+            <sparkle:version>17</sparkle:version>
+            <sparkle:shortVersionString>1.9.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+<h3>Fixed</h3>
+<ul>
+<li>The "VPN connected" notification no longer arrives while the open menu bar panel still says "Authenticating...". With the panel open, the banner waits until the panel shows the connection too.</li>
+</ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/sirpooya/AutoConnect/releases/download/v1.9.1/AutoConnect-1.9.1.zip"
+                length="4462202"
+                type="application/octet-stream"
+                sparkle:edSignature="9xbUbTDZkzJZg6sBnIbCqn68uW2O8mZ+M2Vk0MHII0OxKP8tSAegZ2hIU/mksCSMEJmvjMIq5sqam6d+uB5BAQ==" />
+        </item>
+        <item>
             <title>1.9.0</title>
             <pubDate>Mon, 21 Sep 2026 20:14:39 +0000</pubDate>
             <sparkle:version>16</sparkle:version>
