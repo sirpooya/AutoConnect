@@ -10,6 +10,8 @@ section when a release is cut.
 
 ## [Unreleased]
 
+## [1.9.1] - 2026-09-24
+
 ### Fixed
 - The "VPN connected" notification no longer arrives while the open menu bar panel still says "Authenticating...". With the panel open, the banner waits until the panel shows the connection too.
 
