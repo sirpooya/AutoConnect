@@ -253,6 +253,11 @@ Summary of the behavior contract:
   connected-after-connected, which the same-event rule already refuses to repeat. That is why a
   settled blip needs no rule of its own, and why `lastEvent` must not be moved when an event is
   held.
+  **With the panel open, a connect banner waits for the panel.** The row is paced and the banner
+  is not, so a connect that outran its steps posted "VPN connected" beside a row still reading
+  "Authenticating...". `VPNSection` reports each paced phase (`panelShows`), and the banner goes
+  out when the row reads Connected, or after twice the dwell at most. With the panel closed there
+  is nothing to disagree with, so it posts at once.
 - **"Connected" is checked, not assumed.** openconnect's claim goes stale two ways, and neither
   reports itself: its process can be gone (a tunnel adopted from a previous launch has no output
   handler watching it), and its session can expire under a device that is still up, which is the

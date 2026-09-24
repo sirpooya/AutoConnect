@@ -128,6 +128,7 @@ final class StatusItemController: NSObject, NSApplicationDelegate {
         // The icon is the only thing visible when the panel is closed, so it carries the one
         // fact worth knowing at a glance: whether the tunnel is up.
         apply(phase: vpn.phase)
+        notifier.isPanelShown = { [weak self] in self?.popover.isShown ?? false }
         vpn.$phase
             .sink { [weak self] phase in
                 guard let self else { return }

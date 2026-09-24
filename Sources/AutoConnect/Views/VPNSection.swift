@@ -72,6 +72,8 @@ struct VPNSection: View {
         .padding(.vertical, 8)
         .onAppear { submitPhase() }
         .onChange(of: vpn.phase) { submitPhase() }
+        // A connect banner waits for this row, so the two never disagree about the tunnel.
+        .onChange(of: pacer.shown) { if let shown = pacer.shown { notifier.panelShows(shown) } }
     }
 
     private func submitPhase() {

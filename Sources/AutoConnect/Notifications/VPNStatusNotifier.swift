@@ -46,6 +46,12 @@ final class VPNStatusNotifier: NSObject, ObservableObject {
     /// second is never announced as having dropped at all.
     private var holdTask: Task<Void, Never>?
 
+    /// A connect waiting for the open panel to say so too. See `waitForPanel`.
+    private var panelWait: VPNController.Phase?
+
+    /// Whether the panel is on screen. Installed by `StatusItemController`, which owns the popover.
+    var isPanelShown: () -> Bool = { false }
+
     /// True for the playground's copy. It reads and writes the same preference, so the switch
     /// looks real, but it never registers with the notification centre and never posts: a mock
     /// must not be able to put a banner about a tunnel on screen.
@@ -101,7 +107,37 @@ final class VPNStatusNotifier: NSObject, ObservableObject {
             return
         }
 
+        if case .connected = phase, isPanelShown() {
+            waitForPanel(phase, event: event, gateway: gateway, detail: detail)
+            return
+        }
+
         announce(event, gateway: gateway, detail: detail)
+    }
+
+    /// Told by the panel whenever its paced phase changes, so a connect held for it goes out the
+    /// moment the row reads "Connected" too.
+    func panelShows(_ phase: VPNController.Phase) {
+        guard let waiting = panelWait, waiting == phase else { return }
+        finishHold()
+    }
+
+    /// Holds a connect until the open panel shows it.
+    ///
+    /// The row is paced (`StatusPacer`) and the banner is not, so a connect that outran its own
+    /// steps put "VPN connected" on screen beside a panel still reading "Authenticating...". With
+    /// the panel closed there is nothing to disagree with and the banner goes out at once. The
+    /// wait is capped at the longest the pacer can trail, so a panel that never reports back
+    /// cannot swallow the banner.
+    private func waitForPanel(
+        _ phase: VPNController.Phase,
+        event: VPNStatusEvent,
+        gateway: String,
+        detail: String?
+    ) {
+        panelWait = phase
+        let cap = VPNStatusParams.shared.statusMinimumDwell * 2 + 0.5
+        hold(event, gateway: gateway, detail: detail, for: cap)
     }
 
     /// Posts an event, or decides it is not news, and remembers it either way.
@@ -133,17 +169,30 @@ final class VPNStatusNotifier: NSObject, ObservableObject {
         detail: String?,
         for delay: TimeInterval
     ) {
+        heldAnnouncement = { [weak self] in
+            self?.announce(event, gateway: gateway, detail: detail)
+        }
         holdTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(delay))
             guard !Task.isCancelled else { return }
-            self?.holdTask = nil
-            self?.announce(event, gateway: gateway, detail: detail)
+            self?.finishHold()
         }
+    }
+
+    /// What a hold posts when it ends, whether by timing out or by the panel catching up.
+    private var heldAnnouncement: (() -> Void)?
+
+    private func finishHold() {
+        let announcement = heldAnnouncement
+        cancelHold()
+        announcement?()
     }
 
     private func cancelHold() {
         holdTask?.cancel()
         holdTask = nil
+        heldAnnouncement = nil
+        panelWait = nil
     }
 
     /// The notifiable event behind a phase, or nil when the phase is one step of a connect in
