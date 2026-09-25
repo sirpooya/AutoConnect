@@ -10,6 +10,9 @@ section when a release is cut.
 
 ## [Unreleased]
 
+### Fixed
+- The Dock icon no longer stays after a sign-in window closes; if it is ever left behind, it now goes away within a few seconds.
+
 ## [1.9.1] - 2026-09-24
 
 ### Fixed

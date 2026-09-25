@@ -76,6 +76,9 @@ final class CameraScanWindow: NSObject, NSWindowDelegate {
         window.center()
         self.window = window
 
+        // Claimed again: a permission prompt left open longer than the sweep's grace has already
+        // been put back to accessory, and the window would open unable to take focus.
+        WindowActivation.claim()
         present(window)
         scanner.start(authorization)
     }
