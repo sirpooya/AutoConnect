@@ -528,7 +528,7 @@ final class VPNController: ObservableObject {
 
             // Step 1.
             report(.contactingGateway, generation: generation)
-            clearStaleGatewayRoute()
+            await clearStaleGatewayRoute()
 
             let client = GatewayClient(profile: profile)
             let authRequest = try await client.requestAuthentication()
@@ -627,23 +627,25 @@ final class VPNController: ObservableObject {
     /// user looking at their network rather than at a leftover routing entry. Best effort: if the
     /// route cannot be removed (no passwordless rule for it), the connect proceeds anyway and the
     /// error path below explains what to run.
-    private func clearStaleGatewayRoute() {
+    ///
+    /// Off the main actor: it runs `route`, which is the tool that once never returned, and on the
+    /// main thread that froze the whole app rather than one connect.
+    private func clearStaleGatewayRoute() async {
         guard !isPreview else { return }
 
         let host = profile.host.split(separator: ":").first.map(String.init) ?? profile.host
-        guard case .stale(let route) = RoutePreflight.check(address: host) else {
-            staleRouteHint = nil
-            return
-        }
+        staleRouteHint = await Task.detached(priority: .userInitiated) {
+            Self.clearStaleRoute(to: host)
+        }.value
+    }
 
-        if RoutePreflight.clear(route) {
-            staleRouteHint = nil
-        } else {
-            // Remember it, so a subsequent failure can say what to do rather than blaming the
-            // network.
-            staleRouteHint = RoutePreflight.deleteCommand(for: route.destination)
-                .joined(separator: " ")
-        }
+    /// The command the user should run when the stale route could not be cleared, or nil.
+    private nonisolated static func clearStaleRoute(to host: String) -> String? {
+        guard case .stale(let route) = RoutePreflight.check(address: host) else { return nil }
+        if RoutePreflight.clear(route) { return nil }
+
+        // Remember it, so a subsequent failure can say what to do rather than blaming the network.
+        return RoutePreflight.deleteCommand(for: route.destination).joined(separator: " ")
     }
 
     /// Gathers what autofill needs, or nil when there is nothing useful to fill.
@@ -1091,15 +1093,7 @@ final class VPNController: ObservableObject {
     }
 
     private static func interfaceExists(_ name: String) -> Bool {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/sbin/ifconfig")
-        process.arguments = [name]
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-
-        guard (try? process.run()) != nil else { return false }
-        process.waitUntilExit()
-        return process.terminationStatus == 0
+        BoundedProcess.run("/sbin/ifconfig", [name], timeout: 3)?.status == 0
     }
 
     /// Watches for the network coming back, so a laptop waking on a different Wi-Fi restores the
@@ -1245,17 +1239,9 @@ final class VPNController: ObservableObject {
     private static func interfaceOwning(address: String?) -> String? {
         guard let address else { return nil }
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/sbin/ifconfig")
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-
-        guard (try? process.run()) != nil else { return nil }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-
-        guard let output = String(data: data, encoding: .utf8) else { return nil }
+        guard let output = BoundedProcess.run(
+            "/sbin/ifconfig", [], capture: .standardOutput, timeout: 3
+        )?.text else { return nil }
 
         var current: String?
         for line in output.split(separator: "\n") {

@@ -50,7 +50,7 @@ bundle a menu-bar app needs. **Anything worth testing belongs in `AutoConnectCor
 
 ```
 Sources/
-├── AutoConnectCore/                      # pure logic, no UI, 235 tests
+├── AutoConnectCore/                      # pure logic, no UI, 305 tests
 │   ├── Crypto/
 │   │   ├── Base32.swift              # RFC 4648 decode + encode
 │   │   └── TOTP.swift                # RFC 6238 / RFC 4226 truncation
@@ -65,6 +65,7 @@ Sources/
 │   │   ├── LoginKeychain.swift       # website passwords a browser already saved
 │   │   └── VPNSettingsStore.swift    # connection list + selection, VPN password in Keychain
 │   └── VPN/
+│       ├── BoundedProcess.swift       # runs a system tool with a deadline, never an unbounded wait
 │       ├── ConfigAuthXML.swift        # Cisco config-auth builders, parser, group probe
 │       ├── GatewayClient.swift        # the POSTs, SHA1 pinning, learn-on-first-contact
 │       ├── OpenConnectRunner.swift    # process spawn, output parsing, state machine

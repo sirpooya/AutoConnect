@@ -34,21 +34,9 @@ public enum OpenConnectVersion {
     public static func read(at path: String) -> String? {
         guard FileManager.default.isExecutableFile(atPath: path) else { return nil }
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: path)
-        process.arguments = ["--version"]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = pipe
-
-        do {
-            try process.run()
-        } catch {
-            return nil
-        }
-
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        return parse(String(decoding: data, as: UTF8.self))
+        guard let result = BoundedProcess.run(
+            path, ["--version"], capture: .standardOutputAndError
+        ) else { return nil }
+        return parse(String(decoding: result.output, as: UTF8.self))
     }
 }

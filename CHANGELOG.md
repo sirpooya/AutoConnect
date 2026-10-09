@@ -12,6 +12,7 @@ section when a release is cut.
 
 ### Fixed
 - The Dock icon no longer stays after a sign-in window closes; if it is ever left behind, it now goes away within a few seconds.
+- AutoConnect no longer freezes during a session renewal. A route check that never answered could hang the app until it was force-quit; system tools now get a few seconds and then the connect carries on.
 
 ## [1.9.1] - 2026-09-24
 

@@ -175,30 +175,13 @@ public enum RoutePreflight {
     /// tells the user what to run.
     @discardableResult
     public static func clear(_ route: HostRoute) -> Bool {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/sudo")
-        process.arguments = ["-n"] + deleteCommand(for: route.destination)
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-
-        guard (try? process.run()) != nil else { return false }
-        process.waitUntilExit()
-        return process.terminationStatus == 0
+        BoundedProcess.run("/usr/bin/sudo", ["-n"] + deleteCommand(for: route.destination))?
+            .status == 0
     }
 
+    /// Short deadline: `route -n get` is the tool that hung forever during a renewal, and a check
+    /// that cannot answer is treated as healthy, the same as one that cannot run.
     private static func run(_ path: String, _ arguments: [String]) -> String? {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: path)
-        process.arguments = arguments
-
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-
-        guard (try? process.run()) != nil else { return nil }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-
-        return String(data: data, encoding: .utf8)
+        BoundedProcess.run(path, arguments, capture: .standardOutput, timeout: 3)?.text
     }
 }

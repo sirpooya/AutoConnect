@@ -347,15 +347,7 @@ public final class OpenConnectRunner {
     /// the user started themselves.
     @discardableResult
     public static func shutdownAdopted() -> Bool {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/sudo")
-        process.arguments = ["-n"] + shutdownArguments()
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-
-        guard (try? process.run()) != nil else { return false }
-        process.waitUntilExit()
-        return process.terminationStatus == 0
+        BoundedProcess.run("/usr/bin/sudo", ["-n"] + shutdownArguments())?.status == 0
     }
 
     /// Shutdown command. Matches on the pid-file path, which only this app's process carries.
@@ -463,11 +455,7 @@ public final class OpenConnectRunner {
             return
         }
 
-        let kill = Process()
-        kill.executableURL = URL(fileURLWithPath: "/usr/bin/sudo")
-        kill.arguments = ["-n"] + Self.shutdownArguments()
-        try? kill.run()
-        kill.waitUntilExit()
+        BoundedProcess.run("/usr/bin/sudo", ["-n"] + Self.shutdownArguments())
     }
 
     // MARK: - Internals

@@ -122,21 +122,12 @@ public enum TunnelAdoption {
     ///
     /// The match is then confirmed against the one thing `argv` cannot fake: see `isRootOwned`.
     public static func runningPID(marker: String) -> Int32? {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
         // -f matches the whole command line; -n takes the newest if several somehow exist.
-        process.arguments = ["-n", "-f", marker]
-
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-
-        guard (try? process.run()) != nil else { return nil }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-
-        guard process.terminationStatus == 0,
-              let text = String(data: data, encoding: .utf8),
+        guard let result = BoundedProcess.run(
+                  "/usr/bin/pgrep", ["-n", "-f", marker], capture: .standardOutput
+              ),
+              result.status == 0,
+              let text = result.text,
               let pid = parsePID(text),
               isRunning(pid: pid),
               isRootOwned(pid: pid)
@@ -254,19 +245,7 @@ public enum TunnelAdoption {
     }
 
     private static func shell(_ path: String, _ arguments: [String]) -> String? {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: path)
-        process.arguments = arguments
-
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-
-        guard (try? process.run()) != nil else { return nil }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-
-        return String(data: data, encoding: .utf8)
+        BoundedProcess.run(path, arguments, capture: .standardOutput)?.text
     }
 
     /// Removes a pid file left by a process that has exited.

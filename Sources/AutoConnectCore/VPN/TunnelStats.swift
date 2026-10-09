@@ -170,24 +170,9 @@ public final class TunnelStatsReader {
 
     /// Read-only: netstat reports counters and changes nothing.
     private static func runNetstat(interface: String) -> String? {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/sbin/netstat")
-        process.arguments = ["-ibn", "-I", interface]
-
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-
-        do {
-            try process.run()
-        } catch {
-            return nil
-        }
-
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-
-        guard process.terminationStatus == 0 else { return nil }
-        return String(data: data, encoding: .utf8)
+        guard let result = BoundedProcess.run(
+            "/usr/sbin/netstat", ["-ibn", "-I", interface], capture: .standardOutput, timeout: 3
+        ), result.status == 0 else { return nil }
+        return result.text
     }
 }
