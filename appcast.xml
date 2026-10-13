@@ -14,6 +14,27 @@
         <description>Most recent changes to AutoConnect.</description>
         <language>en</language>
         <item>
+            <title>1.9.2</title>
+            <pubDate>Tue, 13 Oct 2026 08:21:39 +0000</pubDate>
+            <sparkle:version>18</sparkle:version>
+            <sparkle:shortVersionString>1.9.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+<h3>Fixed</h3>
+<ul>
+<li>The Dock icon no longer stays after a sign-in window closes; if it is ever left behind, it now goes away within a few seconds.</li>
+<li>AutoConnect no longer freezes during a session renewal. A route check that never answered could hang the app until it was force-quit; system tools now get a few seconds and then the connect carries on.</li>
+<li>The app no longer burns CPU with the panel closed or stalls the menu bar during a reconnect. The panel's clocks, countdown animation, status shimmer and traffic statistics now pause while it is shut, and the statistics no longer make the app wait on netstat.</li>
+<li>"Retrying in" now counts down. It used to freeze at whatever it read when the tunnel dropped.</li>
+</ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/sirpooya/AutoConnect/releases/download/v1.9.2/AutoConnect-1.9.2.zip"
+                length="4492727"
+                type="application/octet-stream"
+                sparkle:edSignature="qZvjV8RaaZMkFjqaF7rP0DfEh6yGbbb1+CAiM5mjmgi39j8JEKhXDrJVk5IFeL821l/qe2Cj2CDsVnYdM7FOAA==" />
+        </item>
+        <item>
             <title>1.9.1</title>
             <pubDate>Thu, 24 Sep 2026 12:57:59 +0000</pubDate>
             <sparkle:version>17</sparkle:version>
