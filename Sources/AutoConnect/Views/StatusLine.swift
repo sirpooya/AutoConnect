@@ -182,8 +182,11 @@ struct ShimmerText: View {
     /// letters, above it the whole line brightens and dims together.
     var length: Double = 1.5
 
+    /// A closed panel's view is still alive, and a display-rate clock in it ran for nobody.
+    @Environment(\.isPanelVisible) private var isPanelVisible
+
     var body: some View {
-        if isShimmering, intensity > 0, period > 0 {
+        if isShimmering, isPanelVisible, intensity > 0, period > 0 {
             // Sized by the plain text, then painted by the gradient: the glyphs are the mask, so
             // layout cannot depend on the animation.
             base.hidden().overlay { fill }
@@ -278,4 +281,10 @@ struct ShimmerText: View {
             .init(color: dim, location: 1),
         ]
     }
+}
+
+extension EnvironmentValues {
+    /// False while the menu bar panel is closed. The popover keeps its views alive, so anything
+    /// that runs on a clock has to stop on this rather than on `onDisappear`, which never comes.
+    @Entry var isPanelVisible = true
 }

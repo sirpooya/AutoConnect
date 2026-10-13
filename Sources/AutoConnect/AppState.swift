@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import Foundation
+import SwiftUI
 import AutoConnectCore
 
 /// Which screen the menu bar panel is showing.
@@ -33,7 +34,37 @@ final class AppState: ObservableObject {
     init(store: AccountStoring = KeychainStore()) {
         self.store = store
         reload()
+        startTicker()
+    }
 
+    // MARK: - Visibility
+
+    /// Whether the panel is on screen. True by default, which is what the playground's mock
+    /// panels want; the real one is told otherwise as soon as its popover exists.
+    ///
+    /// The popover keeps its view alive while closed, so everything in it went on running for
+    /// nobody: this ticker, the countdown wedge it animates almost continuously, the status
+    /// shimmer at display rate and, with Details open, netstat every three seconds. That kept the
+    /// app at 20 to 30% CPU with the panel shut, and decoded every secret once a period.
+    @Published private(set) var isPanelVisible = true
+
+    func setPanelVisible(_ visible: Bool) {
+        guard visible != isPanelVisible else { return }
+        isPanelVisible = visible
+
+        guard visible else {
+            ticker = nil
+            return
+        }
+
+        // Caught up without animation, or the wedge sweeps across everything it missed.
+        var catchUp = Transaction()
+        catchUp.disablesAnimations = true
+        withTransaction(catchUp) { now = Date() }
+        startTicker()
+    }
+
+    private func startTicker() {
         ticker = Timer.publish(every: 1, tolerance: 0.1, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] date in

@@ -130,7 +130,13 @@ public final class TunnelStatsReader {
     /// Reads the interface once and folds it into a rate using the previous reading.
     /// Returns nil when the interface does not exist, which is the normal case when disconnected.
     public func sample(interface: String, now: Date = Date()) -> TunnelStats? {
-        guard let output = Self.runNetstat(interface: interface),
+        record(netstatOutput: Self.readCounters(interface: interface), interface: interface, now: now)
+    }
+
+    /// The fold half of `sample`, for a caller that ran `readCounters` somewhere else: spawning
+    /// netstat waits on a process, which is not something to do on the main thread.
+    public func record(netstatOutput: String?, interface: String, now: Date = Date()) -> TunnelStats? {
+        guard let output = netstatOutput,
               let parsed = TunnelStats.parse(netstatOutput: output, interface: interface)
         else {
             lastSample = nil
@@ -168,8 +174,9 @@ public final class TunnelStatsReader {
         lastSample = nil
     }
 
-    /// Read-only: netstat reports counters and changes nothing.
-    private static func runNetstat(interface: String) -> String? {
+    /// Read-only: netstat reports counters and changes nothing. Blocks for as long as netstat
+    /// runs, up to its deadline.
+    public static func readCounters(interface: String) -> String? {
         guard let result = BoundedProcess.run(
             "/usr/sbin/netstat", ["-ibn", "-I", interface], capture: .standardOutput, timeout: 3
         ), result.status == 0 else { return nil }

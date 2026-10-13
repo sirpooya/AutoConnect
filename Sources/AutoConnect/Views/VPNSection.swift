@@ -168,8 +168,8 @@ struct VPNSection: View {
 
     /// What the status line says.
     ///
-    /// Every phase but one is a fixed string, and that one counts down. `vpn.now` is the panel's
-    /// existing one second ticker, so reading it here is what redraws the seconds; the phase
+    /// Every phase but one is a fixed string, and that one counts down. `vpn.now` ticks once a
+    /// second while a retry waits, so reading it here is what redraws the seconds; the phase
     /// itself stays constant through the wait, which is what keeps `StatusPacer` from being
     /// handed a new value every second and pacing a countdown.
     private var statusText: String {
@@ -256,9 +256,11 @@ struct VPNSection: View {
 
             if showDetails {
                 statistics
-                    // Counters are sampled by spawning netstat, so only poll while visible.
-                    .onAppear { vpn.setStatsPolling(true) }
+                    // Counters are sampled by spawning netstat, so only poll while visible. The
+                    // panel closing is not a disappearance: the popover keeps this view alive.
+                    .onAppear { vpn.setStatsPolling(state.isPanelVisible) }
                     .onDisappear { vpn.setStatsPolling(false) }
+                    .onChange(of: state.isPanelVisible) { vpn.setStatsPolling(state.isPanelVisible) }
             }
         }
     }

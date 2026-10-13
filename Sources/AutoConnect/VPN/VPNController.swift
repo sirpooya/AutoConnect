@@ -96,7 +96,8 @@ final class VPNController: ObservableObject {
     /// Every configured connection, so the panel and Settings can list and switch between them.
     @Published var profiles: [VPNProfile] = []
 
-    /// Ticks while connected so the expiry countdown stays live.
+    /// Ticks while connected so the expiry countdown stays live, and once a second while a retry
+    /// is counting down.
     @Published private(set) var now = Date()
 
     /// Recent throughput samples, oldest first, for the sparkline. Bounded so it cannot grow
@@ -876,7 +877,16 @@ final class VPNController: ObservableObject {
             deadline: Date().addingTimeInterval(delay)
         )
         renewalTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(delay))
+            // A second at a time rather than one sleep, moving `now` as it goes, because `now` is
+            // what the panel's "Retrying in" counts down from. Nothing else moves it here: the
+            // heartbeat is fifteen seconds and stops with the tunnel, so the countdown froze at
+            // whatever it read when the tunnel dropped and sat there through the whole retry.
+            let deadline = ContinuousClock.now + .seconds(delay)
+            while ContinuousClock.now < deadline {
+                try? await Task.sleep(for: min(.seconds(1), deadline - .now))
+                guard let self, !Task.isCancelled else { return }
+                self.now = Date()
+            }
             guard let self, !Task.isCancelled else { return }
             self.isRetryScheduled = false
             self.retryDeadline = nil
@@ -1077,11 +1087,18 @@ final class VPNController: ObservableObject {
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(3))
 
-            let interface = tunnel?.interface
-                ?? Self.interfaceOwning(address: tunnel?.assignedIP)
+            // Off the main actor, for the same reason as the statistics: these are processes.
+            let known = tunnel?.interface
+            let address = tunnel?.assignedIP
+            let exists = await Task.detached(priority: .userInitiated) {
+                // No interface means openconnect is gone or its device was torn down.
+                guard let interface = known ?? Self.interfaceOwning(address: address) else {
+                    return false
+                }
+                return Self.interfaceExists(interface)
+            }.value
 
-            // No interface means openconnect is gone or its device was torn down.
-            guard let interface, Self.interfaceExists(interface) else {
+            guard exists else {
                 triggerReconnect()
                 return
             }
@@ -1092,7 +1109,7 @@ final class VPNController: ObservableObject {
         }
     }
 
-    private static func interfaceExists(_ name: String) -> Bool {
+    private nonisolated static func interfaceExists(_ name: String) -> Bool {
         BoundedProcess.run("/sbin/ifconfig", [name], timeout: 3)?.status == 0
     }
 
@@ -1202,21 +1219,32 @@ final class VPNController: ObservableObject {
 
         statsTask = Task { [weak self] in
             while !Task.isCancelled {
-                self?.sampleStats()
+                await self?.sampleStats()
                 try? await Task.sleep(for: .seconds(3))
             }
         }
     }
 
-    private func sampleStats() {
-        guard case .connected(var tunnel) = phase else { return }
+    private func sampleStats() async {
+        guard case .connected(let sampled) = phase else { return }
 
-        // Fall back to the assigned address's interface when openconnect did not name one.
-        let interface = tunnel.interface ?? Self.interfaceOwning(address: tunnel.assignedIP)
-        guard let interface else { return }
+        // Off the main actor: ifconfig and netstat are processes, each allowed seconds, and this
+        // runs every three of them. Waited for on the main thread, every slow one was a beachball.
+        let known = sampled.interface
+        let address = sampled.assignedIP
+        let (interface, output) = await Task.detached(priority: .utility) {
+            // Fall back to the assigned address's interface when openconnect did not name one.
+            let interface = known ?? Self.interfaceOwning(address: address)
+            return (interface, interface.flatMap { TunnelStatsReader.readCounters(interface: $0) })
+        }.value
+
+        // Re-read: the tunnel may have changed or gone while the tools ran.
+        guard !Task.isCancelled, let interface, case .connected(var tunnel) = phase else { return }
 
         tunnel.interface = interface
-        guard let stats = statsReader.sample(interface: interface) else { return }
+        guard let stats = statsReader.record(netstatOutput: output, interface: interface) else {
+            return
+        }
 
         tunnel.stats = stats
         now = Date()
@@ -1236,7 +1264,7 @@ final class VPNController: ObservableObject {
 
     /// Finds which `utun` device carries a given address, so stats work even when openconnect's
     /// output did not mention the device name.
-    private static func interfaceOwning(address: String?) -> String? {
+    private nonisolated static func interfaceOwning(address: String?) -> String? {
         guard let address else { return nil }
 
         guard let output = BoundedProcess.run(

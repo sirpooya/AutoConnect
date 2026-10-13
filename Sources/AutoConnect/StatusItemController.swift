@@ -156,6 +156,9 @@ final class StatusItemController: NSObject, NSApplicationDelegate {
         popover.contentViewController = hosting
         popover.behavior = .transient
         popover.animates = false
+        // The panel's clocks and animations run only while it is open. See `isPanelVisible`.
+        popover.delegate = self
+        state.setPanelVisible(false)
 
         PanelPin.onChange = { [weak self] pinned in
             guard let self else { return }
@@ -259,5 +262,15 @@ final class StatusItemController: NSObject, NSApplicationDelegate {
     private func reopen() {
         if popover.isShown { popover.close() }
         show()
+    }
+}
+
+extension StatusItemController: NSPopoverDelegate {
+    func popoverWillShow(_ notification: Notification) {
+        state.setPanelVisible(true)
+    }
+
+    func popoverDidClose(_ notification: Notification) {
+        state.setPanelVisible(false)
     }
 }

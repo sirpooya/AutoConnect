@@ -24,6 +24,7 @@ struct MenuPanel: View {
                 ErrorBanner(message: message) { state.errorMessage = nil }
             }
         }
+        .environment(\.isPanelVisible, state.isPanelVisible)
     }
 }
 
