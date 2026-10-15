@@ -10,6 +10,9 @@ section when a release is cut.
 
 ## [Unreleased]
 
+### Fixed
+- The diagnostic log no longer grows without limit. It used to write a line every few seconds while connected and had reached several megabytes; it now records only real changes and starts a fresh file once it passes 512 KB.
+
 ## [1.9.2] - 2026-10-13
 
 ### Fixed

@@ -60,7 +60,27 @@ enum DiagnosticLog {
         return "\(secret.count) chars"
     }
 
+    /// Past this size, the next connect attempt starts a fresh file and the current one becomes
+    /// `AutoConnect-prev.log`, replacing the one before it. Two files at most, so the log cannot
+    /// grow for months the way it once did.
+    private static let rolloverBytes: UInt64 = 512 * 1024
+
+    private static var previousURL: URL {
+        fileURL.deletingLastPathComponent().appendingPathComponent("AutoConnect-prev.log")
+    }
+
+    private static func rollOverIfLarge() {
+        let attributes = try? FileManager.default.attributesOfItem(atPath: fileURL.path)
+        guard let size = attributes?[.size] as? UInt64, size > rolloverBytes else { return }
+
+        try? FileManager.default.removeItem(at: previousURL)
+        try? FileManager.default.moveItem(at: fileURL, to: previousURL)
+    }
+
     static func startSession() {
+        // On the queue and only here, so the cut always falls between attempts. An attempt split
+        // across two files would send an issue report half of what went wrong.
+        queue.async { rollOverIfLarge() }
         write("---- connect attempt ----")
         // Repeated per attempt rather than written once at launch. A log is read from the end,
         // and a header scrolled off the top by twenty retries is a header nobody sees.

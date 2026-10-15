@@ -76,7 +76,10 @@ final class VPNController: ObservableObject {
 
     @Published private(set) var phase: Phase = .idle {
         didSet {
-            if phase != oldValue { DiagnosticLog.write("phase: \(phase.logLine)") }
+            // Compared by the line, not the phase. The stats sampler re-sets `.connected` with
+            // fresh counters every few seconds, which is a different phase but the same line,
+            // and logging each one grew the file to 3.7MB of "phase: Connected".
+            if phase.logLine != oldValue.logLine { DiagnosticLog.write("phase: \(phase.logLine)") }
             // A renewal ends the moment it has an answer, either way. `didSet` rather than a
             // line in each of the places that reach these phases, because missing one leaves
             // the flag stuck on and the next real drop silently unreported.
