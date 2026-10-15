@@ -124,7 +124,13 @@ left it on rather than jumping under them.
 where its window lands, while a popover anchored to the status button is always centred on the
 icon. Keep it that way.
 
-Two rules come with that popover, both learned from bugs:
+Three rules come with that popover, all learned from bugs:
+
+- **A click on the icon closes the open panel before `toggle` hears it.** The press takes key
+  focus from the popover and AppKit closes it, so `isShown` reads false and the click reopened
+  it. `popoverShouldClose` notes a close made with the pointer on the icon, and `toggle` treats
+  that as the click's answer. Never refuse that close instead: the popover stays up but loses
+  key, and the icon stops answering. The button acts on mouse-down so the gap stays milliseconds.
 
 - **AppKit installs the monitors that dismiss a `.transient` popover at show time.** `PanelPin`
   flips the behaviour to `.applicationDefined` so the file picker, the capture overlay and the

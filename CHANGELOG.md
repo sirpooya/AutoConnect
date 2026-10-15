@@ -12,6 +12,7 @@ section when a release is cut.
 
 ### Fixed
 - The diagnostic log no longer grows without limit. It used to write a line every few seconds while connected and had reached several megabytes; it now records only real changes and starts a fresh file once it passes 512 KB.
+- Clicking the menu bar icon while the panel is open now closes it, instead of closing it and opening it again straight away.
 
 ## [1.9.2] - 2026-10-13
 

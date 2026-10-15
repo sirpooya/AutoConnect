@@ -26,6 +26,8 @@ final class StatusItemController: NSObject, NSApplicationDelegate {
     /// True while a system window (file picker, capture overlay) is part of an add in progress.
     /// The panel must survive losing focus to those, but only to those.
     private var isPinned = false
+    /// When a press on the menu bar icon last made AppKit close the panel. See `toggle`.
+    private var iconPressClosedPanelAt: TimeInterval?
     private var terminationSignalSource: DispatchSourceSignal?
 
     private var cancellables = Set<AnyCancellable>()
@@ -123,6 +125,9 @@ final class StatusItemController: NSObject, NSApplicationDelegate {
         item.button?.imagePosition = .imageOnly
         item.button?.target = self
         item.button?.action = #selector(toggle)
+        // On press, as the system's own menu bar items open, so the press that closes the panel
+        // and the toggle it sends arrive milliseconds apart however long the button is held.
+        item.button?.sendAction(on: [.leftMouseDown])
         statusItem = item
 
         // The icon is the only thing visible when the panel is closed, so it carries the one
@@ -225,11 +230,25 @@ final class StatusItemController: NSObject, NSApplicationDelegate {
         popover.performClose(nil)
     }
 
+    /// Opens the panel, or closes it when it is already open.
+    ///
+    /// Clicking the icon with the panel open takes key focus from the popover, and AppKit closes a
+    /// transient popover on that before the click reaches this method. Asking `isShown` then says
+    /// closed, and the click that meant "close" opened it straight back up. So a close that a
+    /// press on the icon caused, moments ago, counts as this click's answer.
     @objc private func toggle() {
+        let closedByThisPress = iconPressClosedPanelAt.map {
+            ProcessInfo.processInfo.systemUptime - $0 < 0.5
+        } ?? false
+        iconPressClosedPanelAt = nil
+
         if popover.isShown {
             popover.performClose(nil)
+            // That close asked the delegate too, with the pointer on the icon.
+            iconPressClosedPanelAt = nil
             return
         }
+        if closedByThisPress { return }
 
         // Always reopen on the list; a half-filled form left over from last time is not what
         // someone reaching for a code wants to see.
@@ -266,6 +285,15 @@ final class StatusItemController: NSObject, NSApplicationDelegate {
 }
 
 extension StatusItemController: NSPopoverDelegate {
+    /// Never refuses. Refusing the close a press on the icon starts leaves the panel open but no
+    /// longer key, and the icon stops answering clicks altogether.
+    func popoverShouldClose(_ popover: NSPopover) -> Bool {
+        if let frame = statusItem?.button?.window?.frame, frame.contains(NSEvent.mouseLocation) {
+            iconPressClosedPanelAt = ProcessInfo.processInfo.systemUptime
+        }
+        return true
+    }
+
     func popoverWillShow(_ notification: Notification) {
         state.setPanelVisible(true)
     }
