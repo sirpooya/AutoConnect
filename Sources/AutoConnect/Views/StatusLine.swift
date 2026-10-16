@@ -78,6 +78,13 @@ final class StatusPacer<Value: Equatable> {
     private var pending: [Value] = []
     private var drain: Task<Void, Never>?
 
+    /// When the newest queued value must be on screen: one dwell after it was submitted. This is
+    /// what bounds how far the row can trail, and the queue shares the time left until it.
+    private var catchUpBy: Date?
+
+    /// The floor, as last submitted, so a drain already running picks up a changed knob.
+    private var minimumDwell: Double = 0
+
     /// Wraps every change of `shown` so the whole update runs inside one animated transaction.
     ///
     /// An `.animation(_:value:)` on the row was not enough, which is what made the resize knobs look
@@ -93,12 +100,14 @@ final class StatusPacer<Value: Equatable> {
         animation: Animation? = nil
     ) {
         self.animation = animation
+        self.minimumDwell = minimumDwell
 
         // Checked before the duplicate guard below, not after: disconnecting mid-connect submits a
         // value that may already be on screen, and that must still throw away the progress states
         // queued behind it rather than letting them drain over a tunnel that is gone.
         if immediately {
             pending.removeAll()
+            catchUpBy = nil
             drain?.cancel()
             drain = nil
             show(value)
@@ -123,28 +132,37 @@ final class StatusPacer<Value: Equatable> {
         }
 
         pending.append(value)
-        startDraining(minimumDwell: minimumDwell)
+        catchUpBy = Date().addingTimeInterval(minimumDwell)
+        startDraining()
     }
 
-    private func startDraining(minimumDwell: Double) {
+    private func startDraining() {
         guard drain == nil else { return }
 
         drain = Task { [weak self] in
             while let self, let next = pending.first {
                 // The floor is per value, but the budget is for the whole queue: with several
-                // waiting, each takes an equal share of one dwell rather than a dwell of its own.
+                // waiting, they split the time left until `catchUpBy` rather than taking a dwell
+                // each.
                 //
                 // Without that the row narrates a story that is already over. Four steps of a
                 // connect that really took a second replayed for eleven, so the panel still read
                 // "Authenticating..." while the tunnel was up and the banner announcing it had
                 // already been posted, which reads as the app announcing a connection it did not
                 // have. A single change still gets the full floor, which is what the dwell is for.
-                let dwell = minimumDwell / Double(pending.count)
+                //
+                // The share is of a fixed deadline, not of one dwell. Dividing the dwell by the
+                // queue's length, recomputed as the queue shrank, gave a quarter, then a third, a
+                // half and a whole dwell: twice the dwell for four steps, behind whatever was
+                // already up. That outlasted the banner's wait for the panel, so "VPN connected"
+                // arrived beside "Starting tunnel..." again.
+                let start = shownAt ?? Date()
+                let budget = (catchUpBy ?? start).timeIntervalSince(start)
+                let slot = min(minimumDwell, max(0, budget / Double(pending.count)))
 
-                // Only the part of the dwell the current value has not served yet, so every one
+                // Only the part of the slot the current value has not served yet, so every one
                 // gets the same floor whether it arrived in a burst or on its own.
-                let elapsed = shownAt.map { Date().timeIntervalSince($0) } ?? dwell
-                let remaining = dwell - elapsed
+                let remaining = slot - Date().timeIntervalSince(start)
 
                 if remaining > 0 {
                     do { try await Task.sleep(for: .seconds(remaining)) } catch { break }

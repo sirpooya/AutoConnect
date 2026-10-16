@@ -13,6 +13,7 @@ section when a release is cut.
 ### Fixed
 - The diagnostic log no longer grows without limit. It used to write a line every few seconds while connected and had reached several megabytes; it now records only real changes and starts a fresh file once it passes 512 KB.
 - Clicking the menu bar icon while the panel is open now closes it, instead of closing it and opening it again straight away.
+- With the panel open, the "VPN connected" banner no longer arrives while the panel still reads "Starting tunnel...". The status line now catches up within one step's time of the real state instead of replaying every step of a fast connect at length.
 
 ## [1.9.2] - 2026-10-13
 
