@@ -256,10 +256,14 @@ struct SettingsView: View {
             .buttonStyle(.plain)
 
             if !item.isComplete {
+                // The frame is the hover target: the 10pt glyph alone was too small to find the
+                // tooltip on, so the warning read as a bug with no explanation.
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 10))
                     .foregroundStyle(.orange)
-                    .help("Not ready to connect: run Detect to fill in the group and certificate.")
+                    .frame(width: 22, height: 22)
+                    .contentShape(Rectangle())
+                    .help(incompleteReason(item))
             }
 
             Menu {
@@ -275,6 +279,16 @@ struct SettingsView: View {
         }
         .padding(.horizontal, SettingsMetrics.rowHPadding)
         .frame(minHeight: 42)
+    }
+
+    /// Names what is missing, mirroring `VPNProfile.isComplete`, so the tooltip says what to fix.
+    private func incompleteReason(_ item: VPNProfile) -> String {
+        var missing: [String] = []
+        if item.host.trimmingCharacters(in: .whitespaces).isEmpty { missing.append("an address") }
+        if item.tunnelGroup.trimmingCharacters(in: .whitespaces).isEmpty { missing.append("a group") }
+        if item.normalizedCertificateSHA1 == nil { missing.append("a pinned certificate") }
+        let what = missing.isEmpty ? "some details" : ListFormatter.localizedString(byJoining: missing)
+        return "Can't connect yet: this connection is missing \(what). Open it and run Detect."
     }
 
     private func addConnection() {

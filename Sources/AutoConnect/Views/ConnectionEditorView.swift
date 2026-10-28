@@ -195,21 +195,12 @@ struct ConnectionEditorView: View {
                     .font(.system(size: 10))
             }
         } else {
-            HStack(spacing: 6) {
-                SecureField(
-                    passwordIsStored ? "Stored in Keychain" : "Leave blank to be asked",
-                    text: $password
-                )
-                .textFieldStyle(.roundedBorder)
-                .font(.system(size: 11))
-
-                if passwordIsStored {
-                    Button("Remove") { removeStoredPassword() }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 10))
-                        .foregroundStyle(.red)
-                }
-            }
+            SecureField(
+                passwordIsStored ? "Stored in Keychain" : "Leave blank to be asked",
+                text: $password
+            )
+            .textFieldStyle(.roundedBorder)
+            .font(.system(size: 11))
 
             if let match = keychainItems.first {
                 HStack(spacing: 4) {
@@ -276,12 +267,6 @@ struct ConnectionEditorView: View {
         if profile.passwordKeychainServer == nil {
             profile.passwordKeychainServer = keychainItems.first?.server
         }
-    }
-
-    private func removeStoredPassword() {
-        try? store.deletePassword(account: profile.credentialAccount)
-        passwordIsStored = false
-        password = ""
     }
 
     // MARK: - What the gateway said

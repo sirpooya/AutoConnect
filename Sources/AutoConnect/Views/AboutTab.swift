@@ -126,7 +126,9 @@ struct AboutTab: View {
                             didCopyLog = false
                         }
                     }
-                    .foregroundStyle(didCopyLog ? Color.green : Color.accentColor)
+                    // linkColor, not accentColor: the link style draws its siblings in it, and
+                    // the two blues differ.
+                    .foregroundStyle(didCopyLog ? Color.green : Color(nsColor: .linkColor))
 
                     // Buttons rather than Links: building the URL reads the log from disk, and a
                     // Link would do that on every layout pass instead of on the click.
