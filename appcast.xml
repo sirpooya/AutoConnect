@@ -14,6 +14,38 @@
         <description>Most recent changes to AutoConnect.</description>
         <language>en</language>
         <item>
+            <title>1.10.0</title>
+            <pubDate>Wed, 28 Oct 2026 16:51:00 +0000</pubDate>
+            <sparkle:version>19</sparkle:version>
+            <sparkle:shortVersionString>1.10.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+<p>&gt; Gateway certificate renewals no longer break connecting, plus clearer errors and settings fixes.</p>
+<h3>Changed</h3>
+<ul>
+<li>When the VPN gateway renews its certificate, AutoConnect now accepts the new one by itself and updates the saved pin, as long as a public certificate authority vouches for it under the gateway's own address. You no longer have to Forget and Detect in Settings. With notifications on, a banner says it happened.</li>
+</ul>
+<h3>Removed</h3>
+<ul>
+<li>The Remove button beside a saved VPN password. Typing a new password replaces the saved one, and deleting the connection removes it.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>The diagnostic log no longer grows without limit. It used to write a line every few seconds while connected and had reached several megabytes; it now records only real changes and starts a fresh file once it passes 512 KB.</li>
+<li>Clicking the menu bar icon while the panel is open now closes it, instead of closing it and opening it again straight away.</li>
+<li>With the panel open, the "VPN connected" banner no longer arrives while the panel still reads "Starting tunnel...". The status line now catches up within one step's time of the real state instead of replaying every step of a fast connect at length.</li>
+<li>The Copy button next to the connection log now uses the same blue as the link beside it.</li>
+<li>A gateway certificate that does not match the pin is now reported as a certificate change, with what to do about it, instead of "Could not reach the gateway: cancelled". It also no longer retries over and over.</li>
+<li>The warning beside a connection that can't connect yet now shows a tooltip naming what's missing, and it's much easier to hover.</li>
+</ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/sirpooya/AutoConnect/releases/download/v1.10.0/AutoConnect-1.10.0.zip"
+                length="4513743"
+                type="application/octet-stream"
+                sparkle:edSignature="Cw7w4jQ9dq0m+5AaMETh/ZZBtCmRzpLY8MfEKHAMFFa5MywGpEKpLCfB8xeIECgBkJp6lpSOVgcND6ocr5bbBg==" />
+        </item>
+        <item>
             <title>1.9.2</title>
             <pubDate>Tue, 13 Oct 2026 08:21:39 +0000</pubDate>
             <sparkle:version>18</sparkle:version>
