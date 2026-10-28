@@ -154,4 +154,28 @@ public enum StatusNotificationPolicy {
             )
         }
     }
+
+    /// Posted under its own identifier, so the "VPN connected" that follows a renewal a moment
+    /// later cannot replace it before it is read.
+    public static let certificateIdentifier = "autoconnect.vpn.certificate"
+
+    /// The banner for a connection re-pinned to a renewed gateway certificate.
+    ///
+    /// Not a state of the tunnel, so it sits outside the event rules: it is said once, when it
+    /// happens, because the pin the user set up changed without them.
+    public static func certificateRenewed(
+        gateway: String,
+        issuer: String?,
+        expires: Date?
+    ) -> (title: String, body: String) {
+        let signer = issuer.map { " from \($0)" } ?? ""
+        let until = expires.map {
+            ", valid until \($0.formatted(date: .abbreviated, time: .omitted))"
+        } ?? ""
+        return (
+            "VPN certificate renewed",
+            "\(gateway) has a new certificate\(signer)\(until). It is publicly trusted, "
+                + "so the connection now pins it."
+        )
+    }
 }

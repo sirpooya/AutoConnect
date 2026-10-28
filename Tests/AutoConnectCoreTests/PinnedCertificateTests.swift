@@ -216,7 +216,7 @@ final class PinnedCertificateTests: XCTestCase {
         return Calendar(identifier: .gregorian).date(from: components)!
     }
 
-    private static let fixtureBase64 = """
+    static let fixtureBase64 = """
         MIIDojCCAoqgAwIBAgIUcXTI2f7A5ciya1UaU4CD1kuE+qAwDQYJKoZIhvcNAQELBQAwRjELMAkG\
         A1UEBhMCSVIxGTAXBgNVBAoMEEV4YW1wbGUgU2VydmljZXMxHDAaBgNVBAMME21mYS12cG4uZXhh\
         bXBsZS5jb20wHhcNMjYwMTAxMDAwMDAwWhcNMzYwMTAxMDAwMDAwWjBGMQswCQYDVQQGEwJJUjEZ\

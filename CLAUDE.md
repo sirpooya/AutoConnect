@@ -288,6 +288,12 @@ Summary of the behavior contract:
   first contact (Detect, `TrustPolicy.learnFingerprint`) and enforced from then on; that one
   request is the only time an unknown certificate is accepted, and the user is shown what was
   learned.
+- **A renewal re-pins itself, but only if a public CA vouches for it.** A mismatch whose chain
+  passes system trust for the gateway's own host name (`GatewayClient.decide`,
+  `isPubliclyTrusted`) is accepted and the connection re-pinned before the sign-in window opens,
+  logged old -> new, with a banner under its own identifier. Anything else is refused as
+  `certificateRejected`, which is terminal, not retried. URLSession reports a refused challenge as
+  "cancelled", and that is what the user saw for a renewal until `postRaw` learned to tell them apart.
 - What was learned means the certificate, not just the hash. `PinnedCertificate.read` records
   both digests, the subject CN, the subjectAltName DNS list, the issuer, the validity window and
   the day it was pinned; the connection editor shows them the way Keychain Access would. Expiry

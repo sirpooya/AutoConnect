@@ -244,20 +244,40 @@ final class VPNStatusNotifier: NSObject, ObservableObject {
 
     // MARK: - Delivery
 
+    /// Says the gateway's pin moved to a renewed certificate. Behind the same switch as the
+    /// status banners, since it is the same kind of news about the same tunnel.
+    func certificateRenewed(gateway: String, certificate: PinnedCertificate) {
+        guard isEnabled else { return }
+        let text = StatusNotificationPolicy.certificateRenewed(
+            gateway: gateway,
+            issuer: certificate.issuer,
+            expires: certificate.notAfter
+        )
+        post(
+            title: text.title,
+            body: text.body,
+            identifier: StatusNotificationPolicy.certificateIdentifier
+        )
+    }
+
     private func post(_ banner: StatusNotification) {
+        post(title: banner.title, body: banner.body, identifier: StatusNotification.identifier)
+    }
+
+    private func post(title: String, body: String, identifier: String) {
         guard !isPreview, Self.isBundled else { return }
 
         let content = UNMutableNotificationContent()
-        content.title = banner.title
-        content.body = banner.body
+        content.title = title
+        content.body = body
         // Silent on purpose: this reports a state change, it does not need answering. The one
         // sound a menu bar app can make should not be about routing.
         content.sound = nil
 
         // One identifier for every status banner, so the newest replaces the last rather than
-        // leaving a stack of dead ones in Notification Centre.
+        // leaving a stack of dead ones in Notification Centre. The certificate banner has its own.
         let request = UNNotificationRequest(
-            identifier: StatusNotification.identifier,
+            identifier: identifier,
             content: content,
             trigger: nil
         )

@@ -592,6 +592,10 @@ struct ConnectionEditorView: View {
                    let learned = client.observedCertificateSHA1 {
                     probeProfile.certificateSHA1 = learned
                 }
+                // A renewal the client accepted moves the pin, the same as a connect does.
+                if let renewed = client.renewedCertificate {
+                    probeProfile.certificateSHA1 = renewed.sha1
+                }
                 // Recorded even when the pin was already known, so a connection pinned by a build
                 // that stored nothing but the hash gains its certificate's details on the next
                 // Detect. The pin itself is untouched: this only describes it.

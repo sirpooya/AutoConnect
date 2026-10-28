@@ -4,8 +4,10 @@ import Foundation
 /// Talks `config-auth` to the VPN gateway: the init POST that starts a login, and the
 /// auth-reply POST that trades a SAML token for a session token.
 ///
-/// The gateway's certificate has no publicly trusted signer, so trust is established by pinning
-/// its SHA1 fingerprint rather than by disabling validation.
+/// Trust is established by pinning the gateway certificate's SHA1 fingerprint rather than by
+/// disabling validation. A certificate that no longer matches the pin is still accepted when a
+/// public authority vouches for it under the gateway's own name, which is what a renewal looks
+/// like; the caller re-pins to it (`renewedCertificate`).
 public final class GatewayClient: NSObject {
 
     public enum ClientError: Error, CustomStringConvertible {
@@ -25,9 +27,10 @@ public final class GatewayClient: NSObject {
                 return "The gateway returned HTTP \(code)."
             case .certificateRejected(let expected, let actual):
                 return """
-                    The gateway presented an unexpected certificate. \
-                    Expected \(expected), got \(actual ?? "none"). \
-                    Refusing to continue.
+                    The gateway's certificate changed and no public authority vouches for the \
+                    new one, so it was refused. Pinned \(expected), presented \(actual ?? "none"). \
+                    If the gateway really was given a new certificate, open Settings, \
+                    Connections, press Forget beside the certificate, then Detect.
                     """
             case .wrongResponseKind(let detail):
                 return "The gateway responded with \(detail) at the wrong stage of the login."
@@ -64,6 +67,16 @@ public final class GatewayClient: NSObject {
     /// Kept alongside the fingerprint so a pin can be shown as a certificate rather than as a
     /// row of hex.
     public private(set) var observedCertificate: PinnedCertificate?
+
+    /// The certificate accepted in place of the pin because a public authority vouches for it,
+    /// which is what a gateway renewing its certificate looks like. Nil unless that happened; the
+    /// caller is expected to re-pin to it, or every later step would refuse it again.
+    public private(set) var renewedCertificate: PinnedCertificate?
+
+    /// The fingerprint of a certificate refused during the handshake. URLSession reports a
+    /// refused challenge as "cancelled", which is what the user was shown for a certificate
+    /// change; this is how `postRaw` tells the two apart.
+    private var rejectedFingerprint: String?
 
     public init(
         profile: VPNProfile,
@@ -199,6 +212,9 @@ public final class GatewayClient: NSObject {
         } catch let error as ClientError {
             throw error
         } catch {
+            if let rejectedFingerprint, let expected = profile.normalizedCertificateSHA1 {
+                throw ClientError.certificateRejected(expected: expected, actual: rejectedFingerprint)
+            }
             throw ClientError.transport(error)
         }
 
@@ -211,6 +227,45 @@ public final class GatewayClient: NSObject {
 
     /// SHA1 of a DER-encoded certificate, uppercase hex. This is the same fingerprint format
     /// openconnect's `--servercert` accepts as a bare 40-character hex string.
+    /// What to do with the certificate a gateway presented.
+    public enum PinDecision: Equatable, Sendable {
+        /// It matches the pin, or this request is the one allowed to learn it.
+        case accept
+        /// It does not match the pin, but a public authority vouches for it under the gateway's
+        /// name. Accepted, and the connection re-pinned to it.
+        case acceptRenewal
+        /// It does not match and nothing vouches for it.
+        case reject
+        /// Nothing is pinned yet, so ordinary system validation decides.
+        case systemTrust
+    }
+
+    /// The trust rule, apart from the handshake so it can be tested. `publiclyTrusted` is only
+    /// asked on a mismatch, since evaluating a chain is the expensive part.
+    public static func decide(
+        presented: String,
+        pinned: String?,
+        policy: TrustPolicy,
+        publiclyTrusted: @autoclosure () -> Bool
+    ) -> PinDecision {
+        if policy == .learnFingerprint { return .accept }
+        guard let pinned else { return .systemTrust }
+        if presented == pinned { return .accept }
+        return publiclyTrusted() ? .acceptRenewal : .reject
+    }
+
+    /// Whether the chain is valid for `host` under the system's own roots, the way a browser
+    /// would judge it. A self-signed or internal-CA certificate fails here, and so stays pinned.
+    public static func isPubliclyTrusted(_ chain: [SecCertificate], host: String) -> Bool {
+        var trust: SecTrust?
+        let policy = SecPolicyCreateSSL(true, host as CFString)
+        guard !chain.isEmpty,
+              SecTrustCreateWithCertificates(chain as CFArray, policy, &trust) == errSecSuccess,
+              let trust
+        else { return false }
+        return SecTrustEvaluateWithError(trust, nil)
+    }
+
     public static func sha1Fingerprint(of certificate: SecCertificate) -> String {
         let der = SecCertificateCopyData(certificate) as Data
         return Insecure.SHA1.hash(data: der)
@@ -243,22 +298,30 @@ extension GatewayClient: URLSessionDelegate {
         observedCertificateSHA1 = fingerprint
         observedCertificate = observed
 
-        // First contact: take the fingerprint on trust so it can be pinned from here on. The
-        // caller asked for this explicitly and is expected to show the user what was learned.
-        if trustPolicy == .learnFingerprint {
-            return completionHandler(.useCredential, URLCredential(trust: trust))
-        }
-
-        // With no pin configured, fall back to system trust. That will fail for a gateway with
-        // no publicly trusted signer, which is the honest outcome: a pin is required.
-        guard let expected = profile.normalizedCertificateSHA1 else {
-            return completionHandler(.performDefaultHandling, nil)
-        }
-
-        if fingerprint == expected {
+        // First contact takes the fingerprint on trust so it can be pinned from here on; the
+        // caller asked for that explicitly and shows the user what was learned. With no pin at
+        // all, system trust decides, which fails for a self-signed gateway: a pin is required.
+        //
+        // A mismatch used to be refused outright, so a gateway renewing its certificate stopped
+        // every connect until someone found Forget and Detect. A renewal from a public authority,
+        // valid for this very host name, is now taken and re-pinned. Anything less still fails.
+        let host = challenge.protectionSpace.host
+        switch Self.decide(
+            presented: fingerprint,
+            pinned: profile.normalizedCertificateSHA1,
+            policy: trustPolicy,
+            publiclyTrusted: Self.isPubliclyTrusted(chain, host: host)
+        ) {
+        case .accept:
             completionHandler(.useCredential, URLCredential(trust: trust))
-        } else {
+        case .acceptRenewal:
+            renewedCertificate = observed
+            completionHandler(.useCredential, URLCredential(trust: trust))
+        case .reject:
+            rejectedFingerprint = fingerprint
             completionHandler(.cancelAuthenticationChallenge, nil)
+        case .systemTrust:
+            completionHandler(.performDefaultHandling, nil)
         }
     }
 }

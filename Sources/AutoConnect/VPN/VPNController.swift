@@ -131,6 +131,10 @@ final class VPNController: ObservableObject {
     /// move its own phase and the controls can be exercised without a gateway. `true` is connect.
     var onPreviewConnectRequest: ((Bool) -> Void)?
 
+    /// Told when a connect re-pinned the gateway to a renewed certificate, so the user hears that
+    /// the pin they set up changed without them. Installed by `StatusItemController`.
+    var onCertificateRenewed: ((PinnedCertificate) -> Void)?
+
     // MARK: Reconnection
 
     /// Whether automatic reconnection is wanted. Off by default: an app that dials a corporate
@@ -537,6 +541,13 @@ final class VPNController: ObservableObject {
             let client = GatewayClient(profile: profile)
             let authRequest = try await client.requestAuthentication()
 
+            // Before the sign-in window exists: it pins the gateway too, and so does openconnect,
+            // and both read the profile.
+            if let renewed = client.renewedCertificate {
+                guard generation == connectGeneration else { return }
+                adoptRenewedCertificate(renewed)
+            }
+
             // Step 2.
             report(.awaitingLogin, generation: generation)
             let login = SAMLLoginController(
@@ -551,7 +562,7 @@ final class VPNController: ObservableObject {
             // site's saved password first. Nothing depends on it being right.
             if let idpHost = login.observedIdPHost, idpHost != profile.idpHost {
                 profile.idpHost = idpHost
-                VPNSettingsStore().save(profile: profile)
+                persistProfile()
             }
 
             // Step 3.
@@ -601,6 +612,11 @@ final class VPNController: ObservableObject {
             }
         } catch let error as GatewayClient.ClientError {
             DiagnosticLog.write("gateway error: \(error)")
+            // Terminal, like the login's own certificate refusal: dialling again only repeats it.
+            if case .certificateRejected = error {
+                report(.failed(error.description), generation: generation)
+                return
+            }
             // A stale route makes the gateway unreachable, and the symptom is a timeout. Say what
             // is actually wrong, and exactly how to fix it, rather than blaming the network.
             if let hint = staleRouteHint {
@@ -621,6 +637,33 @@ final class VPNController: ObservableObject {
             // sentence shown to the user is the least informative thing available.
             DiagnosticLog.write("error: \(type(of: error)) \(error)")
             reportFailure(error.localizedDescription, generation: generation)
+        }
+    }
+
+    /// Re-pins the connection to the certificate the gateway renewed to.
+    ///
+    /// Only reached for a certificate a public authority vouches for under the gateway's own name
+    /// (`GatewayClient.decide`). The old pin and the new one both go in the log, so a re-pin is
+    /// never something that happened without a trace.
+    private func adoptRenewedCertificate(_ renewed: PinnedCertificate) {
+        let expires = renewed.notAfter.map { "expires \($0.formatted(date: .abbreviated, time: .omitted))" }
+            ?? "no expiry"
+        DiagnosticLog.write(
+            "pin: gateway certificate renewed, \(profile.normalizedCertificateSHA1 ?? "none") -> "
+                + "\(renewed.sha1), issuer \(renewed.issuer ?? "unknown"), \(expires)"
+        )
+        profile.certificateSHA1 = renewed.sha1
+        profile.certificate = renewed
+        persistProfile()
+        onCertificateRenewed?(renewed)
+    }
+
+    /// Writes the active connection back into the saved list, not just the single-profile key,
+    /// or the change is lost the next time the list is read.
+    private func persistProfile() {
+        VPNSettingsStore().upsert(profile)
+        if let index = profiles.firstIndex(where: { $0.id == profile.id }) {
+            profiles[index] = profile
         }
     }
 
