@@ -10,10 +10,23 @@ section when a release is cut.
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-10-28
+
+> Gateway certificate renewals no longer break connecting, plus clearer errors and settings fixes.
+
+### Changed
+- When the VPN gateway renews its certificate, AutoConnect now accepts the new one by itself and updates the saved pin, as long as a public certificate authority vouches for it under the gateway's own address. You no longer have to Forget and Detect in Settings. With notifications on, a banner says it happened.
+
+### Removed
+- The Remove button beside a saved VPN password. Typing a new password replaces the saved one, and deleting the connection removes it.
+
 ### Fixed
 - The diagnostic log no longer grows without limit. It used to write a line every few seconds while connected and had reached several megabytes; it now records only real changes and starts a fresh file once it passes 512 KB.
 - Clicking the menu bar icon while the panel is open now closes it, instead of closing it and opening it again straight away.
 - With the panel open, the "VPN connected" banner no longer arrives while the panel still reads "Starting tunnel...". The status line now catches up within one step's time of the real state instead of replaying every step of a fast connect at length.
+- The Copy button next to the connection log now uses the same blue as the link beside it.
+- A gateway certificate that does not match the pin is now reported as a certificate change, with what to do about it, instead of "Could not reach the gateway: cancelled". It also no longer retries over and over.
+- The warning beside a connection that can't connect yet now shows a tooltip naming what's missing, and it's much easier to hover.
 
 ## [1.9.2] - 2026-10-13
 
